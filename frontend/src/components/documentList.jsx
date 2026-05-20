@@ -28,8 +28,8 @@ function DocumentList({
               key={doc.id}
               className={`group flex items-start gap-3 rounded-xl border p-3 transition ${
                 selectedDocumentId === doc.id
-                  ? "border-blue-300 bg-blue-50"
-                  : "border-slate-200 bg-white hover:bg-slate-50"
+                  ? "border-blue-500 bg-blue-50 shadow-sm ring-2 ring-blue-100"
+                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
               }`}
             >
               <button
@@ -44,11 +44,17 @@ function DocumentList({
                     {doc.filename}
                   </p>
 
-                  <p className="mt-1 text-xs text-slate-500">
-                    {doc.total_pages
-                      ? `${doc.total_pages} pages`
-                      : "PDF document"}
-                  </p>
+                <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                    <span>
+                        {doc.total_pages ? `${doc.total_pages} pages` : "PDF document"}
+                    </span>
+
+                    {selectedDocumentId === doc.id && (
+                        <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700">
+                        Selected
+                        </span>
+                    )}
+                </div>
                 </div>
               </button>
 

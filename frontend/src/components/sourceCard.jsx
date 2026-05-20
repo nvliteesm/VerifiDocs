@@ -11,7 +11,9 @@ function SourceCard({ source, index }) {
         {source.page_number && <span>Page {source.page_number}</span>}
 
         {source.similarity && (
-          <span>Score: {Number(source.similarity).toFixed(3)}</span>
+            <span className="rounded-full bg-green-50 px-2 py-1 font-medium text-green-700">
+                Relevant match
+            </span>
         )}
       </div>
 

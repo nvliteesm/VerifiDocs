@@ -19,9 +19,10 @@ function AnswerPanel({ asking, answer, sources }) {
             {answer}
           </p>
         ) : (
-          <p className="text-sm text-slate-500">
-            Your answer will appear here after you ask a question.
-          </p>
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
+            Ask a question about your uploaded document. The answer will appear here with
+            source snippets below it.
+          </div>
         )}
       </div>
 

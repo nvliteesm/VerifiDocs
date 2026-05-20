@@ -1,5 +1,11 @@
 import { Loader2, MessageSquare, Send } from "lucide-react";
 
+const suggestedQuestions = [
+  "What is this document about?",
+  "Summarize the key points.",
+  "What are the main requirements?",
+];
+
 function ChatPanel({ question, setQuestion, asking, onAsk }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -35,6 +41,19 @@ function ChatPanel({ question, setQuestion, asking, onAsk }) {
           )}
         </button>
       </form>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {suggestedQuestions.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            onClick={() => setQuestion(suggestion)}
+            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
