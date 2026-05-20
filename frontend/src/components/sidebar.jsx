@@ -1,5 +1,5 @@
-import UploadBox from "./UploadBox";
-import DocumentList from "./DocumentList";
+import UploadBox from "./uploadBox";
+import DocumentList from "./documentList";
 
 function Sidebar({
   documents,

@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import SourceCard from "./SourceCard";
+import SourceCard from "./sourceCard";
 
 function AnswerPanel({ asking, answer, sources }) {
   return (

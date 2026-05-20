@@ -66,8 +66,11 @@ function App() {
 
       await loadDocuments();
 
-      if (uploaded?.document_id || uploaded?.id) {
-        setSelectedDocumentId(uploaded.document_id || uploaded.id);
+      const uploadedDocumentId =
+        uploaded?.document?.id || uploaded?.document_id || uploaded?.id;
+
+      if (uploadedDocumentId) {
+        setSelectedDocumentId(uploadedDocumentId);
       }
     } catch (err) {
       console.error(err);
