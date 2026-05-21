@@ -17,6 +17,8 @@ function App() {
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState(null);
+  const [confidence, setConfidence] = useState("");
+  const [confidenceReason, setConfidenceReason] = useState("");
   const [sources, setSources] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -45,6 +47,8 @@ function App() {
   function handleSelectDocument(documentId) {
     setSelectedDocumentId(documentId);
     setAnswer(null);
+    setConfidence("");
+    setConfidenceReason("");
     setSources([]);
   }
 
@@ -92,6 +96,8 @@ function App() {
       if (selectedDocumentId === documentId) {
         setSelectedDocumentId("");
         setAnswer(null);
+        setConfidence("");
+        setConfidenceReason("");
         setSources([]);
       }
 
@@ -116,6 +122,8 @@ function App() {
       setAsking(true);
       setError("");
       setAnswer(null);
+      setConfidence("");
+      setConfidenceReason("");
       setSources([]);
 
       const data = await askQuestion({
@@ -124,6 +132,8 @@ function App() {
       });
 
       setAnswer(data.answer || "");
+      setConfidence(data.confidence || "");
+      setConfidenceReason(data.confidence_reason || "");
       setSources(data.sources || data.citations || []);
     } catch (err) {
       console.error(err);
@@ -203,10 +213,10 @@ function App() {
 
                   <AnswerPanel
                     asking={asking}
-                    answer={answer?.answer}
-                    confidence={answer?.confidence}
-                    confidenceReason={answer?.confidence_reason}
-                    sources={answer?.sources || []}
+                    answer={answer}
+                    confidence={confidence}
+                    confidenceReason={confidenceReason}
+                    sources={sources}
                   />
                 </>
               )}
