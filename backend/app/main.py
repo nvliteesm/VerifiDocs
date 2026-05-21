@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import documents, chat
+from app.api.routes import documents, chat, evaluation
 
 app = FastAPI(
     title="AskDocs AI API",
@@ -19,6 +19,7 @@ app.add_middleware(
 
 app.include_router(documents.router, prefix="/documents", tags=["Documents"])
 app.include_router(chat.router, prefix="/chat", tags=["Chat"])
+app.include_router(evaluation.router, prefix="/evaluation", tags=["Evaluation"])
 
 
 @app.get("/")
