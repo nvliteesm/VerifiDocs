@@ -19,3 +19,5 @@ class SourcePreview(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: List[SourcePreview]
+    confidence: str
+    confidence_reason: str

@@ -203,8 +203,10 @@ function App() {
 
                   <AnswerPanel
                     asking={asking}
-                    answer={answer}
-                    sources={sources}
+                    answer={answer?.answer}
+                    confidence={answer?.confidence}
+                    confidenceReason={answer?.confidence_reason}
+                    sources={answer?.sources || []}
                   />
                 </>
               )}
