@@ -37,3 +37,19 @@ export async function askQuestion({ question, documentId }) {
 
   return response.data;
 }
+
+export async function getChatHistory(documentId) {
+  const params = documentId ? `?document_id=${documentId}` : "";
+
+  const response = await api.get(`/chat/history${params}`);
+
+  return response.data;
+}
+
+export async function clearChatHistory(documentId) {
+  const params = documentId ? `?document_id=${documentId}` : "";
+
+  const response = await api.delete(`/chat/history${params}`);
+
+  return response.data;
+}

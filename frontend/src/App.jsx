@@ -4,8 +4,11 @@ import {
   getDocuments,
   deleteDocument,
   askQuestion,
+  getChatHistory,
+  clearChatHistory,
 } from "./api/client";
 import Sidebar from "./components/sidebar";
+import ChatHistory from "./components/chatHistory";
 import UploadBox from "./components/uploadBox";
 import ChatPanel from "./components/chatPanel";
 import AnswerPanel from "./components/answerPanel";
@@ -20,6 +23,9 @@ function App() {
   const [confidence, setConfidence] = useState("");
   const [confidenceReason, setConfidenceReason] = useState("");
   const [sources, setSources] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [asking, setAsking] = useState(false);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -40,9 +46,27 @@ function App() {
     }
   }
 
+  async function loadChatHistory(documentId = selectedDocumentId) {
+    try {
+      setLoadingHistory(true);
+
+      const data = await getChatHistory(documentId);
+      setChatHistory(data.messages || []);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load chat history.");
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
   useEffect(() => {
     loadDocuments();
   }, []);
+
+  useEffect(() => {
+    loadChatHistory(selectedDocumentId);
+  }, [selectedDocumentId]);
 
   function handleSelectDocument(documentId) {
     setSelectedDocumentId(documentId);
@@ -135,11 +159,29 @@ function App() {
       setConfidence(data.confidence || "");
       setConfidenceReason(data.confidence_reason || "");
       setSources(data.sources || data.citations || []);
+
+      await loadChatHistory(selectedDocumentId);
+
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.detail || "Failed to get an answer.");
     } finally {
       setAsking(false);
+    }
+  }
+
+  async function handleClearHistory() {
+    try {
+      setClearingHistory(true);
+      setError("");
+
+      await clearChatHistory(selectedDocumentId);
+      setChatHistory([]);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to clear chat history.");
+    } finally {
+      setClearingHistory(false);
     }
   }
 
@@ -260,6 +302,13 @@ function App() {
                     confidence={confidence}
                     confidenceReason={confidenceReason}
                     sources={sources}
+                  />
+
+                  <ChatHistory
+                    messages={chatHistory}
+                    loading={loadingHistory}
+                    clearing={clearingHistory}
+                    onClear={handleClearHistory}
                   />
                 </>
               )}
