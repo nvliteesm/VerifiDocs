@@ -148,8 +148,8 @@ function App() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-7xl">
+    <main className="min-h-screen bg-[#f6f8fb] text-slate-900">
+      <div className="mx-auto flex min-h-screen max-w-[96rem]">
         <Sidebar
           documents={documents}
           selectedDocumentId={selectedDocumentId}
@@ -160,20 +160,63 @@ function App() {
           onDeleteDocument={handleDeleteDocument}
         />
 
-        <section className="flex flex-1 flex-col">
-          <header className="border-b border-slate-200 bg-white px-5 py-4">
-            <div className="mx-auto max-w-4xl">
-              <p className="text-sm text-slate-500">Current document</p>
-              <h2 className="mt-1 truncate text-lg font-semibold">
-                {selectedDocument
-                  ? selectedDocument.filename
-                  : "Ask across your uploaded documents"}
-              </h2>
+        <section className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/85 px-5 py-4 backdrop-blur-xl">
+            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+                    Grounded Q&A
+                  </span>
+
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+                    {selectedDocument ? "Single document" : "All documents"}
+                  </span>
+                </div>
+
+                <p className="text-sm font-medium text-slate-500">
+                  Current document
+                </p>
+
+                <h2
+                  title={
+                    selectedDocument
+                      ? selectedDocument.filename
+                      : "Ask across your uploaded documents"
+                  }
+                  className="mt-1 truncate text-xl font-bold tracking-tight text-slate-950"
+                >
+                  {selectedDocument
+                    ? selectedDocument.filename
+                    : "Ask across your uploaded documents"}
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:w-64">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-xs font-medium text-slate-500">
+                    Documents
+                  </p>
+                  <p className="mt-1 text-xl font-bold text-slate-950">
+                    {documents.length}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-xs font-medium text-slate-500">
+                    Sources
+                  </p>
+                  <p className="mt-1 text-xl font-bold text-slate-950">
+                    {sources.length}
+                  </p>
+                </div>
+              </div>
             </div>
           </header>
 
+
           <div className="flex-1 px-5 py-8">
-            <div className="mx-auto max-w-4xl">
+            <div className="mx-auto max-w-5xl">
               <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:hidden">
                 <UploadBox uploading={uploading} onUpload={handleUpload} />
 
