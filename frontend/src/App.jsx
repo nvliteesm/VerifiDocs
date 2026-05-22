@@ -13,6 +13,7 @@ import UploadBox from "./components/uploadBox";
 import ChatPanel from "./components/chatPanel";
 import AnswerPanel from "./components/answerPanel";
 import EmptyState from "./components/emptyState";
+import DocumentDetails from "./components/documentDetails";
 import "./index.css";
 
 function App() {
@@ -289,6 +290,11 @@ function App() {
                 <EmptyState />
               ) : (
                 <>
+                  <DocumentDetails
+                    document={selectedDocument}
+                    historyCount={chatHistory.length}
+                  />
+
                   <ChatPanel
                     question={question}
                     setQuestion={setQuestion}

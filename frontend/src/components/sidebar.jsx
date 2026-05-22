@@ -14,7 +14,7 @@ function Sidebar({
   const selectedDocument = documents.find((doc) => doc.id === selectedDocumentId);
 
   return (
-    <aside className="sidebar-scroll sticky top-0 hidden h-screen w-80 shrink-0 overflow-y-auto border-r border-slate-200/80 bg-white/90 p-5 shadow-[8px_0_30px_rgba(15,23,42,0.03)] backdrop-blur md:block">
+    <aside className="sidebar-scroll sticky top-0 hidden h-screen w-80 shrink-0 overflow-y-auto border-r border-slate-200/80 bg-white/95 p-5 shadow-[8px_0_30px_rgba(15,23,42,0.03)] md:block">
       <div className="mb-7">
         <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
           <Sparkles className="h-5 w-5" />
