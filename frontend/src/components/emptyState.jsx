@@ -18,7 +18,7 @@ function EmptyState() {
         </div>
 
         <p className="mx-auto max-w-md text-sm leading-7 text-slate-500">
-          Add a PDF to start asking questions. AskDocs AI will retrieve relevant
+          Add a PDF to start asking questions. VerifiDocs will retrieve relevant
           sections and answer using your document as context.
         </p>
 

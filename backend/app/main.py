@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import documents, chat, evaluation
 
 app = FastAPI(
-    title="AskDocs AI API",
+    title="VerifiDocs API",
     description="A RAG-based document assistant for grounded PDF question answering.",
     version="0.1.0",
 )
@@ -25,7 +25,7 @@ app.include_router(evaluation.router, prefix="/evaluation", tags=["Evaluation"])
 @app.get("/")
 def root():
     return {
-        "message": "AskDocs AI backend is running",
+        "message": "VerifiDocs backend is running",
         "version": "0.1.0",
     }
 

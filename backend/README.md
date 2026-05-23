@@ -1,44 +1,33 @@
-# AskDocs AI Backend
+# VerifiDocs Backend
 
-FastAPI backend for AskDocs AI, a RAG-based document assistant that allows users to upload PDF documents and ask grounded questions with source references.
+FastAPI backend for VerifiDocs, a RAG-powered PDF document assistant that returns grounded answers with source evidence.
 
 ## Tech Stack
 
 - FastAPI
 - Supabase Postgres
 - pgvector
-- Gemini API
+- Gemini embeddings and answer generation
 - PyMuPDF
 - Pydantic
 
-## Core Flow
-
-1. User uploads a PDF.
-2. Backend extracts text page by page.
-3. Text is cleaned and split into chunks.
-4. Each chunk is embedded using Gemini embeddings.
-5. Chunks and embeddings are stored in Supabase with pgvector.
-6. User asks a question.
-7. The question is embedded.
-8. Supabase retrieves the most relevant chunks using vector similarity search.
-9. Gemini generates a grounded answer using only retrieved context.
-10. API returns the answer and source previews.
-
 ## Environment Variables
 
-Create a `.env` file:
+Create `backend/.env` from `backend/.env.example`:
 
 ```env
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-GEMINI_API_KEY=your_gemini_api_key
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+GEMINI_API_KEY=your-gemini-api-key
 ```
 
-## Run locally
-1. python -m venv venv
-2. venv\Scripts\Activate.ps1
-3. python -m pip install -r requirements.txt
-4. uvicorn app.main:app --reload
+## Run Locally
 
-## API Docs
-http://127.0.0.1:8000/docs
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+Open API docs at `http://127.0.0.1:8000/docs`.

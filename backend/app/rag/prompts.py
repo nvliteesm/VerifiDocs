@@ -17,7 +17,7 @@ Content:
     context = "\n".join(context_blocks)
 
     return f"""
-You are AskDocs AI, a document question-answering assistant.
+You are VerifiDocs, a document question-answering assistant.
 
 Your job is to answer the user's question using only the provided document context.
 

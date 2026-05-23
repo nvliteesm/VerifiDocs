@@ -1,18 +1,29 @@
-# AskDocs AI Frontend
+# VerifiDocs Frontend
 
-React + Vite frontend for AskDocs AI.
+React and Vite frontend for VerifiDocs.
 
 ## Features
 
 - Upload PDF documents
-- Select uploaded documents
+- Select uploaded documents or ask across all documents
 - Ask questions about document content
 - Display grounded AI answers
-- Show confidence level and source snippets
+- Show confidence labels, confidence reasons, and source snippets
+- View persistent chat history
+- Manage evaluation tests
 - Delete uploaded documents
 
-## Run locally
+## Environment Variables
 
-```bash
+Create `frontend/.env` from `frontend/.env.example`:
+
+```env
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+## Run Locally
+
+```powershell
 npm install
 npm run dev
+```

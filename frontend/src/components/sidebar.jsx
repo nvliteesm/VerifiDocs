@@ -21,7 +21,7 @@ function Sidebar({
         </div>
 
         <h1 className="text-xl font-bold tracking-tight text-slate-950">
-          AskDocs AI
+          VerifiDocs
         </h1>
 
         <p className="mt-2 text-sm leading-6 text-slate-500">

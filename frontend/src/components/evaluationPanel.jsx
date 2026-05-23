@@ -179,7 +179,7 @@ function EvaluationPanel({ selectedDocument }) {
           </h2>
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Add test questions, run them through AskDocs, then manually mark the answer as passed or failed.
+            Add test questions, run them through VerifiDocs, then manually mark the answer as passed or failed.
           </p>
 
           <p className="mt-2 text-xs text-slate-500">
