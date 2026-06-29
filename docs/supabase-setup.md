@@ -23,6 +23,7 @@ create table if not exists documents (
   filename text not null,
   file_type text not null default 'pdf',
   total_pages integer,
+  file_path text,
   created_at timestamptz not null default now()
 );
 
@@ -117,7 +118,7 @@ $$;
 
 The current code inserts these fields:
 
-- `documents`: `filename`, `file_type`, `total_pages`
+- `documents`: `filename`, `file_type`, `total_pages`, `file_path`
 - `document_chunks`: `document_id`, `chunk_index`, `page_number`, `content`, `embedding`
 - `chat_messages`: `document_id`, `question`, `answer`, `confidence`, `confidence_reason`, `sources`
 - `evaluation_tests`: `document_id`, `question`, `expected_answer`, `notes`, `status`, then later `generated_answer`, `confidence`, `confidence_reason`, `source_count`

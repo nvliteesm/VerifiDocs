@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.db.supabase import supabase
 from app.rag.chunker import chunk_pages
-from app.rag.embeddings import create_embedding
+from app.rag.embeddings import create_embeddings_batch
 from app.rag.pdf_loader import extract_text_from_pdf
 from app.models.document import (
     DeleteDocumentResponse,
@@ -96,6 +96,16 @@ def delete_document(document_id: str):
         .execute()
     )
 
+    # Clean up the uploaded PDF file from disk
+    stored_path = existing_document.data.get("file_path")
+    if stored_path:
+        full_path = os.path.join(UPLOAD_DIR, stored_path)
+        if os.path.exists(full_path):
+            try:
+                os.remove(full_path)
+            except OSError as err:
+                print(f"Warning: Could not delete file {full_path}: {err}")
+
     return {
         "message": "Document deleted successfully.",
         "deleted_document": existing_document.data,
@@ -139,6 +149,7 @@ def upload_document(file: UploadFile = File(...)):
             "filename": file.filename,
             "file_type": "pdf",
             "total_pages": len(pages),
+            "file_path": safe_filename,
         })
         .execute()
     )
@@ -154,14 +165,13 @@ def upload_document(file: UploadFile = File(...)):
             detail="No usable text chunks were created from this PDF.",
         )
 
+    # Batch embed all chunks at once for efficiency
+    chunk_texts = [chunk["content"] for chunk in chunks]
+    embeddings = create_embeddings_batch(chunk_texts, task_type="RETRIEVAL_DOCUMENT")
+
     rows_to_insert = []
 
-    for chunk in chunks:
-        embedding = create_embedding(
-            chunk["content"],
-            task_type="RETRIEVAL_DOCUMENT",
-        )
-
+    for chunk, embedding in zip(chunks, embeddings):
         rows_to_insert.append({
             "document_id": document_id,
             "chunk_index": chunk["chunk_index"],

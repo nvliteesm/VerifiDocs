@@ -8,6 +8,7 @@ class Document(BaseModel):
     filename: str
     file_type: str
     total_pages: Optional[int] = None
+    file_path: Optional[str] = None
     created_at: str
 
 
