@@ -1,195 +1,24 @@
-import { useEffect, useState } from "react";
-import {
-  uploadDocument,
-  getDocuments,
-  deleteDocument,
-  askQuestion,
-  getChatHistory,
-  clearChatHistory,
-} from "./api/client";
+import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { MessageSquare, ClipboardCheck } from "lucide-react";
+import { AppProvider, useAppContext } from "./context/AppContext";
 import Sidebar from "./components/sidebar";
-import EvaluationPanel from "./components/evaluationPanel";
-import ChatHistory from "./components/chatHistory";
 import UploadBox from "./components/uploadBox";
-import ChatPanel from "./components/chatPanel";
-import AnswerPanel from "./components/answerPanel";
-import EmptyState from "./components/emptyState";
-import DocumentDetails from "./components/documentDetails";
+import ChatPage from "./pages/ChatPage";
+import EvaluationPage from "./pages/EvaluationPage";
 import "./index.css";
 
-function App() {
-  const [documents, setDocuments] = useState([]);
-  const [selectedDocumentId, setSelectedDocumentId] = useState("");
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState(null);
-  const [confidence, setConfidence] = useState("");
-  const [confidenceReason, setConfidenceReason] = useState("");
-  const [sources, setSources] = useState([]);
-  const [chatHistory, setChatHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [clearingHistory, setClearingHistory] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const [loadingDocs, setLoadingDocs] = useState(false);
-  const [error, setError] = useState("");
-
-  async function loadDocuments() {
-    try {
-      setLoadingDocs(true);
-      setError("");
-
-      const data = await getDocuments();
-      setDocuments(data.documents || data || []);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to load documents.");
-    } finally {
-      setLoadingDocs(false);
-    }
-  }
-
-  async function loadChatHistory(documentId = selectedDocumentId) {
-    try {
-      setLoadingHistory(true);
-
-      const data = await getChatHistory(documentId);
-      setChatHistory(data.messages || []);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to load chat history.");
-    } finally {
-      setLoadingHistory(false);
-    }
-  }
-
-  useEffect(() => {
-    loadDocuments();
-  }, []);
-
-  useEffect(() => {
-    loadChatHistory(selectedDocumentId);
-  }, [selectedDocumentId]);
-
-  function handleSelectDocument(documentId) {
-    setSelectedDocumentId(documentId);
-    setAnswer(null);
-    setConfidence("");
-    setConfidenceReason("");
-    setSources([]);
-  }
-
-  async function handleUpload(event) {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    if (file.type !== "application/pdf") {
-      setError("Only PDF files are supported.");
-      return;
-    }
-
-    try {
-      setUploading(true);
-      setError("");
-
-      const uploaded = await uploadDocument(file);
-
-      await loadDocuments();
-
-      const uploadedDocumentId =
-        uploaded?.document?.id || uploaded?.document_id || uploaded?.id;
-
-      if (uploadedDocumentId) {
-        setSelectedDocumentId(uploadedDocumentId);
-      }
-    } catch (err) {
-      console.error(err);
-      setError(
-        err.response?.data?.detail || "Upload failed. Please try again."
-      );
-    } finally {
-      setUploading(false);
-      event.target.value = "";
-    }
-  }
-
-  async function handleDeleteDocument(documentId) {
-    try {
-      setError("");
-
-      await deleteDocument(documentId);
-
-      if (selectedDocumentId === documentId) {
-        setSelectedDocumentId("");
-        setAnswer(null);
-        setConfidence("");
-        setConfidenceReason("");
-        setSources([]);
-      }
-
-      await loadDocuments();
-    } catch (err) {
-      console.error(err);
-      setError("Failed to delete document.");
-    }
-  }
-
-  async function handleAsk(event) {
-    event.preventDefault();
-
-    const trimmedQuestion = question.trim();
-
-    if (!trimmedQuestion) {
-      setError("Please enter a question.");
-      return;
-    }
-
-    try {
-      setAsking(true);
-      setError("");
-      setAnswer(null);
-      setConfidence("");
-      setConfidenceReason("");
-      setSources([]);
-
-      const data = await askQuestion({
-        question: trimmedQuestion,
-        documentId: selectedDocumentId,
-      });
-
-      setAnswer(data.answer || "");
-      setConfidence(data.confidence || "");
-      setConfidenceReason(data.confidence_reason || "");
-      setSources(data.sources || data.citations || []);
-
-      await loadChatHistory(selectedDocumentId);
-
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.detail || "Failed to get an answer.");
-    } finally {
-      setAsking(false);
-    }
-  }
-
-  async function handleClearHistory() {
-    try {
-      setClearingHistory(true);
-      setError("");
-
-      await clearChatHistory(selectedDocumentId);
-      setChatHistory([]);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to clear chat history.");
-    } finally {
-      setClearingHistory(false);
-    }
-  }
-
-  const selectedDocument = documents.find(
-    (doc) => doc.id === selectedDocumentId
-  );
+function AppLayout() {
+  const {
+    documents,
+    selectedDocumentId,
+    selectedDocument,
+    uploading,
+    loadingDocs,
+    error,
+    handleSelectDocument,
+    handleUpload,
+    handleDeleteDocument,
+  } = useAppContext();
 
   return (
     <main className="min-h-screen bg-[#f6f8fb] text-slate-900">
@@ -209,9 +38,33 @@ function App() {
             <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                    Grounded Q&A
-                  </span>
+                  <NavLink
+                    to="/"
+                    className={({ isActive }) =>
+                      `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                        isActive
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100"
+                      }`
+                    }
+                  >
+                    <MessageSquare className="h-3 w-3" />
+                    Chat
+                  </NavLink>
+
+                  <NavLink
+                    to="/evaluation"
+                    className={({ isActive }) =>
+                      `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                        isActive
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100"
+                      }`
+                    }
+                  >
+                    <ClipboardCheck className="h-3 w-3" />
+                    Evaluation
+                  </NavLink>
 
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
                     {selectedDocument ? "Single document" : "All documents"}
@@ -248,19 +101,19 @@ function App() {
 
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
                   <p className="text-xs font-medium text-slate-500">
-                    Sources
+                    Scope
                   </p>
-                  <p className="mt-1 text-xl font-bold text-slate-950">
-                    {sources.length}
+                  <p className="mt-1 text-sm font-bold text-slate-950">
+                    {selectedDocument ? "Single PDF" : "All PDFs"}
                   </p>
                 </div>
               </div>
             </div>
           </header>
 
-
           <div className="flex-1 px-5 py-8">
             <div className="mx-auto max-w-5xl">
+              {/* Mobile upload + document selector */}
               <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:hidden">
                 <UploadBox uploading={uploading} onUpload={handleUpload} />
 
@@ -287,47 +140,25 @@ function App() {
                 </div>
               )}
 
-              {documents.length === 0 && !loadingDocs ? (
-                <EmptyState />
-              ) : (
-                <>
-                  <DocumentDetails
-                    document={selectedDocument}
-                    historyCount={chatHistory.length}
-                  />
-
-                  <ChatPanel
-                    question={question}
-                    setQuestion={setQuestion}
-                    asking={asking}
-                    onAsk={handleAsk}
-                  />
-
-                  <AnswerPanel
-                    asking={asking}
-                    answer={answer}
-                    confidence={confidence}
-                    confidenceReason={confidenceReason}
-                    sources={sources}
-                  />
-
-                  <div className="mt-6">
-                    <EvaluationPanel selectedDocument={selectedDocument} />
-                  </div>
-
-                  <ChatHistory
-                    messages={chatHistory}
-                    loading={loadingHistory}
-                    clearing={clearingHistory}
-                    onClear={handleClearHistory}
-                  />
-                </>
-              )}
+              <Routes>
+                <Route path="/" element={<ChatPage />} />
+                <Route path="/evaluation" element={<EvaluationPage />} />
+              </Routes>
             </div>
           </div>
         </section>
       </div>
     </main>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppProvider>
+        <AppLayout />
+      </AppProvider>
+    </BrowserRouter>
   );
 }
 
