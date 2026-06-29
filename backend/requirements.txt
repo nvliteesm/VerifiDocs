@@ -9,3 +9,5 @@ PyMuPDF
 tiktoken
 numpy
 google-genai
+slowapi
+pytest

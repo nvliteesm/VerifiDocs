@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { askQuestion, getChatHistory, clearChatHistory } from "../api/client";
 import { useAppContext } from "../context/AppContext";
-import ChatPanel from "../components/chatPanel";
-import AnswerPanel from "../components/answerPanel";
-import ChatHistory from "../components/chatHistory";
-import DocumentDetails from "../components/documentDetails";
-import EmptyState from "../components/emptyState";
+import ChatPanel from "../components/ChatPanel";
+import AnswerPanel from "../components/AnswerPanel";
+import ChatHistory from "../components/ChatHistory";
+import DocumentDetails from "../components/DocumentDetails";
+import EmptyState from "../components/EmptyState";
 
 function ChatPage() {
   const { documents, selectedDocumentId, selectedDocument, loadingDocs, error, setError } =

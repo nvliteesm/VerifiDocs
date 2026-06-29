@@ -1,8 +1,9 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import { MessageSquare, ClipboardCheck } from "lucide-react";
 import { AppProvider, useAppContext } from "./context/AppContext";
-import Sidebar from "./components/sidebar";
-import UploadBox from "./components/uploadBox";
+import ErrorBoundary from "./components/ErrorBoundary";
+import Sidebar from "./components/Sidebar";
+import UploadBox from "./components/UploadBox";
 import ChatPage from "./pages/ChatPage";
 import EvaluationPage from "./pages/EvaluationPage";
 import "./index.css";
@@ -140,10 +141,12 @@ function AppLayout() {
                 </div>
               )}
 
-              <Routes>
-                <Route path="/" element={<ChatPage />} />
-                <Route path="/evaluation" element={<EvaluationPage />} />
-              </Routes>
+              <ErrorBoundary>
+                <Routes>
+                  <Route path="/" element={<ChatPage />} />
+                  <Route path="/evaluation" element={<EvaluationPage />} />
+                </Routes>
+              </ErrorBoundary>
             </div>
           </div>
         </section>

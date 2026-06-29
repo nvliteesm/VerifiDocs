@@ -1,6 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.db.supabase import supabase
 from app.models.chat import ChatRequest, ChatResponse, ChatHistoryResponse
@@ -10,25 +12,32 @@ from app.rag.response_utils import calculate_confidence, format_sources, build_p
 from app.rag.retriever import retrieve_relevant_chunks
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/", response_model=ChatResponse)
-def ask_question(request: ChatRequest):
-    question = request.question.strip()
+@limiter.limit("10/minute")
+def ask_question(request: Request, body: ChatRequest):
+    return process_question(body)
+
+
+def process_question(body: ChatRequest):
+    """Core Q&A logic, callable from both the route and evaluation."""
+    question = body.question.strip()
 
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
     document_metadata = None
 
-    if request.document_id:
-        validate_document_id(request.document_id)
+    if body.document_id:
+        validate_document_id(body.document_id)
 
         document_response = (
             supabase
             .table("documents")
             .select("id, filename, total_pages, created_at")
-            .eq("id", request.document_id)
+            .eq("id", body.document_id)
             .limit(1)
             .execute()
         )
@@ -57,7 +66,7 @@ def ask_question(request: ChatRequest):
         }
 
         save_chat_message(
-            document_id=request.document_id,
+            document_id=body.document_id,
             question=question,
             response_data=response_data,
         )
@@ -66,7 +75,7 @@ def ask_question(request: ChatRequest):
 
     chunks = retrieve_relevant_chunks(
         question=question,
-        document_id=request.document_id,
+        document_id=body.document_id,
         match_count=5,
     )
 
@@ -81,7 +90,7 @@ def ask_question(request: ChatRequest):
         }
 
         save_chat_message(
-            document_id=request.document_id,
+            document_id=body.document_id,
             question=question,
             response_data=response_data,
         )
@@ -99,7 +108,7 @@ def ask_question(request: ChatRequest):
         }
 
         save_chat_message(
-            document_id=request.document_id,
+            document_id=body.document_id,
             question=question,
             response_data=response_data,
         )
@@ -121,7 +130,7 @@ def ask_question(request: ChatRequest):
     }
 
     save_chat_message(
-        document_id=request.document_id,
+        document_id=body.document_id,
         question=question,
         response_data=response_data,
     )

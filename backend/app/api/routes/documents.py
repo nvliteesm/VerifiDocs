@@ -1,7 +1,9 @@
 import os
 import shutil
 from uuid import uuid4
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.db.supabase import supabase
 from app.rag.chunker import chunk_pages
@@ -16,6 +18,7 @@ from app.models.document import (
 )
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 UPLOAD_DIR = "uploads"
 MAX_FILE_SIZE_MB = 10
@@ -112,7 +115,8 @@ def delete_document(document_id: str):
     }
 
 @router.post("/upload", response_model=UploadDocumentResponse)
-def upload_document(file: UploadFile = File(...)):
+@limiter.limit("5/minute")
+def upload_document(request: Request, file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 

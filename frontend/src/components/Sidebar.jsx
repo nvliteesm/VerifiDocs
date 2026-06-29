@@ -1,6 +1,6 @@
 import { FileText, Sparkles } from "lucide-react";
-import UploadBox from "./uploadBox";
-import DocumentList from "./documentList";
+import UploadBox from "./UploadBox";
+import DocumentList from "./DocumentList";
 
 function Sidebar({
   documents,

@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CheckCircle2, Loader2, Search, ShieldCheck } from "lucide-react";
-import SourceCard from "./sourceCard";
+import SourceCard from "./SourceCard";
 
 function getConfidenceStyles(confidence) {
   switch (confidence) {

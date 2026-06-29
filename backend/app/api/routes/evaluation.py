@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.db.supabase import supabase
-from app.api.routes.chat import ask_question
+from app.api.routes.chat import process_question
 from app.models.chat import ChatRequest
 
 
@@ -174,7 +174,7 @@ def run_evaluation_test(request: EvaluationRunRequest):
     test = test_response.data[0]
 
     try:
-        chat_response = ask_question(
+        chat_response = process_question(
             ChatRequest(
                 question=test["question"],
                 document_id=test.get("document_id"),

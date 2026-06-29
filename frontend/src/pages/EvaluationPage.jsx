@@ -1,6 +1,6 @@
 import { useAppContext } from "../context/AppContext";
-import EvaluationPanel from "../components/evaluationPanel";
-import EmptyState from "../components/emptyState";
+import EvaluationPanel from "../components/EvaluationPanel";
+import EmptyState from "../components/EmptyState";
 
 function EvaluationPage() {
   const { documents, selectedDocument, loadingDocs } = useAppContext();
