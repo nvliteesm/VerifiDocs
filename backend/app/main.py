@@ -6,7 +6,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.api.dependencies import verify_api_key
-from app.api.routes import documents, chat, evaluation
+from app.api.routes import documents, chat, accuracy_tests
 from app.core.config import settings
 
 limiter = Limiter(key_func=get_remote_address)
@@ -31,7 +31,7 @@ app.add_middleware(
 
 app.include_router(documents.router, prefix="/documents", tags=["Documents"])
 app.include_router(chat.router, prefix="/chat", tags=["Chat"])
-app.include_router(evaluation.router, prefix="/evaluation", tags=["Evaluation"])
+app.include_router(accuracy_tests.router, prefix="/accuracy-tests", tags=["Accuracy Tests"])
 
 
 @app.get("/")
