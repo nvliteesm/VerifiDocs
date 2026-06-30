@@ -11,3 +11,4 @@ numpy
 google-genai
 slowapi
 pytest
+hypothesis
