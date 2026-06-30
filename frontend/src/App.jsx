@@ -1,11 +1,11 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
-import { MessageSquare, ClipboardCheck } from "lucide-react";
+import { MessageSquare, FlaskConical } from "lucide-react";
 import { AppProvider, useAppContext } from "./context/AppContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Sidebar from "./components/Sidebar";
 import UploadBox from "./components/UploadBox";
 import ChatPage from "./pages/ChatPage";
-import EvaluationPage from "./pages/EvaluationPage";
+import AccuracyTestingPage from "./pages/AccuracyTestingPage";
 import "./index.css";
 
 function AppLayout() {
@@ -54,7 +54,7 @@ function AppLayout() {
                   </NavLink>
 
                   <NavLink
-                    to="/evaluation"
+                    to="/accuracy"
                     className={({ isActive }) =>
                       `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${
                         isActive
@@ -63,8 +63,8 @@ function AppLayout() {
                       }`
                     }
                   >
-                    <ClipboardCheck className="h-3 w-3" />
-                    Evaluation
+                    <FlaskConical className="h-3 w-3" />
+                    AI Accuracy Testing
                   </NavLink>
 
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
@@ -144,7 +144,7 @@ function AppLayout() {
               <ErrorBoundary>
                 <Routes>
                   <Route path="/" element={<ChatPage />} />
-                  <Route path="/evaluation" element={<EvaluationPage />} />
+                  <Route path="/accuracy" element={<AccuracyTestingPage />} />
                 </Routes>
               </ErrorBoundary>
             </div>

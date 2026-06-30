@@ -120,6 +120,8 @@ function ChatPage() {
         confidence={confidence}
         confidenceReason={confidenceReason}
         sources={sources}
+        question={question}
+        documentId={selectedDocumentId}
       />
 
       <ChatHistory

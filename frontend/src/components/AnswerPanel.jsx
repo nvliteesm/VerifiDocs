@@ -1,7 +1,9 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CheckCircle2, Loader2, Search, ShieldCheck } from "lucide-react";
 import SourceCard from "./SourceCard";
+import { createAccuracyTest } from "../api/client";
 
 function getConfidenceStyles(confidence) {
   switch (confidence) {
@@ -23,7 +25,40 @@ function formatConfidenceLabel(confidence) {
   return confidence.replace("_", " ");
 }
 
-function AnswerPanel({ asking, answer, confidence, confidenceReason, sources }) {
+function AnswerPanel({ asking, answer, confidence, confidenceReason, sources, question, documentId }) {
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  async function handleSaveAccuracyTest() {
+    try {
+      setSaveLoading(true);
+      setSaveError("");
+
+      const sourceEvidence = sources.map((source) => ({
+        content: source.content || source.text || "",
+        page_number: source.page_number || source.page || null,
+        similarity: source.similarity || source.score || null,
+      }));
+
+      await createAccuracyTest({
+        document_id: documentId || null,
+        question,
+        ai_answer: answer,
+        source_evidence: sourceEvidence,
+      });
+
+      setSaveSuccess(true);
+    } catch (err) {
+      console.error(err);
+      setSaveError(
+        err.response?.data?.detail || "Failed to save accuracy test. Please try again."
+      );
+    } finally {
+      setSaveLoading(false);
+    }
+  }
+
   return (
     <>
       <section className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
@@ -56,6 +91,33 @@ function AnswerPanel({ asking, answer, confidence, confidenceReason, sources }) 
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {answer}
                 </ReactMarkdown>
+              </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={handleSaveAccuracyTest}
+                  disabled={saveLoading || saveSuccess}
+                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                    saveSuccess
+                      ? "cursor-not-allowed bg-emerald-50 text-emerald-600 border border-emerald-200"
+                      : saveLoading
+                      ? "cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200"
+                      : "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800"
+                  }`}
+                >
+                  {saveLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  {saveSuccess
+                    ? "Saved ✓"
+                    : saveLoading
+                    ? "Saving..."
+                    : "Save as Accuracy Test"}
+                </button>
+
+                {saveError && (
+                  <p className="text-sm text-red-600">{saveError}</p>
+                )}
               </div>
             </div>
           ) : (
