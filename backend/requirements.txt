@@ -11,4 +11,5 @@ numpy
 google-genai
 slowapi
 pytest
+pytest-asyncio
 hypothesis

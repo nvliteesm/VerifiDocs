@@ -172,6 +172,18 @@ The backend mounts these routes:
 
 See [docs/supabase-setup.md](docs/supabase-setup.md) for the inferred schema, cascade relationships, pgvector index, and `match_document_chunks` RPC required by the current backend.
 
+## Backend Tests
+
+Backend tests can be run without real Supabase, Gemini, or API credentials:
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+pytest
+```
+
+`backend/tests/conftest.py` supplies dummy test settings before app modules are imported. `backend/.env.test.example` documents the same test-safe values. In test mode, token counting uses a deterministic local fallback instead of requiring `tiktoken` to download encoding data.
+
 ## Current Limitations
 
 - PDF extraction is text-based. Scanned or image-only PDFs need OCR, which is not implemented.

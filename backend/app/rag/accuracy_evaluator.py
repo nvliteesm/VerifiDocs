@@ -8,7 +8,16 @@ from app.core.config import settings
 from app.models.accuracy_test import EvaluationResult
 
 
-client = genai.Client(api_key=settings.gemini_api_key)
+_client = None
+
+
+def get_gemini_client():
+    global _client
+
+    if _client is None:
+        _client = genai.Client(api_key=settings.gemini_api_key)
+
+    return _client
 
 INSUFFICIENT_INFORMATION_RESPONSE = (
     "The document does not provide enough information to answer this question."
@@ -98,7 +107,7 @@ def generate_reference_answer(question: str, source_evidence: list[dict]) -> str
     prompt = build_reference_answer_prompt(question, source_evidence)
 
     try:
-        response = client.models.generate_content(
+        response = get_gemini_client().models.generate_content(
             model="gemini-2.5-flash-lite",
             contents=prompt,
         )
@@ -186,7 +195,7 @@ def evaluate_accuracy(
     prompt = build_evaluator_prompt(question, ai_answer, source_evidence, reference_answer)
 
     try:
-        response = client.models.generate_content(
+        response = get_gemini_client().models.generate_content(
             model="gemini-2.5-flash-lite",
             contents=prompt,
             config={"response_mime_type": "application/json"},

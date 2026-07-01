@@ -1,8 +1,28 @@
+import os
+import re
 from typing import Dict, List
 
 import tiktoken
 
 from app.rag.text_cleaner import clean_text
+
+
+class RegexTokenEncoding:
+    def encode(self, text: str) -> list[str]:
+        return re.findall(r"\S+\s*", text)
+
+    def decode(self, tokens: list[str]) -> str:
+        return "".join(tokens)
+
+
+def get_chunk_encoding():
+    if os.getenv("VERIFIDOCS_TESTING") == "1":
+        return RegexTokenEncoding()
+
+    try:
+        return tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        return RegexTokenEncoding()
 
 
 def chunk_pages(
@@ -13,7 +33,7 @@ def chunk_pages(
     """
     Chunk PDF pages into token-limited chunks while preserving page numbers.
     """
-    encoding = tiktoken.get_encoding("cl100k_base")
+    encoding = get_chunk_encoding()
 
     chunks = []
     chunk_index = 0

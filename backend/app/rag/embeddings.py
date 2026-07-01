@@ -4,7 +4,16 @@ from google.genai import types
 from app.core.config import settings
 
 
-client = genai.Client(api_key=settings.gemini_api_key)
+_client = None
+
+
+def get_gemini_client():
+    global _client
+
+    if _client is None:
+        _client = genai.Client(api_key=settings.gemini_api_key)
+
+    return _client
 
 
 def create_embedding(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
@@ -15,7 +24,7 @@ def create_embedding(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list[f
     - RETRIEVAL_DOCUMENT for document chunks
     - RETRIEVAL_QUERY for user questions
     """
-    response = client.models.embed_content(
+    response = get_gemini_client().models.embed_content(
         model="gemini-embedding-001",
         contents=text,
         config=types.EmbedContentConfig(
@@ -43,7 +52,7 @@ def create_embeddings_batch(
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
 
-        response = client.models.embed_content(
+        response = get_gemini_client().models.embed_content(
             model="gemini-embedding-001",
             contents=batch,
             config=types.EmbedContentConfig(

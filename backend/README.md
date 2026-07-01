@@ -37,3 +37,17 @@ uvicorn app.main:app --reload
 ```
 
 Open API docs at `http://127.0.0.1:8000/docs`.
+
+## Run Tests
+
+Tests install from the same backend requirements:
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+pytest
+```
+
+The test suite sets safe dummy credentials in `tests/conftest.py`, so test collection does not require real Supabase or Gemini credentials. See `.env.test.example` if you want an explicit local test env file.
+
+Token counting uses a deterministic local fallback when `VERIFIDOCS_TESTING=1`, so tests do not need internet access for `tiktoken` encoding data.

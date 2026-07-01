@@ -5,7 +5,16 @@ from google.genai import errors
 from app.core.config import settings
 
 
-client = genai.Client(api_key=settings.gemini_api_key)
+_client = None
+
+
+def get_gemini_client():
+    global _client
+
+    if _client is None:
+        _client = genai.Client(api_key=settings.gemini_api_key)
+
+    return _client
 
 
 def generate_answer(prompt: str) -> str:
@@ -13,7 +22,7 @@ def generate_answer(prompt: str) -> str:
     Generate a grounded answer using Gemini.
     """
     try:
-        response = client.models.generate_content(
+        response = get_gemini_client().models.generate_content(
             model="gemini-2.5-flash-lite",
             contents=prompt,
         )
@@ -33,7 +42,7 @@ def generate_answer(prompt: str) -> str:
         )
     
 def _generate_with_model(model: str, prompt: str) -> str:
-    response = client.models.generate_content(
+    response = get_gemini_client().models.generate_content(
         model=model,
         contents=prompt,
     )
