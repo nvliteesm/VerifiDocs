@@ -65,8 +65,14 @@ repo-root/
       index.css
 
   docs/
-    demo-script.md
     supabase-setup.md
+    dashboard.png
+    chat-answer.png
+    evaluation.png
+
+  demo-documents/
+    vendor-security-review.txt
+    policy-change-brief.txt
 ```
 
 ## Setup
@@ -168,6 +174,21 @@ The backend mounts these routes:
 - Chat answer with sources: `docs/chat-answer.png`
 - Accuracy testing workflow: `docs/evaluation.png`
 
+## Demo Documents
+
+Safe sample content is available in [`demo-documents/`](demo-documents/). These files are fictional and do not contain confidential, personal, financial, or regulated information.
+
+The current app upload flow accepts PDFs, so convert one of the text samples to PDF before uploading it to the public demo. For example, open the text file locally and print or export it as a PDF named `vendor-security-review.pdf` or `policy-change-brief.pdf`.
+
+Suggested recruiter demo questions:
+
+- What is this document about?
+- Summarize the key points.
+- What are the main risks mentioned?
+- Which page supports this answer?
+
+Use the accuracy testing tab after a chat response to save the answer, evaluator judgment, confidence score, and human review status.
+
 ## Supabase Setup
 
 See [docs/supabase-setup.md](docs/supabase-setup.md) for the inferred schema, cascade relationships, pgvector index, and `match_document_chunks` RPC required by the current backend.
@@ -184,19 +205,72 @@ pytest
 
 `backend/tests/conftest.py` supplies dummy test settings before app modules are imported. `backend/.env.test.example` documents the same test-safe values. In test mode, token counting uses a deterministic local fallback instead of requiring `tiktoken` to download encoding data.
 
+## Deployment
+
+This deployment setup is intended for a controlled portfolio demo, not a production SaaS launch.
+
+### Backend on Railway
+
+1. Create a Railway project from the `backend/` directory.
+2. Set the Railway start command to:
+
+```powershell
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+3. Add these Railway environment variables:
+
+```env
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+GEMINI_API_KEY=your-gemini-api-key
+API_KEY=your-demo-access-key
+CORS_ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` must stay backend-only. Do not expose it in Vercel, frontend code, screenshots, logs, or committed files.
+
+### Frontend on Vercel
+
+1. Create a Vercel project from the `frontend/` directory.
+2. Use the Vite defaults:
+   - Build command: `npm run build`
+   - Output directory: `dist`
+3. Add these Vercel environment variables:
+
+```env
+VITE_API_URL=https://your-railway-backend-url
+VITE_API_KEY=your-demo-access-key
+```
+
+`VITE_API_KEY` is public because it is bundled into the browser. It should match backend `API_KEY` only to reduce casual demo access; it is not secure authentication.
+
+### Deployment Safety Notes
+
+- Do not commit `.env` files.
+- Do not expose `SUPABASE_SERVICE_ROLE_KEY` outside Railway/backend runtime secrets.
+- Do not set production `CORS_ALLOWED_ORIGINS` to `*`.
+- Use only non-confidential documents in the public demo.
+- Rotate the demo `API_KEY` if it appears in logs, screen recordings, or public issue trackers.
+
 ## Current Limitations
 
 - PDF extraction is text-based. Scanned or image-only PDFs need OCR, which is not implemented.
 - Uploaded files are stored in a local `uploads/` directory during processing; durable object storage is not implemented.
 - The app currently uses a Supabase service role key from the backend and does not include authentication or per-user isolation.
-- CORS is open for local development and should be restricted before deployment.
+- Local CORS defaults to the Vite dev origin; deployment should set the exact Vercel frontend origin.
 - Retrieval quality depends on PDF text quality, chunking, embedding quality, and similarity thresholds.
 - Evaluation results are reviewed manually; there is no automated grading.
 
-## Planned Improvements
+## Production Roadmap
 
-- Add safer upload cleanup or durable file storage.
-- Tune retrieval thresholds and chunking based on evaluation results.
-- Add OCR support for scanned PDFs.
-- Add authentication and user-level document separation if deployed beyond a portfolio demo.
-- Harden production configuration, including CORS and secret management.
+- Real user authentication
+- Per-user document ownership
+- Supabase Storage, S3, or R2 for uploaded files
+- Per-user quotas
+- Stronger abuse protection
+- Database row-level security
+- Production logging and monitoring
+- Privacy policy and terms
+- OCR support for scanned PDFs
+- Retrieval tuning based on accuracy test results

@@ -1,0 +1,29 @@
+VerifiDocs Demo Document
+Policy Change Brief
+
+Page 1
+
+This sample document is fictional and safe for portfolio testing. It summarizes
+a proposed internal policy change for handling shared project files.
+
+The policy requires teams to label project files as public, internal, or
+restricted. Public files may be shared in open team channels. Internal files
+may be shared with employees working on the project. Restricted files require
+manager approval before sharing.
+
+Page 2
+
+The policy creates three implementation tasks. First, project leads must review
+existing folders and assign labels. Second, the IT team must update onboarding
+guidance with examples for each label. Third, managers must review restricted
+sharing requests within two business days.
+
+The primary risk is inconsistent labeling during the transition period. The
+mitigation is a two-week review window, followed by a short audit of recently
+shared folders.
+
+Suggested questions:
+- What policy change is proposed?
+- What are the three implementation tasks?
+- What is the primary risk?
+- Which page mentions manager approval?

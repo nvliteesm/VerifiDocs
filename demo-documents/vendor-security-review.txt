@@ -1,0 +1,28 @@
+VerifiDocs Demo Document
+Vendor Security Review Summary
+
+Page 1
+
+This sample document is fictional and safe for portfolio testing. It describes
+how a small operations team reviews a vendor before adopting a document
+automation platform.
+
+The review found that the vendor supports role-based access, audit logging,
+and encrypted transport with HTTPS. The vendor also publishes a data retention
+policy and offers a manual data deletion process on request.
+
+Page 2
+
+The main risks are operational rather than technical. The team should confirm
+who can approve vendor access, how long uploaded documents remain available,
+and whether support staff can view customer files during troubleshooting.
+
+The recommended next steps are to request a security questionnaire, validate
+the deletion workflow, and run a limited pilot with non-confidential documents.
+The pilot should avoid regulated, financial, or personally identifiable data.
+
+Suggested questions:
+- What is this document about?
+- Summarize the key points.
+- What are the main risks mentioned?
+- Which page supports the answer about next steps?
