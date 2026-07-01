@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { askQuestion, getChatHistory, clearChatHistory } from "../api/client";
-import { useAppContext } from "../context/AppContext";
+import { useAppContext } from "../context/useAppContext";
 import ChatPanel from "../components/ChatPanel";
 import AnswerPanel from "../components/AnswerPanel";
 import ChatHistory from "../components/ChatHistory";
@@ -8,7 +8,7 @@ import DocumentDetails from "../components/DocumentDetails";
 import EmptyState from "../components/EmptyState";
 
 function ChatPage() {
-  const { documents, selectedDocumentId, selectedDocument, loadingDocs, error, setError } =
+  const { documents, selectedDocumentId, selectedDocument, loadingDocs, setError } =
     useAppContext();
 
   const [question, setQuestion] = useState("");
@@ -21,7 +21,9 @@ function ChatPage() {
   const [clearingHistory, setClearingHistory] = useState(false);
   const [asking, setAsking] = useState(false);
 
-  async function loadChatHistory(documentId = selectedDocumentId) {
+  const loadChatHistory = useCallback(async function loadChatHistory(
+    documentId = selectedDocumentId
+  ) {
     try {
       setLoadingHistory(true);
 
@@ -33,7 +35,7 @@ function ChatPage() {
     } finally {
       setLoadingHistory(false);
     }
-  }
+  }, [selectedDocumentId, setError]);
 
   useEffect(() => {
     loadChatHistory(selectedDocumentId);
@@ -42,7 +44,7 @@ function ChatPage() {
     setConfidence("");
     setConfidenceReason("");
     setSources([]);
-  }, [selectedDocumentId]);
+  }, [selectedDocumentId, loadChatHistory]);
 
   async function handleAsk(event) {
     event.preventDefault();

@@ -1,7 +1,6 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getDocuments, uploadDocument, deleteDocument } from "../api/client";
-
-const AppContext = createContext(null);
+import { AppContext } from "./contextValue";
 
 export function AppProvider({ children }) {
   const [documents, setDocuments] = useState([]);
@@ -10,7 +9,7 @@ export function AppProvider({ children }) {
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadDocuments() {
+  const loadDocuments = useCallback(async function loadDocuments() {
     try {
       setLoadingDocs(true);
       setError("");
@@ -23,11 +22,11 @@ export function AppProvider({ children }) {
     } finally {
       setLoadingDocs(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     loadDocuments();
-  }, []);
+  }, [loadDocuments]);
 
   function handleSelectDocument(documentId) {
     setSelectedDocumentId(documentId);
@@ -103,14 +102,4 @@ export function AppProvider({ children }) {
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
-}
-
-export function useAppContext() {
-  const context = useContext(AppContext);
-
-  if (!context) {
-    throw new Error("useAppContext must be used within an AppProvider");
-  }
-
-  return context;
 }

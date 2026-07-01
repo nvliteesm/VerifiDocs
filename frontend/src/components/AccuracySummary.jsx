@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, BarChart3, Loader2, RefreshCw } from "lucide-react";
 import { getAccuracyTestSummary } from "../api/client";
 
@@ -7,7 +7,7 @@ function AccuracySummary({ refreshTrigger }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function fetchSummary() {
+  const fetchSummary = useCallback(async function fetchSummary() {
     try {
       setError("");
       setLoading(true);
@@ -23,11 +23,11 @@ function AccuracySummary({ refreshTrigger }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchSummary();
-  }, [refreshTrigger]);
+  }, [fetchSummary, refreshTrigger]);
 
   if (loading) {
     return (

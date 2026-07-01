@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2, AlertCircle, RefreshCw, FlaskConical } from "lucide-react";
 import AccuracySummary from "../components/AccuracySummary";
 import AccuracyTestCard from "../components/AccuracyTestCard";
 import { getAccuracyTests } from "../api/client";
-import { useAppContext } from "../context/AppContext";
+import { useAppContext } from "../context/useAppContext";
 
 function AccuracyTestingPage() {
   const { selectedDocumentId } = useAppContext();
@@ -12,7 +12,7 @@ function AccuracyTestingPage() {
   const [error, setError] = useState("");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  async function fetchTests() {
+  const fetchTests = useCallback(async function fetchTests() {
     try {
       setError("");
       setLoading(true);
@@ -28,11 +28,11 @@ function AccuracyTestingPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [selectedDocumentId]);
 
   useEffect(() => {
     fetchTests();
-  }, [selectedDocumentId]);
+  }, [fetchTests]);
 
   function handleTestUpdate() {
     fetchTests();

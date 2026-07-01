@@ -4,6 +4,8 @@ VerifiDocs is a full-stack RAG-powered document assistant for uploaded PDFs. It 
 
 This portfolio project demonstrates a practical React and FastAPI application with document ingestion, vector search, grounded question answering, persistent chat history, and a lightweight evaluation workflow for testing RAG quality.
 
+This project is deployed as a portfolio demo and is not intended for confidential or production document processing.
+
 ## Features
 
 - PDF upload with file type and size validation
@@ -16,7 +18,7 @@ This portfolio project demonstrates a practical React and FastAPI application wi
 - Confidence labels with confidence reasons
 - Persistent chat history per selected document, plus all-document chat history
 - Document listing, search, detail view, chunk view endpoint, and deletion
-- Evaluation workflow for creating RAG test questions, running them, and marking results
+- Accuracy testing workflow for saving RAG answers, re-running evaluation, and marking human review results
 
 ## Tech Stack
 
@@ -36,7 +38,7 @@ This portfolio project demonstrates a practical React and FastAPI application wi
 6. Supabase uses pgvector similarity search to return the most relevant chunks, optionally scoped to one document.
 7. FastAPI builds a grounded prompt from the retrieved chunks and asks Gemini to answer using only that context.
 8. The frontend displays the answer, confidence label, confidence reason, source snippets, and chat history.
-9. The evaluation panel can run saved test questions through the same chat flow and store generated answers for manual review.
+9. The accuracy testing panel can save generated answers with source evidence, run an evaluator, and store human review status for manual quality checks.
 
 ## Project Structure
 
@@ -47,7 +49,7 @@ repo-root/
       api/routes/
         chat.py
         documents.py
-        evaluation.py
+        accuracy_tests.py
       core/config.py
       db/supabase.py
       models/
@@ -133,19 +135,17 @@ The backend mounts these routes:
 | `POST` | `/chat` | Ask a grounded question across one document or all documents |
 | `GET` | `/chat/history?document_id={id}` | Get chat history for a document or all-document scope |
 | `DELETE` | `/chat/history?document_id={id}` | Clear chat history for a document or all-document scope |
-| `GET` | `/evaluation/tests?document_id={id}` | List evaluation tests |
-| `POST` | `/evaluation/tests` | Create an evaluation test |
-| `PATCH` | `/evaluation/tests/{test_id}` | Update an evaluation test or manual status |
-| `DELETE` | `/evaluation/tests/{test_id}` | Delete an evaluation test |
-| `POST` | `/evaluation/run` | Run one saved evaluation test through the chat pipeline |
+| `GET` | `/accuracy-tests?document_id={id}` | List saved accuracy tests, optionally scoped to a document |
+| `POST` | `/accuracy-tests` | Save an answer as an accuracy test and run evaluator scoring |
+| `GET` | `/accuracy-tests/summary` | Get aggregate accuracy testing metrics |
+| `POST` | `/accuracy-tests/{test_id}/evaluate` | Re-run evaluator scoring for a saved accuracy test |
+| `PATCH` | `/accuracy-tests/{test_id}/review` | Save a human approval or rejection review for an accuracy test |
 
 ## Screenshots
 
-Screenshots are intentionally left as placeholders until captured from a current local run:
-
-- Dashboard: `docs/screenshots/dashboard.png`
-- Chat answer with sources: `docs/screenshots/chat-answer.png`
-- Evaluation workflow: `docs/screenshots/evaluation.png`
+- Dashboard: `docs/dashboard.png`
+- Chat answer with sources: `docs/chat-answer.png`
+- Accuracy testing workflow: `docs/evaluation.png`
 
 ## Supabase Setup
 
@@ -167,4 +167,3 @@ See [docs/supabase-setup.md](docs/supabase-setup.md) for the inferred schema, ca
 - Add OCR support for scanned PDFs.
 - Add authentication and user-level document separation if deployed beyond a portfolio demo.
 - Harden production configuration, including CORS and secret management.
-
