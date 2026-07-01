@@ -94,7 +94,11 @@ Fill in `backend/.env`:
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 GEMINI_API_KEY=your-gemini-api-key
+API_KEY=your-demo-access-key
+CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```
+
+`API_KEY` is a simple demo access key checked by the FastAPI backend. It is acceptable for controlled portfolio gating, but it is not user authentication and should not be treated as production security.
 
 Set up the Supabase tables and RPC from [docs/supabase-setup.md](docs/supabase-setup.md), then start the API:
 
@@ -117,6 +121,23 @@ Fill in `frontend/.env`:
 
 ```env
 VITE_API_URL=http://127.0.0.1:8000
+VITE_API_KEY=your-demo-access-key
+```
+
+`VITE_API_KEY` is public because Vite bundles it into the browser. Use the same value as backend `API_KEY` for the demo gate only; do not use it for confidential or production authentication.
+
+### CORS for Deployment
+
+The backend reads `CORS_ALLOWED_ORIGINS` as a comma-separated list and trims whitespace. For Railway deployment, set it to the exact Vercel frontend origin instead of `*`:
+
+```env
+CORS_ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+```
+
+For local development, keep:
+
+```env
+CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```
 
 ## API Overview

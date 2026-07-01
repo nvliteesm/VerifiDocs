@@ -19,7 +19,13 @@ Create `backend/.env` from `backend/.env.example`:
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 GEMINI_API_KEY=your-gemini-api-key
+API_KEY=your-demo-access-key
+CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```
+
+For a deployed portfolio demo, set `CORS_ALLOWED_ORIGINS` to the exact Vercel frontend origin, for example `https://your-vercel-app.vercel.app`. Do not use `*` for the public deployment.
+
+`API_KEY` is only a simple demo access gate. It is not production authentication.
 
 ## Run Locally
 

@@ -19,7 +19,10 @@ Create `frontend/.env` from `frontend/.env.example`:
 
 ```env
 VITE_API_URL=http://127.0.0.1:8000
+VITE_API_KEY=your-demo-access-key
 ```
+
+`VITE_API_KEY` is visible in the browser bundle. It should match the backend `API_KEY` for portfolio demo gating only, not secure production authentication.
 
 ## Run Locally
 
