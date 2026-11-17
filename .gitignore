@@ -16,3 +16,6 @@ backend/uploads/
 .DS_Store
 .vscode/
 .kiro/
+.neon
+node_modules/
+.env.local

@@ -1,0 +1,33 @@
+# Verdicts
+
+Every claim ends with exactly one of eight verdicts. The eval labels use these definitions.
+
+| Verdict | Meaning | Example |
+| --- | --- | --- |
+| Supported | The source states it, including any condition that matters | Claim: "Participants were adults aged 18 to 40." Source says exactly that. |
+| Partial | Part is supported; part is wrong, overstated, or an exception or condition is left out | Claim: "The drug reduced pain in all patients." Source: pain fell in 70% of patients. |
+| Contradicted | The source states the opposite, or a different value | Claim: "The survey had 500 respondents." Source: 300 respondents. |
+| Not in sources | Plausible, but none of the uploaded sources say it | Claim: "The programme cost less than the alternative." No source mentions cost. |
+| Can't tell | The source is ambiguous or unreadable (for example a scanned table), or the judge's quote could not be found in the source; the tool abstains instead of guessing | A table that did not extract, or a quote that fails verification. |
+| Reference not found | No Crossref or OpenAlex match for the citation; possibly fabricated or mistyped | "Smith and Lee (2021), Journal of Applied Findings" returns nothing. |
+| Can't check | The reference exists, but no usable source file is available to check the claim against: none was uploaded, or the uploaded PDF has no extractable text (a scan; there is no OCR) | A real paper is cited but the student has not uploaded it, or the upload is a scanned PDF. |
+| No citation given | A factual claim with no citation attached | "Turnover rose 23% in 2022." with no reference. |
+
+## Rules
+
+- Reference not found, Can't check and No citation given are produced before the judge runs. They are real verdicts, not errors.
+- Supported requires a verified quote and page. Without one, the verdict cannot be Supported.
+- When unsure between Supported and Partial, prefer Partial. A missed unsupported claim costs more than an extra flag.
+- A scanned PDF with empty pages is Can't check, never a wrong verdict.
+
+## Fix list order (proposed: confirm on the eval set)
+
+1. Contradicted
+2. Reference not found
+3. Not in sources
+4. Partial
+5. No citation given
+6. Can't tell
+7. Can't check
+
+Supported claims are not shown in the fix list.
