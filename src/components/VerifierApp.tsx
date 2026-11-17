@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createApi } from "@/lib/client/api";
 import { buildReport } from "@/lib/client/report";
 import type { ClientEventName, VerifyInput } from "@/lib/client/types";
@@ -77,7 +77,16 @@ export function VerifierApp() {
     return () => clearTimeout(timer);
   }, [copied]);
 
+  // The button only leaves the page after React re-renders, so clicks in the same instant could each start a run.
+  // The ref flips synchronously and is released when the check reaches an end state.
+  const starting = useRef(false);
+  useEffect(() => {
+    if (state.phase === "idle" || state.phase === "done" || state.phase === "error") starting.current = false;
+  }, [state.phase]);
+
   const start = (input: VerifyInput) => {
+    if (starting.current) return;
+    starting.current = true;
     setLastInput(input);
     setCopied("idle");
     setAnswered(false);

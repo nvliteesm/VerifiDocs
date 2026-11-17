@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
 import type { ClaimView, Verdict } from "@/lib/client/types";
 import { SUMMARY_ORDER, VERDICT_INFO, attentionCount } from "@/lib/client/verdict-info";
 import type { VerifierState } from "@/lib/client/verifier-state";
@@ -44,6 +45,11 @@ interface CardProps {
 function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent }: CardProps) {
   const verdict = claim.verdict;
   const info = verdict ? VERDICT_INFO[verdict] : null;
+  // These two end before the judge, with a reason that already says exactly what happened. The general
+  // explanation would repeat it, and for an empty reference list it would even point the wrong way.
+  const reasonSaysItAll = (verdict === "cant_check" || verdict === "reference_not_found") && Boolean(claim.reason);
+  const listMissing = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NO_REFERENCE_LIST));
+  const notInList = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NOT_IN_REFERENCE_LIST));
 
   return (
     <li className="claim" id={`claim-${claim.id}`}>
@@ -53,11 +59,12 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
       </div>
       <p className="claim-text">{claim.text}</p>
 
-      {info && <p className="meaning">{info.meaning}</p>}
+      {info && !reasonSaysItAll && <p className="meaning">{info.meaning}</p>}
       {claim.reason && <p className="reason">{claim.reason}</p>}
-      {info && info.advice && (
+      {info && info.advice && !listMissing && (
         <p className="next">
-          <strong>What to do:</strong> {info.advice}
+          <strong>What to do:</strong>{" "}
+          {notInList ? "Add this reference to your reference list, or correct the citation so it matches an entry." : info.advice}
         </p>
       )}
 
@@ -131,7 +138,19 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
   const finished = state.phase === "done";
   // When nothing needs attention, an empty "Needs attention" list would contradict the tally, so show everything.
   const filter = chosen === "attention" && finished && attention === 0 ? "all" : chosen;
-  const tally = attention === 0 ? "Every checked claim is supported." : `${attention} of ${total} claims need attention.`;
+  const tally = attention === 0 ? "Every checked claim is supported." : `${attention} of ${total} ${total === 1 ? "claim needs" : "claims need"} attention.`;
+
+  // A keyboard or screen-reader user who pressed "Check my claims" has lost that button (it left the page), so
+  // when the results arrive, move focus to the Results heading instead of leaving it on the page body.
+  const heading = useRef<HTMLHeadingElement>(null);
+  const wasFinished = useRef(finished);
+  useEffect(() => {
+    if (finished && !wasFinished.current) {
+      const active = document.activeElement;
+      if (!active || active === document.body) heading.current?.focus();
+    }
+    wasFinished.current = finished;
+  }, [finished]);
 
   const shown = useMemo(() => {
     const ranked = new Map(state.fixList.map((id, index) => [id, index]));
@@ -156,7 +175,9 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
     <section className="panel" aria-labelledby="results-title">
       <div className="panel-head">
         <p className="eyebrow">{finished ? "Check complete" : state.phase === "error" ? "Check stopped" : "Checking"}</p>
-        <h2 id="results-title">Results</h2>
+        <h2 id="results-title" ref={heading} tabIndex={-1}>
+          Results
+        </h2>
       </div>
 
       {/* Stays mounted so screen readers hear the outcome when the progress line goes away. */}

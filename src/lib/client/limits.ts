@@ -4,6 +4,7 @@ export const MAX_PDF_BYTES = 10 * 1024 * 1024;
 export const MAX_DOCX_BYTES = 5 * 1024 * 1024;
 export const MAX_DRAFT_CHARS = 60_000;
 export const MAX_SOURCES = 10;
+export const MAX_REFERENCES = 500;
 
 export function megabytes(bytes: number): string {
   return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;

@@ -55,8 +55,8 @@ export const VERDICT_INFO: Record<Verdict, VerdictInfo> = {
     label: "Reference not found",
     tone: "bad",
     symbol: "!",
-    meaning: "This citation is not in your reference list, or no record of it was found in Crossref or OpenAlex. It may be mistyped or made up.",
-    advice: "Check the citation exists and is spelled correctly.",
+    meaning: "This citation is not in your reference list, or no record of it was found online and none of your uploaded PDFs matches it. It may be mistyped, or it may be a report that is not published online.",
+    advice: "Check the citation is spelled correctly. If it is a report or thesis that is not online, upload its PDF.",
   },
   cant_check: {
     label: "Can't check yet",

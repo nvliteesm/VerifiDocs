@@ -6,7 +6,7 @@
 import { ApiClientError } from "./api";
 import { runPool } from "./pool";
 import type { Api } from "./api";
-import type { VerifyInput } from "./types";
+import type { ClaimView, VerifyInput } from "./types";
 import type { VerifyEvent } from "./verifier-state";
 
 export const CHECK_CONCURRENCY = 5;
@@ -42,6 +42,23 @@ async function checkClaim(deps: VerifyDeps, claimId: string, emit: Emit, signal:
   throw new ApiClientError(0, "gave_up", "This claim could not be checked right now.");
 }
 
+/** Splits claims into the first claim of each distinct citation, and the rest. A claim with no citation is "rest". */
+export function oneClaimPerCitation(claims: readonly ClaimView[]): { first: ClaimView[]; rest: ClaimView[] } {
+  const seen = new Set<string>();
+  const first: ClaimView[] = [];
+  const rest: ClaimView[] = [];
+  for (const claim of claims) {
+    const key = (claim.citation ?? "").trim().toLowerCase();
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      first.push(claim);
+    } else {
+      rest.push(claim);
+    }
+  }
+  return { first, rest };
+}
+
 /** Reads the run, then checks every claim that has no verdict yet. */
 async function checkRemaining(deps: VerifyDeps, runId: string, emit: Emit, signal: AbortSignal): Promise<void> {
   const run = await deps.api.getRun(runId);
@@ -55,12 +72,14 @@ async function checkRemaining(deps: VerifyDeps, runId: string, emit: Emit, signa
   }
 
   emit({ type: "phase", phase: "checking", message: "Checking each claim against your sources..." });
-  await runPool(
-    pending,
-    CHECK_CONCURRENCY,
-    (claim) => checkClaim(deps, claim.id, emit, signal),
-    { signal, onError: (error, claim) => emit({ type: "claimError", id: claim.id, message: messageOf(error) }) },
-  );
+  const work = (claim: ClaimView) => checkClaim(deps, claim.id, emit, signal);
+  const options = { signal, onError: (error: unknown, claim: ClaimView) => emit({ type: "claimError", id: claim.id, message: messageOf(error) }) };
+  // The server looks each reference up online once and keeps the answer, but claims checked at the same moment
+  // all start with nothing kept and all look the same reference up (slow, and it trips the services' rate limits).
+  // So check one claim per distinct citation first, then the rest, which find the answer already kept.
+  const { first, rest } = oneClaimPerCitation(pending);
+  await runPool(first, CHECK_CONCURRENCY, work, options);
+  if (!signal.aborted) await runPool(rest, CHECK_CONCURRENCY, work, options);
   if (signal.aborted) return;
 
   emit({ type: "loaded", run: await deps.api.getRun(runId) });

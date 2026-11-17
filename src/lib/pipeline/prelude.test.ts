@@ -90,6 +90,46 @@ describe("runPrelude", () => {
     expect(searched).toEqual([]);
   });
 
+  it("checks against an uploaded PDF when no service knows the entry but a PDF matches it", async () => {
+    const { impl, searched } = deps({ resolutions: { 1: { status: "not_found" } } });
+    const result = await runPrelude({ citation: "(Smith & Lee, 2021)" }, entries, {
+      ...impl,
+      findUploaded: async (entry) => (entry.position === 1 ? { kind: "found", documentId: "doc-report" } : { kind: "none" }),
+    });
+    expect(result).toMatchObject({ outcome: "ready", documentIds: ["doc-report"] });
+    expect(searched).toEqual([]); // the online source lookup is for resolved references only
+  });
+
+  it("still ends as Reference not found, and says no upload matched, when nothing matches", async () => {
+    const { impl } = deps({ resolutions: { 1: { status: "not_found" } } });
+    const result = await runPrelude({ citation: "(Smith & Lee, 2021)" }, entries, { ...impl, findUploaded: async () => ({ kind: "none" }) });
+    expect(result).toMatchObject({ outcome: "exit", exit: { verdict: "reference_not_found", exitStage: 3 } });
+    expect((result as { exit: { reason: string } }).exit.reason).toMatch(/none of your uploaded PDFs matches it/);
+  });
+
+  it("says the PDF is a scan when the only match for an unknown entry has no text", async () => {
+    const { impl } = deps({ resolutions: { 1: { status: "not_found" } } });
+    const result = await runPrelude({ citation: "(Smith & Lee, 2021)" }, entries, {
+      ...impl,
+      findUploaded: async () => ({ kind: "no_text", documentId: "doc-scan" }),
+    });
+    expect(result).toMatchObject({ outcome: "exit", exit: { verdict: "cant_check", exitStage: 4 } });
+    expect((result as { exit: { reason: string } }).exit.reason).toMatch(/no readable text/);
+  });
+
+  it("combines a rescued PDF with an online-resolved reference in one claim", async () => {
+    const { impl } = deps({
+      resolutions: { 2: { status: "not_found" } },
+      sources: { 1: { kind: "found", documentId: "doc-1" } },
+    });
+    const result = await runPrelude({ citation: "(Smith & Lee, 2021; Lee, 2020)" }, entries, {
+      ...impl,
+      findUploaded: async (entry) => (entry.position === 2 ? { kind: "found", documentId: "doc-2" } : { kind: "none" }),
+    });
+    expect(result.outcome).toBe("ready");
+    expect((result as { documentIds: string[] }).documentIds.sort()).toEqual(["doc-1", "doc-2"]);
+  });
+
   it("asks for a retry, never a verdict, when a lookup failed", async () => {
     const { impl } = deps({ resolutions: { 1: { status: "error", reason: "Crossref returned HTTP 503" } } });
     const result = await runPrelude({ citation: "(Smith & Lee, 2021)" }, entries, impl);

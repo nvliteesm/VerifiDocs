@@ -6,6 +6,7 @@ import {
   EXTRACTION_UNIT_MAX_CHARS,
   MAX_DRAFT_CHARS,
   MAX_DOCX_BYTES,
+  MAX_REFERENCES,
   parseDraft,
   parseDraftText,
   parseReferenceList,
@@ -199,8 +200,20 @@ describe("parseReferenceList", () => {
     expect(parseReferenceList("References")).toEqual([]);
   });
 
-  it("caps the number of entries", () => {
-    const many = Array.from({ length: 300 }, (_, i) => `Author${i}, A. (2020). Title number ${i}. Journal.`).join("\n\n");
-    expect(parseReferenceList(many)).toHaveLength(200);
+  const list = (n: number) => Array.from({ length: n }, (_, i) => `Author${i}, A. (2020). Title number ${i}. Journal.`).join("\n\n");
+
+  it("keeps every entry up to the limit, so a long thesis list is not cut", () => {
+    expect(parseReferenceList(list(MAX_REFERENCES))).toHaveLength(MAX_REFERENCES);
+  });
+
+  it("rejects a list over the limit with a clear error instead of silently cutting it", () => {
+    const attempt = () => parseReferenceList(list(MAX_REFERENCES + 1));
+    expect(attempt).toThrow(DraftError);
+    expect(attempt).toThrow(new RegExp(`${MAX_REFERENCES + 1} entries. The limit is ${MAX_REFERENCES}`));
+    try {
+      attempt();
+    } catch (error) {
+      expect((error as DraftError).code).toBe("too_many_references");
+    }
   });
 });

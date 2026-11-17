@@ -24,8 +24,14 @@ import type { Verdict } from "../pipeline/types";
 import type { ApiContext } from "./handler";
 import { ApiError, assertId, jsonResponse, readJson, readUpload } from "./http";
 
-/** Starting value: how many runs one session may create. */
+/** Starting value: how many runs one session keeps. Creating one more drops the oldest. */
 export const MAX_RUNS_PER_SESSION = 20;
+/**
+ * The most a create-run request may send: a draft at its character limit (up to about 180 KB in UTF-8) plus a
+ * reference list of up to MAX_REFERENCES entries. Larger than the general JSON limit, so the draft and
+ * reference limits give the specific error, and a long draft with a long list is not refused as "too large".
+ */
+export const MAX_CREATE_BODY_BYTES = 700_000;
 /** Claims of unit `u` get positions u * 100 + 1, u * 100 + 2, ... (a unit has at most 40 claims). */
 const POSITION_STRIDE = 100;
 
@@ -35,12 +41,6 @@ const extractBody = z.object({ unit: z.number().int().min(0) });
 export async function createRun(context: ApiContext, request: Request): Promise<Response> {
   const sql = context.deps.sql as postgres.Sql;
   const { sessionId } = context;
-
-  const [existing] = await sql<{ count: number }[]>`
-    select count(*)::int as count from runs where session_id = ${sessionId}`;
-  if ((existing?.count ?? 0) >= MAX_RUNS_PER_SESSION) {
-    throw new ApiError(409, "too_many_runs", `A session can hold at most ${MAX_RUNS_PER_SESSION} checks.`);
-  }
 
   let parsed: ParsedDraft;
   let inputType: "paste" | "docx";
@@ -53,7 +53,7 @@ export async function createRun(context: ApiContext, request: Request): Promise<
     const field = upload.form.get("references");
     suppliedReferences = typeof field === "string" ? field : undefined;
   } else {
-    const body = createBody.parse(await readJson(request));
+    const body = createBody.parse(await readJson(request, MAX_CREATE_BODY_BYTES));
     parsed = await parseDraft({ kind: "paste", text: body.draft });
     inputType = "paste";
     suppliedReferences = body.references;
@@ -63,6 +63,15 @@ export async function createRun(context: ApiContext, request: Request): Promise<
   const entries = parseReferenceList(referenceText);
 
   const runId = await atomically(sql)(async (tx) => {
+    // A full session drops its oldest checks to make room. The screen only ever reopens the latest check, so
+    // an older one is unreachable, and blocking the student with no way to delete one would be a dead end.
+    // Claims, verdicts, units and reference entries go with the run (on delete cascade).
+    await tx`
+      delete from runs where id in (
+        select id from runs where session_id = ${sessionId}
+        order by created_at asc, id asc
+        limit greatest((select count(*) from runs where session_id = ${sessionId}) - ${MAX_RUNS_PER_SESSION - 1}, 0)
+      )`;
     const [run] = await tx<{ id: string }[]>`
       insert into runs (session_id, draft_text, input_type, status, unit_count)
       values (${sessionId}, ${parsed.text}, ${inputType}, 'extracting', ${parsed.units.length})

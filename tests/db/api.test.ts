@@ -16,6 +16,7 @@ import {
   type Llm,
 } from "../../src/lib/llm/adapter";
 import type { ReferenceResolution } from "../../src/lib/pipeline/resolve-reference";
+import { DEFAULT_LIMITS, type Limits } from "../../src/lib/rate-limit";
 import { hashToken } from "../../src/lib/session";
 
 const url = process.env.DATABASE_URL_UNPOOLED;
@@ -77,15 +78,15 @@ interface Reply {
 }
 
 /** One simulated browser: it keeps its own cookie, like a real session would. */
-function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["resolve"]) {
-  const deps: ApiDeps = { sql: tx, llm, ...(resolve ? { resolve } : {}) };
+function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["resolve"], limits?: Limits) {
+  const deps: ApiDeps = { sql: tx, llm, ...(resolve ? { resolve } : {}), ...(limits ? { limits } : {}) };
   const client = {
     cookie: null as string | null,
     async send(
       method: string,
       path: string,
       fn: (context: ApiContext, request: Request) => Promise<Response>,
-      options: { json?: unknown; form?: FormData; headers?: Record<string, string>; rawBody?: string } = {},
+      options: { json?: unknown; form?: FormData; headers?: Record<string, string>; rawBody?: string; model?: boolean } = {},
     ): Promise<Reply> {
       const headers: Record<string, string> = { ...(options.headers ?? {}) };
       if (client.cookie) headers.cookie = client.cookie;
@@ -99,7 +100,7 @@ function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["res
         body = options.form;
       }
       const request = new Request(`http://localhost:3000${path}`, { method, headers, body });
-      const response = await handleWith(deps, request, (context) => fn(context, request));
+      const response = await handleWith(deps, request, (context) => fn(context, request), options.model ? { model: true } : {});
       const setCookie = response.headers.get("set-cookie");
       if (setCookie) client.cookie = setCookie.split(";")[0]!;
       const text = await response.text();
@@ -114,13 +115,14 @@ function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["res
       client.send("POST", "/api/runs", (c, r) => createRun(c, r), { json, ...(headers ? { headers } : {}) }),
     createRunForm: (form: FormData) => client.send("POST", "/api/runs", (c, r) => createRun(c, r), { form }),
     extract: (runId: string, unit: number) =>
-      client.send("POST", `/api/runs/${runId}/extract`, (c, r) => extractUnit(c, runId, r), { json: { unit } }),
+      client.send("POST", `/api/runs/${runId}/extract`, (c, r) => extractUnit(c, runId, r), { json: { unit }, model: true }),
     getRun: (runId: string) => client.send("GET", `/api/runs/${runId}`, (c) => getRun(c, runId)),
     listSources: () => client.send("GET", "/api/sources", (c) => listSources(c)),
     upload: (form: FormData) => client.send("POST", "/api/sources", (c, r) => uploadSource(c, r), { form }),
-    ingest: (id: string) => client.send("POST", `/api/sources/${id}/ingest`, (c) => ingestSource(c, id)),
+    ingest: (id: string) => client.send("POST", `/api/sources/${id}/ingest`, (c) => ingestSource(c, id), { model: true }),
     deleteSource: (id: string) => client.send("DELETE", `/api/sources/${id}`, (c) => deleteSource(c, id)),
-    check: (claimId: string) => client.send("POST", `/api/claims/${claimId}/check`, (c) => checkClaimHandler(c, claimId)),
+    check: (claimId: string) =>
+      client.send("POST", `/api/claims/${claimId}/check`, (c) => checkClaimHandler(c, claimId), { model: true }),
     event: (json: unknown) => client.send("POST", "/api/events", (c, r) => postEvent(c, r), { json }),
     sessionId: async () => {
       const token = client.cookie!.split("=")[1]!;
@@ -288,17 +290,130 @@ describe.skipIf(!enabled)("creating a run", () => {
     });
   });
 
-  it("limits how many runs one session can create", async () => {
+  it("keeps a full session usable by dropping its oldest check, never refusing the student", async () => {
     await inTx(async (tx) => {
       const client = newClient(tx, fakeLlm().llm);
       await client.listSources();
       const sessionId = await client.sessionId();
       for (let i = 0; i < MAX_RUNS_PER_SESSION; i += 1) {
-        await tx`insert into runs (session_id, draft_text, input_type) values (${sessionId}, 'x', 'paste')`;
+        await tx`
+          insert into runs (session_id, draft_text, input_type, created_at)
+          values (${sessionId}, ${`old-${i}`}, 'paste', now() - make_interval(mins => ${MAX_RUNS_PER_SESSION - i}))`;
       }
       const reply = await client.createRun({ draft: DRAFT });
-      expect(reply.status).toBe(409);
-      expect(reply.body.error.code).toBe("too_many_runs");
+      expect(reply.status).toBe(201);
+
+      const rows = await tx<{ draft_text: string }[]>`select draft_text from runs where session_id = ${sessionId}`;
+      expect(rows).toHaveLength(MAX_RUNS_PER_SESSION);
+      const kept = new Set(rows.map((row) => row.draft_text));
+      expect(kept.has("old-0")).toBe(false); // the oldest went
+      expect(kept.has("old-1")).toBe(true);
+      expect(kept.has(`old-${MAX_RUNS_PER_SESSION - 1}`)).toBe(true); // the newest old one stayed
+    });
+  });
+
+  it("does not touch another session's checks when pruning", async () => {
+    await inTx(async (tx) => {
+      const other = newClient(tx, fakeLlm().llm);
+      await other.listSources();
+      const otherId = await other.sessionId();
+      await tx`insert into runs (session_id, draft_text, input_type) values (${otherId}, 'theirs', 'paste')`;
+
+      const mine = newClient(tx, fakeLlm().llm);
+      await mine.listSources();
+      const myId = await mine.sessionId();
+      for (let i = 0; i < MAX_RUNS_PER_SESSION; i += 1) {
+        await tx`insert into runs (session_id, draft_text, input_type) values (${myId}, 'x', 'paste')`;
+      }
+      expect((await mine.createRun({ draft: DRAFT })).status).toBe(201);
+      const [theirs] = await tx<{ n: number }[]>`select count(*)::int as n from runs where session_id = ${otherId}`;
+      expect(theirs!.n).toBe(1);
+    });
+  });
+
+  it("says 'too long' for an over-limit draft of 4-byte characters, not 'request too large'", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const over = await client.createRun({ draft: "\u{1F600}".repeat(60_000) });
+      expect(over.status).toBe(400);
+      expect(over.body.error.code).toBe("too_long");
+    });
+  });
+
+  it("accepts a draft at the character limit together with a long reference list", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const draft = "中".repeat(59_000); // 3 bytes each in UTF-8, about 177 KB
+      const refs = Array.from({ length: 450 }, (_, i) => `Author${i}, A. (2020). ${"A long title ".repeat(8)}${i}. Journal.`).join("\n");
+      const reply = await client.createRun({ draft, references: refs });
+      expect(reply.status).toBe(201);
+      expect(reply.body.referenceCount).toBe(450);
+    });
+  });
+
+  it("rejects a reference list over the limit instead of silently cutting it", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const refs = Array.from({ length: 501 }, (_, i) => `Author${i}, A. (2020). Title number ${i}. Journal.`).join("\n");
+      const reply = await client.createRun({ draft: DRAFT, references: refs });
+      expect(reply.status).toBe(400);
+      expect(reply.body.error.code).toBe("too_many_references");
+      expect(reply.body.error.message).toMatch(/501 entries/);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("rate limits", () => {
+  const tight: Limits = { ...DEFAULT_LIMITS, newSessionsPerAddress: 3, modelPerSession: 2, modelPerAddress: 50 };
+  const from = (address: string) => ({ "x-forwarded-for": address });
+
+  it("limits how many new sessions one address can start, and answers 429 with Retry-After", async () => {
+    await inTx(async (tx) => {
+      const address = `203.0.113.${Math.floor(Math.random() * 200) + 1}`; // a documentation address, unique per run
+      for (let i = 0; i < tight.newSessionsPerAddress; i += 1) {
+        const client = newClient(tx, fakeLlm().llm, undefined, tight);
+        expect((await client.send("GET", "/api/sources", (c) => listSources(c), { headers: from(address) })).status).toBe(200);
+      }
+      const blocked = newClient(tx, fakeLlm().llm, undefined, tight);
+      const reply = await blocked.send("GET", "/api/sources", (c) => listSources(c), { headers: from(address) });
+      expect(reply.status).toBe(429);
+      expect(reply.body.error.code).toBe("rate_limited");
+      expect(Number(reply.retryAfter)).toBeGreaterThan(0);
+      expect(reply.setCookie).toBeNull(); // a refused request does not start a session
+
+      // A different address is unaffected.
+      const other = newClient(tx, fakeLlm().llm, undefined, tight);
+      expect((await other.send("GET", "/api/sources", (c) => listSources(c), { headers: from("198.51.100.7") })).status).toBe(200);
+    });
+  });
+
+  it("does not limit a returning session's ordinary requests, only new sessions", async () => {
+    await inTx(async (tx) => {
+      const address = `203.0.113.${Math.floor(Math.random() * 200) + 1}`;
+      const client = newClient(tx, fakeLlm().llm, undefined, tight);
+      for (let i = 0; i < 10; i += 1) {
+        const reply = await client.send("GET", "/api/sources", (c) => listSources(c), { headers: from(address) });
+        expect(reply.status).toBe(200);
+      }
+    });
+  });
+
+  it("limits model-backed requests per session", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm({ extract: singleClaim }).llm, undefined, tight);
+      const address = `203.0.113.${Math.floor(Math.random() * 200) + 1}`;
+      const created = await client.createRun(
+        { draft: DRAFT },
+        from(address),
+      );
+      const runId = created.body.runId;
+      // modelPerSession is 2: the third model-backed request is refused.
+      const statuses: number[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        statuses.push((await client.send("POST", `/api/runs/${runId}/extract`, (c, r) => extractUnit(c, runId, r), { json: { unit: 0 }, model: true, headers: from(address) })).status);
+      }
+      expect(statuses.slice(0, 2).every((s) => s === 200)).toBe(true);
+      expect(statuses[2]).toBe(429);
     });
   });
 });
@@ -433,6 +548,24 @@ describe.skipIf(!enabled)("sources", () => {
       expect(removed.status).toBe(204);
       expect((await client.listSources()).body.sources).toEqual([]);
       expect((await client.deleteSource(id)).status).toBe(404);
+    });
+  });
+
+  it("refuses the same PDF twice in one session, but allows it in another session", async () => {
+    await inTx(async (tx) => {
+      const first = newClient(tx, fakeLlm().llm);
+      const up = await first.upload(pdfForm("sample.pdf", "report.pdf"));
+      expect(up.status).toBe(201);
+
+      const again = await first.upload(pdfForm("sample.pdf", "renamed-copy.pdf"));
+      expect(again.status).toBe(409);
+      expect(again.body.error.code).toBe("duplicate_source");
+      expect(again.body.error.message).toContain("report.pdf");
+      const list = await first.listSources();
+      expect(list.body.sources).toHaveLength(1); // the duplicate left nothing behind
+
+      const second = newClient(tx, fakeLlm().llm);
+      expect((await second.upload(pdfForm("sample.pdf", "report.pdf"))).status).toBe(201);
     });
   });
 

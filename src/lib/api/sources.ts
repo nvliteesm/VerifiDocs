@@ -4,20 +4,42 @@
 //   POST   /api/sources/:id/ingest   chunk, embed and save the next batch of pages; the browser repeats until done
 //   GET    /api/sources              the session's sources and their state
 //   DELETE /api/sources/:id          remove a source with its pages and chunks
+import { createHash } from "node:crypto";
 import type postgres from "postgres";
 import { logEvent, pageBucket } from "../events";
 import { MAX_PDF_BYTES, abandonDocument, createDocumentFromPdf, ingestNextBatch } from "../pipeline/ingest";
 import type { ApiContext } from "./handler";
 import { ApiError, assertId, jsonResponse, readUpload } from "./http";
 
+function duplicateError(existingName: string): ApiError {
+  return new ApiError(409, "duplicate_source", `This is the same file as "${existingName}", which you already added.`);
+}
+
 export async function uploadSource(context: ApiContext, request: Request): Promise<Response> {
   const sql = context.deps.sql as postgres.Sql;
   const upload = await readUpload(request, "file", MAX_PDF_BYTES);
+
+  // The same bytes twice would use a source slot and give two equal matches for one reference.
+  const contentHash = createHash("sha256").update(upload.bytes).digest("hex");
+  const [same] = await sql<{ filename: string }[]>`
+    select filename from documents where session_id = ${context.sessionId} and content_hash = ${contentHash}`;
+  if (same) throw duplicateError(same.filename);
+
   const created = await createDocumentFromPdf(sql, {
     sessionId: context.sessionId,
     filename: upload.filename,
     bytes: upload.bytes,
   });
+  try {
+    await sql`update documents set content_hash = ${contentHash} where id = ${created.documentId}`;
+  } catch (error) {
+    // Two identical uploads raced past the check above: the unique index let only one keep its hash.
+    if ((error as { code?: string }).code === "23505") {
+      await abandonDocument(sql, { sessionId: context.sessionId, documentId: created.documentId });
+      throw duplicateError(upload.filename);
+    }
+    throw error;
+  }
   if (created.status === "no_text") {
     await logEvent(sql, context.sessionId, "source_uploaded", { page_bucket: pageBucket(created.pageCount), ingest_ms: 0 });
   }

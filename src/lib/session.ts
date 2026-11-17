@@ -7,6 +7,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type postgres from "postgres";
 import { logEvent } from "./events";
+import { limitNewSession, type Limits } from "./rate-limit";
 import type { SqlLike } from "./rag/retrieve";
 
 export const SESSION_COOKIE = "vd_session";
@@ -55,7 +56,7 @@ export interface SessionContext {
   setCookie: string | null;
 }
 
-export async function resolveSession(db: SqlLike, request: Request): Promise<SessionContext> {
+export async function resolveSession(db: SqlLike, request: Request, limits?: Limits): Promise<SessionContext> {
   const sql = db as postgres.Sql;
   const token = readCookie(request.headers.get("cookie"), SESSION_COOKIE);
 
@@ -71,6 +72,8 @@ export async function resolveSession(db: SqlLike, request: Request): Promise<Ses
     }
   }
 
+  // A new session is the cheap way to dodge every per-session limit, so starting one is itself limited.
+  await limitNewSession(sql, request, limits);
   const fresh = newToken();
   const [created] = await sql<{ id: string }[]>`
     insert into sessions (token_hash) values (${hashToken(fresh)}) returning id`;

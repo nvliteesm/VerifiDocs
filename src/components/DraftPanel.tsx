@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MAX_DOCX_BYTES, MAX_DRAFT_CHARS, megabytes } from "@/lib/client/limits";
+import { MAX_DOCX_BYTES, MAX_DRAFT_CHARS, MAX_REFERENCES, megabytes } from "@/lib/client/limits";
 import type { VerifyInput } from "@/lib/client/types";
 
 interface Props {
@@ -87,7 +87,10 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
 
       <div className="field">
         <label htmlFor="draft-refs">
-          Reference list <span className="hint">(needed to match your citations, unless the list is already inside your draft)</span>
+          Reference list{" "}
+          <span className="hint">
+            (needed to match your citations, unless the list is already inside your draft. Up to {MAX_REFERENCES} entries.)
+          </span>
         </label>
         <textarea
           id="draft-refs"

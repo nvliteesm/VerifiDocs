@@ -9,7 +9,7 @@ Every claim ends with exactly one of eight verdicts. The eval labels use these d
 | Contradicted | The source states the opposite, or a different value | Claim: "The survey had 500 respondents." Source: 300 respondents. |
 | Not in sources | Plausible, but none of the uploaded sources say it | Claim: "The programme cost less than the alternative." No source mentions cost. |
 | Can't tell | The source is ambiguous or unreadable (for example a scanned table), or the judge's quote could not be found in the source; the tool abstains instead of guessing | A table that did not extract, or a quote that fails verification. |
-| Reference not found | No Crossref or OpenAlex match for the citation; possibly fabricated or mistyped | "Smith and Lee (2021), Journal of Applied Findings" returns nothing. |
+| Reference not found | No Crossref or OpenAlex match for the citation, and no uploaded PDF matches it either; possibly fabricated or mistyped, or a report that is not online. If an uploaded PDF does match, the claim is checked against that PDF instead. | "Smith and Lee (2021), Journal of Applied Findings" returns nothing and no upload matches. |
 | Can't check | The reference exists, but no usable source file is available to check the claim against: none was uploaded, or the uploaded PDF has no extractable text (a scan; there is no OCR) | A real paper is cited but the student has not uploaded it, or the upload is a scanned PDF. |
 | No citation given | A factual claim with no citation attached | "Turnover rose 23% in 2022." with no reference. |
 

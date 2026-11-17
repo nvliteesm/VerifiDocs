@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiClientError } from "./api";
 import {
   CHECK_CONCURRENCY,
+  oneClaimPerCitation,
   retryClaim,
   resumeVerification,
   runVerification,
@@ -132,11 +133,38 @@ describe("runVerification", () => {
   });
 
   it("keeps up to 5 claim checks in flight, and no more", async () => {
-    const claims = Array.from({ length: 14 }, (_, i) => claim(`c${i}`, i + 1));
+    const claims = Array.from({ length: 14 }, (_, i) => ({ ...claim(`c${i}`, i + 1), citation: `(Author${i}, 2021)` }));
     const fake = fakeDeps({ claims, checkDelayMs: 5 });
     await runVerification(fake.deps, input, collect().emit, signal());
     expect(fake.peak()).toBe(CHECK_CONCURRENCY);
     expect(fake.log.checked).toHaveLength(14);
+  });
+
+  it("checks one claim per citation first, so the others find the reference already looked up", async () => {
+    // Four claims cite Smith, two cite Lee, one has no citation.
+    const withCitation = (id: string, position: number, citation: string | null) => ({ ...claim(id, position), citation });
+    const claims = [
+      withCitation("s1", 1, "(Smith, 2021)"),
+      withCitation("s2", 2, "(Smith, 2021)"),
+      withCitation("l1", 3, "(Lee, 2020)"),
+      withCitation("s3", 4, " (smith, 2021) "),
+      withCitation("n1", 5, null),
+      withCitation("l2", 6, "(Lee, 2020)"),
+      withCitation("s4", 7, "(Smith, 2021)"),
+    ];
+    const fake = fakeDeps({ claims, checkDelayMs: 5 });
+    await runVerification(fake.deps, input, collect().emit, signal());
+    expect(fake.log.checked).toHaveLength(7);
+    // The first wave is the first claim of each distinct citation (s1 and l1); everything else waits for it.
+    expect(fake.log.checked.slice(0, 2).sort()).toEqual(["l1", "s1"]);
+    expect(fake.log.checked.slice(2).sort()).toEqual(["l2", "n1", "s2", "s3", "s4"]);
+  });
+
+  it("splits claims into first-per-citation and the rest without losing or repeating any", () => {
+    const mk = (id: string, citation: string | null) => ({ ...claim(id, 1), citation });
+    const { first, rest } = oneClaimPerCitation([mk("a", "(X, 1)"), mk("b", "(X, 1)"), mk("c", ""), mk("d", "(Y, 2)"), mk("e", null)]);
+    expect(first.map((c) => c.id)).toEqual(["a", "d"]);
+    expect(rest.map((c) => c.id)).toEqual(["b", "c", "e"]);
   });
 
   it("asks the server again when it says retry, waiting a little longer each time, and reports the verdict once", async () => {

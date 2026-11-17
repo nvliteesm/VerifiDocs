@@ -6,6 +6,7 @@
 import { getSql } from "../db";
 import { getLlm, type Llm } from "../llm/adapter";
 import type { ReferenceResolution } from "../pipeline/resolve-reference";
+import { limitModelUse, type Limits } from "../rate-limit";
 import type { SqlLike } from "../rag/retrieve";
 import { resolveSession } from "../session";
 import { assertSameOrigin, errorResponse } from "./http";
@@ -16,6 +17,8 @@ export interface ApiDeps {
   /** Looks one reference up. Defaults to Crossref then OpenAlex. Tests pass a fake. */
   resolve?: (raw: string) => Promise<ReferenceResolution>;
   now?: () => number;
+  /** Rate limits. Defaults to DEFAULT_LIMITS; tests pass small ones. */
+  limits?: Limits;
 }
 
 export interface ApiContext {
@@ -38,22 +41,33 @@ function withCookie(response: Response, cookie: string | null): Response {
   return response;
 }
 
+export interface HandleOptions {
+  /** True for routes that call the model (extract, check, ingest): they draw on a per-session and per-address budget. */
+  model?: boolean;
+}
+
 export async function handleWith(
   deps: ApiDeps,
   request: Request,
   fn: (context: ApiContext) => Promise<Response>,
+  options: HandleOptions = {},
 ): Promise<Response> {
   let cookie: string | null = null;
   try {
     assertSameOrigin(request);
-    const session = await resolveSession(deps.sql, request);
+    const session = await resolveSession(deps.sql, request, deps.limits);
     cookie = session.setCookie;
+    if (options.model) await limitModelUse(deps.sql, request, session.sessionId, deps.limits);
     return withCookie(await fn({ deps, sessionId: session.sessionId }), cookie);
   } catch (error) {
     return withCookie(errorResponse(error), cookie);
   }
 }
 
-export function handle(request: Request, fn: (context: ApiContext) => Promise<Response>): Promise<Response> {
-  return handleWith(defaultDeps(), request, fn);
+export function handle(
+  request: Request,
+  fn: (context: ApiContext) => Promise<Response>,
+  options: HandleOptions = {},
+): Promise<Response> {
+  return handleWith(defaultDeps(), request, fn, options);
 }

@@ -5,11 +5,13 @@
 // Every early exit is a real verdict with a reason (docs/verdicts.md). Rules:
 // - No citation                          -> No citation given (stage 2).
 // - A citation that cannot be read, or that matches no entry in the reference list, or an entry that
-//   neither service knows              -> Reference not found (stage 3).
+//   neither service knows, and no uploaded PDF matches it -> Reference not found (stage 3). If an uploaded PDF
+//   does match (a report or thesis that is not online), the claim is checked against that PDF instead.
 //   If a claim cites several references, ANY one that is not found makes the claim Reference not found.
 // - A lookup that failed (not "unknown") -> retry, never a verdict by itself.
 // - References exist but no usable PDF   -> Can't check (stage 4).
 //   If some cited references have a usable PDF, the claim is checked against those.
+import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "../reasons";
 import { matchEntryIndex, parseCitationMarkers, type CitationMarker } from "./citations";
 import type { SourceLookup } from "./find-source";
 import type { ReferenceResolution } from "./resolve-reference";
@@ -30,6 +32,11 @@ type Found = Extract<ReferenceResolution, { status: "found" }>;
 export interface PreludeDeps {
   resolve(entry: PreludeEntry): Promise<ReferenceResolution>;
   findSource(entry: PreludeEntry, resolution: Found): Promise<SourceLookup>;
+  /**
+   * For an entry that neither service knows (a report, a thesis, a web page): is there an uploaded PDF for it?
+   * When one matches, the claim is checked against it instead of ending as Reference not found.
+   */
+  findUploaded?(entry: PreludeEntry): Promise<SourceLookup>;
 }
 
 export type PreludeResult =
@@ -90,8 +97,8 @@ export async function runPrelude(
           exitStage: 3,
           reason:
             entries.length === 0
-              ? `"${label(marker)}" cannot be matched because no reference list was added. Paste your reference list and check again.`
-              : `"${label(marker)}" is not in your reference list.`,
+              ? `"${label(marker)}" cannot be matched because ${NO_REFERENCE_LIST}. Paste your reference list and check again.`
+              : `"${label(marker)}" ${NOT_IN_REFERENCE_LIST}.`,
         },
       };
     }
@@ -106,12 +113,18 @@ export async function runPrelude(
   for (const entry of matched) {
     const resolution = await deps.resolve(entry);
     if (resolution.status === "not_found") {
+      const uploaded = deps.findUploaded ? await deps.findUploaded(entry) : ({ kind: "none" } as SourceLookup);
+      if (uploaded.kind !== "none") {
+        // Not online, but the student uploaded a PDF that matches: the PDF is the evidence.
+        lookups.push(uploaded);
+        continue;
+      }
       return {
         outcome: "exit",
         exit: {
           verdict: "reference_not_found",
           exitStage: 3,
-          reason: `Reference ${entry.position} ("${snippet(entry.raw)}") was not found in Crossref or OpenAlex.`,
+          reason: `Reference ${entry.position} ("${snippet(entry.raw)}") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it.`,
         },
       };
     }

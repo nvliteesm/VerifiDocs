@@ -7,13 +7,14 @@ import mammoth from "mammoth";
 export const MAX_DRAFT_CHARS = 60_000;
 export const MAX_DOCX_BYTES = 5 * 1024 * 1024;
 export const EXTRACTION_UNIT_MAX_CHARS = 6_000;
-export const MAX_REFERENCES = 200;
+/** A longer list is rejected with a message, never cut: a silent cut makes later citations look "not in your list". */
+export const MAX_REFERENCES = 500;
 
 export type DraftInput =
   | { kind: "paste"; text: string }
   | { kind: "docx"; buffer: Buffer };
 
-export type DraftErrorCode = "empty" | "too_long" | "docx_too_large" | "docx_unreadable";
+export type DraftErrorCode = "empty" | "too_long" | "docx_too_large" | "docx_unreadable" | "too_many_references";
 
 export class DraftError extends Error {
   override name = "DraftError";
@@ -226,8 +227,14 @@ export function parseReferenceList(raw: string): string[] {
     }
   }
 
-  return groups
+  const entries = groups
     .map((group) => group.join(" ").replace(marker, "").replace(/\s+/g, " ").trim())
-    .filter((entry) => entry.length >= 10)
-    .slice(0, MAX_REFERENCES);
+    .filter((entry) => entry.length >= 10);
+  if (entries.length > MAX_REFERENCES) {
+    throw new DraftError(
+      "too_many_references",
+      `Your reference list has ${entries.length} entries. The limit is ${MAX_REFERENCES}. Check one part of your thesis at a time.`,
+    );
+  }
+  return entries;
 }

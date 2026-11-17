@@ -43,6 +43,67 @@ function lookupOf(row: Pick<Row, "id" | "status">): SourceLookup {
   return row.status === "ready" ? { kind: "found", documentId: row.id } : { kind: "no_text", documentId: row.id };
 }
 
+const ENTRY_FILENAME_SHARE_MIN = 0.8;
+const ENTRY_HEAD_SHARE_MIN = 0.6;
+const MIN_ENTRY_TOKEN_LENGTH = 4;
+
+/**
+ * Matches an uploaded PDF to a reference entry that Crossref and OpenAlex do not know (a government report,
+ * a thesis, a web page). With no resolved title to compare, two signals are used, in order of strength:
+ * (2) most distinctive words of the entry appear in the first pages of the PDF, (1) the filename's words are
+ * (nearly) all words of the entry, as in "Bank-Indonesia-2024.pdf" for "Bank Indonesia. (2024). ...".
+ */
+export function matchEntryToDocuments(
+  raw: string,
+  rows: Pick<Row, "id" | "status" | "filename" | "head">[],
+): SourceLookup {
+  const entryTokens = new Set(normalizeForMatch(raw).split(" ").filter(Boolean));
+  const distinctive = [...entryTokens].filter((token) => token.length >= MIN_ENTRY_TOKEN_LENGTH);
+  const matches: { row: Pick<Row, "id" | "status">; strength: number }[] = [];
+
+  for (const row of rows) {
+    let strength = 0;
+    const headTokens = new Set(normalizeForMatch(row.head).split(" ").filter(Boolean));
+    if (distinctive.length >= MIN_TITLE_TOKENS && headTokens.size > 0) {
+      const share = distinctive.filter((token) => headTokens.has(token)).length / distinctive.length;
+      if (share >= ENTRY_HEAD_SHARE_MIN) strength = 2;
+    }
+    if (strength === 0) {
+      const fileTokens = normalizeForMatch(row.filename.replace(/\.pdf$/i, ""))
+        .split(" ")
+        .filter((token) => token.length >= 2);
+      if (fileTokens.length >= MIN_TITLE_TOKENS) {
+        const share = fileTokens.filter((token) => entryTokens.has(token)).length / fileTokens.length;
+        if (share >= ENTRY_FILENAME_SHARE_MIN) strength = 1;
+      }
+    }
+    if (strength > 0) matches.push({ row, strength });
+  }
+  if (matches.length === 0) return { kind: "none" };
+  matches.sort((a, b) => b.strength - a.strength || Number(b.row.status === "ready") - Number(a.row.status === "ready"));
+  return lookupOf(matches[0]!.row);
+}
+
+/** Finds an uploaded PDF for a reference entry that no online service resolved. Reads only. */
+export async function findSourceForEntry(
+  db: SqlLike,
+  args: { sessionId: string; linkedDocumentId?: string | null; raw: string },
+): Promise<SourceLookup> {
+  const sql = db as postgres.Sql;
+  if (args.linkedDocumentId) {
+    return findSourceDocument(db, { sessionId: args.sessionId, linkedDocumentId: args.linkedDocumentId, title: args.raw });
+  }
+  const rows = await sql<Row[]>`
+    select d.id, d.status, d.filename,
+           coalesce(string_agg(p.text, ' ' order by p.page_number), '') as head
+    from documents d
+    left join pages p on p.document_id = d.id and p.page_number <= ${HEAD_PAGES}
+    where d.session_id = ${args.sessionId} and d.status in ('ready', 'no_text')
+    group by d.id, d.status, d.filename, d.created_at
+    order by d.created_at, d.id`;
+  return matchEntryToDocuments(args.raw, rows);
+}
+
 export async function findSourceDocument(db: SqlLike, args: FindSourceArgs): Promise<SourceLookup> {
   const sql = db as postgres.Sql;
 

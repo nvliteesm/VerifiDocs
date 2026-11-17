@@ -13,7 +13,7 @@ import type postgres from "postgres";
 import { LlmOutputError, LlmUnavailableError, type Llm } from "../llm/adapter";
 import { embedQuery } from "../rag/embed";
 import { retrieveTopChunks, type SqlLike } from "../rag/retrieve";
-import { findSourceDocument } from "./find-source";
+import { findSourceDocument, findSourceForEntry } from "./find-source";
 import { suggestFix } from "./fix";
 import { judgeClaim, type JudgePassage } from "./judge";
 import { runPrelude, type PreludeEntry } from "./prelude";
@@ -131,6 +131,8 @@ export async function checkClaim(
           doi: resolution.doi,
           title: resolution.title,
         }),
+      findUploaded: (entry) =>
+        findSourceForEntry(sql, { sessionId, linkedDocumentId: entry.documentId, raw: entry.raw }),
     });
 
     if (prelude.outcome === "exit") return finish(prelude.exit);
