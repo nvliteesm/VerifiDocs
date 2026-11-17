@@ -1,0 +1,133 @@
+// The UI state of one check, as a pure reducer. The orchestrator (run-verification.ts) emits events and this
+// turns them into state, so the screen is always a function of what actually happened.
+// Verdict counts and the ranked fix list are DERIVED from the claims, never stored separately, so they cannot
+// disagree with the claim list on screen.
+import { rankFixList } from "../fix-list";
+import type { CheckedVerdict, ClaimView, ReferenceView, RunResponse, RunStatus, Verdict } from "./types";
+
+export type Phase = "idle" | "starting" | "extracting" | "checking" | "done" | "error";
+
+export interface VerifierState {
+  phase: Phase;
+  message: string;
+  runId: string | null;
+  runStatus: RunStatus | null;
+  unitCount: number;
+  unitsExtracted: number;
+  claims: ClaimView[];
+  references: ReferenceView[];
+  counts: Partial<Record<Verdict, number>>;
+  /** Claim ids that need attention, most serious first. */
+  fixList: string[];
+  /** Claims whose check failed in the browser (not a verdict). The student can retry them. */
+  claimErrors: Record<string, string>;
+  error: string | null;
+}
+
+export const initialState: VerifierState = {
+  phase: "idle",
+  message: "",
+  runId: null,
+  runStatus: null,
+  unitCount: 0,
+  unitsExtracted: 0,
+  claims: [],
+  references: [],
+  counts: {},
+  fixList: [],
+  claimErrors: {},
+  error: null,
+};
+
+export type VerifyEvent =
+  | { type: "reset" }
+  | { type: "phase"; phase: Phase; message: string }
+  | { type: "run"; runId: string; unitCount: number }
+  | { type: "extracted"; unitsExtracted: number }
+  | { type: "loaded"; run: RunResponse }
+  | { type: "claim"; verdict: CheckedVerdict }
+  | { type: "claimError"; id: string; message: string }
+  | { type: "claimRetry"; id: string }
+  | { type: "failed"; message: string };
+
+export function countVerdicts(claims: ClaimView[]): Partial<Record<Verdict, number>> {
+  const counts: Partial<Record<Verdict, number>> = {};
+  for (const claim of claims) if (claim.verdict) counts[claim.verdict] = (counts[claim.verdict] ?? 0) + 1;
+  return counts;
+}
+
+function withClaims(state: VerifierState, claims: ClaimView[]): VerifierState {
+  return {
+    ...state,
+    claims,
+    counts: countVerdicts(claims),
+    fixList: rankFixList(claims).map((claim) => claim.id),
+  };
+}
+
+function withoutError(errors: Record<string, string>, id: string): Record<string, string> {
+  const rest = { ...errors };
+  delete rest[id];
+  return rest;
+}
+
+export function reduce(state: VerifierState, event: VerifyEvent): VerifierState {
+  switch (event.type) {
+    case "reset":
+      return initialState;
+
+    case "phase":
+      return { ...state, phase: event.phase, message: event.message, error: null };
+
+    case "run":
+      return { ...initialState, phase: state.phase, message: state.message, runId: event.runId, unitCount: event.unitCount };
+
+    case "extracted":
+      return { ...state, unitsExtracted: event.unitsExtracted };
+
+    case "loaded": {
+      const { run } = event;
+      return {
+        ...withClaims(state, run.claims),
+        runId: run.run.id,
+        runStatus: run.run.status,
+        unitCount: run.run.unitCount,
+        unitsExtracted: run.run.unitsExtracted,
+        references: run.references,
+      };
+    }
+
+    case "claim": {
+      const verdict = event.verdict;
+      const claims = state.claims.map((claim) =>
+        claim.id === verdict.claimId
+          ? {
+              ...claim,
+              status: "done" as const,
+              verdict: verdict.verdict,
+              quote: verdict.quote,
+              page: verdict.page,
+              reason: verdict.reason,
+              exitStage: verdict.exitStage,
+              fixSuggestion: verdict.fixSuggestion,
+            }
+          : claim,
+      );
+      return { ...withClaims(state, claims), claimErrors: withoutError(state.claimErrors, verdict.claimId) };
+    }
+
+    case "claimError":
+      return { ...state, claimErrors: { ...state.claimErrors, [event.id]: event.message } };
+
+    case "claimRetry":
+      return { ...state, claimErrors: withoutError(state.claimErrors, event.id) };
+
+    case "failed":
+      return { ...state, phase: "error", error: event.message, message: "" };
+  }
+}
+
+/** How many claims have a verdict, and how many there are. */
+export function checkedProgress(state: VerifierState): { checked: number; total: number } {
+  return { checked: state.claims.filter((claim) => claim.verdict !== null).length, total: state.claims.length };
+}
