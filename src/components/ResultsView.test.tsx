@@ -119,13 +119,15 @@ describe("ResultsView flagging", () => {
     expect(document.activeElement).toBe(screen.getByText("Thanks, noted."));
   });
 
-  it("lets the student back out without sending anything", async () => {
+  it("lets the student back out without sending anything, with focus back on the button they started from", async () => {
     const user = userEvent.setup();
     const onEvent = vi.fn();
     view(stateOf([flaggable()]), onEvent);
     await user.click(screen.getByRole("button", { name: "This verdict is wrong" }));
     await user.click(screen.getByRole("button", { name: "Never mind" }));
-    expect(screen.getByRole("button", { name: "This verdict is wrong" })).toBeTruthy();
+    const again = screen.getByRole("button", { name: "This verdict is wrong" });
+    expect(again).toBeTruthy();
+    expect(document.activeElement).toBe(again); // not the page body
     expect(onEvent).not.toHaveBeenCalled();
   });
 

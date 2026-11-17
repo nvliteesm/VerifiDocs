@@ -74,8 +74,15 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
   const firstReason = useRef<HTMLButtonElement>(null);
   const thanks = useRef<HTMLParagraphElement>(null);
   const justChose = useRef(false);
+  const flagButton = useRef<HTMLButtonElement>(null);
+  const backedOut = useRef(false);
   useEffect(() => {
     if (asking) firstReason.current?.focus();
+    // "Never mind" removes the reasons, so put focus back on the button the student started from.
+    if (!asking && backedOut.current) {
+      backedOut.current = false;
+      flagButton.current?.focus();
+    }
   }, [asking]);
   useEffect(() => {
     if (flagged && justChose.current) {
@@ -171,14 +178,21 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
                   {FLAG_REASON_LABELS[reason]}
                 </button>
               ))}
-              <button type="button" className="link" onClick={() => setAsking(false)}>
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  backedOut.current = true;
+                  setAsking(false);
+                }}
+              >
                 Never mind
               </button>
             </div>
           </div>
         ) : (
           <div>
-            <button type="button" className="link" onClick={() => setAsking(true)}>
+            <button type="button" className="link" ref={flagButton} onClick={() => setAsking(true)}>
               This verdict is wrong
             </button>
           </div>

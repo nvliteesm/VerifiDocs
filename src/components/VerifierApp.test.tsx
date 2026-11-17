@@ -337,6 +337,65 @@ describe("deleting a check", () => {
   });
 });
 
+describe("keyboard focus is never dropped to the top of the page", () => {
+  async function finished() {
+    const user = userEvent.setup();
+    await openApp(fakeServer());
+    fill();
+    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await screen.findByText("Check complete");
+    return user;
+  }
+
+  it("returns to 'Delete this check' after 'Keep it'", async () => {
+    const user = await finished();
+    await user.click(screen.getByRole("button", { name: "Delete this check" }));
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Delete this check" }));
+  });
+
+  it("closes the delete prompt with Escape and returns focus to the button that opened it", async () => {
+    const user = await finished();
+    await user.click(screen.getByRole("button", { name: "Delete this check" }));
+    expect(screen.getByRole("group", { name: "Delete this check?" })).toBeTruthy();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("group", { name: "Delete this check?" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Delete this check" }));
+  });
+
+  it("moves to the confirmation message after a delete", async () => {
+    const user = await finished();
+    await user.click(screen.getByRole("button", { name: "Delete this check" }));
+    await user.click(screen.getByRole("button", { name: "Yes, delete it" }));
+    const note = await screen.findByText("Your check was deleted from our servers.");
+    await waitFor(() => expect(document.activeElement).toBe(note));
+  });
+
+  it("moves to the draft box after 'Edit draft' and after 'Start a new check'", async () => {
+    const user = await finished();
+    await user.click(screen.getByRole("button", { name: "Edit draft" }));
+    expect(document.activeElement).toBe(screen.getByLabelText(/Draft text/));
+
+    fireEvent.click(screen.getByRole("button", { name: "Check my claims" }));
+    await screen.findByText("Check complete");
+    await user.click(screen.getByRole("button", { name: "Start a new check" }));
+    expect(document.activeElement).toBe(screen.getByLabelText(/Draft text/));
+  });
+
+  it("moves to the filled draft after 'Try an example'", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer());
+    await user.click(screen.getByRole("button", { name: "Try an example" }));
+    const draft = await screen.findByDisplayValue(EXAMPLE_DRAFT);
+    await waitFor(() => expect(document.activeElement).toBe(draft));
+  });
+
+  it("does not take focus on the first page load", async () => {
+    await openApp(fakeServer());
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
 describe("the one-question survey", () => {
   it("sends only the answer when a button is pressed, with no price question", async () => {
     const user = userEvent.setup();

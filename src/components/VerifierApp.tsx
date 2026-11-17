@@ -44,9 +44,34 @@ export function VerifierApp() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteNote, setDeleteNote] = useState<"deleted" | "failed" | null>(null);
   const keepButton = useRef<HTMLButtonElement>(null);
+  const deleteButton = useRef<HTMLButtonElement>(null);
+  const deletedNote = useRef<HTMLParagraphElement>(null);
+  const cancelledDelete = useRef(false);
+  const cancelDelete = () => {
+    cancelledDelete.current = true;
+    setConfirmingDelete(false);
+  };
   useEffect(() => {
+    // Opening the prompt focuses the safe choice. Closing it without deleting puts focus back on the button that
+    // opened it: the prompt's own buttons leave the page, and focus would otherwise fall to the top of the page.
     if (confirmingDelete) keepButton.current?.focus();
+    else if (cancelledDelete.current) {
+      cancelledDelete.current = false;
+      deleteButton.current?.focus();
+    }
   }, [confirmingDelete]);
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancelDelete();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [confirmingDelete]);
+  useEffect(() => {
+    // After a delete the buttons the student used are gone: move to the confirmation, which is also read aloud.
+    if (deleteNote === "deleted") deletedNote.current?.focus();
+  }, [deleteNote]);
 
   const sources = useSources(api);
   const verification = useVerification(api);
@@ -73,6 +98,15 @@ export function VerifierApp() {
   const running = state.phase === "starting" || state.phase === "extracting" || state.phase === "checking";
   const idle = state.phase === "idle";
 
+  // "Edit draft", "Start a new check" and "Try again" all swap the results for the form, so the button that was
+  // pressed is gone. Move focus to the draft box, the natural next place, instead of letting it fall to the page top.
+  const wasIdle = useRef(true);
+  useEffect(() => {
+    // After a delete, focus goes to the confirmation message instead (its own effect), so step aside for it.
+    if (idle && !wasIdle.current && deleteNote !== "deleted") document.getElementById("draft-text")?.focus();
+    wasIdle.current = idle;
+  }, [idle, deleteNote]);
+
   useEffect(() => {
     if (copied === "idle") return;
     const timer = setTimeout(() => setCopied("idle"), 3000);
@@ -90,6 +124,11 @@ export function VerifierApp() {
   // other source), and the made-up draft and reference list fill the form. Remounting the form (the key) applies them.
   const [seedKey, setSeedKey] = useState(0);
   const [exampleNote, setExampleNote] = useState<string | null>(null);
+  useEffect(() => {
+    // The example button leaves the page once the draft is filled; focus goes to the filled draft, not the page top.
+    // seedKey only changes when the example is loaded, and the form has been remounted with the example by then.
+    if (seedKey > 0) document.getElementById("draft-text")?.focus();
+  }, [seedKey]);
   const tryExample = async () => {
     setExampleNote(null);
     try {
@@ -168,7 +207,7 @@ export function VerifierApp() {
       </div>
 
       {deleteNote === "deleted" && idle && (
-        <p role="status" className="notice notice-info" style={{ marginBottom: 20 }}>
+        <p role="status" className="notice notice-info" style={{ marginBottom: 20 }} ref={deletedNote} tabIndex={-1}>
           Your check was deleted from our servers.
         </p>
       )}
@@ -264,7 +303,7 @@ export function VerifierApp() {
                   Start a new check
                 </button>
                 {state.runId && !running && !confirmingDelete && (
-                  <button type="button" className="btn btn-quiet" onClick={() => setConfirmingDelete(true)}>
+                  <button type="button" className="btn btn-quiet" ref={deleteButton} onClick={() => setConfirmingDelete(true)}>
                     Delete this check
                   </button>
                 )}
@@ -287,7 +326,7 @@ export function VerifierApp() {
                     >
                       Yes, delete it
                     </button>
-                    <button type="button" className="btn btn-quiet" ref={keepButton} onClick={() => setConfirmingDelete(false)}>
+                    <button type="button" className="btn btn-quiet" ref={keepButton} onClick={cancelDelete}>
                       Keep it
                     </button>
                   </span>
