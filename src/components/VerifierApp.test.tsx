@@ -115,16 +115,30 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("privacy notice", () => {
-  it("blocks the form until the student acknowledges it", async () => {
+describe("privacy note", () => {
+  it("shows the form at once, keeps checking and uploading locked until 'Got it', and remembers the choice", async () => {
     vi.stubGlobal("fetch", fakeServer().fetchImpl);
     const user = userEvent.setup();
     render(<VerifierApp />);
-    expect(await screen.findByText("What happens to your files")).toBeTruthy();
-    expect(screen.queryByLabelText(/Draft text/)).toBeNull();
-    await user.click(screen.getByRole("button", { name: "I understand, continue" }));
-    expect(await screen.findByLabelText(/Draft text/)).toBeTruthy();
+    expect(await screen.findByText("Before you start")).toBeTruthy();
+    expect(await screen.findByLabelText(/Draft text/)).toBeTruthy(); // the product is not hidden behind the note
+    expect(screen.getByRole("button", { name: "Try an example" })).toHaveProperty("disabled", true); // hidden once a draft is typed
+    expect(screen.getByRole("button", { name: "Choose PDFs" })).toHaveProperty("disabled", true);
+    fill();
+    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", true);
+
+    await user.click(screen.getByRole("button", { name: "Got it" }));
+    expect(screen.queryByText("Before you start")).toBeNull();
+    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Choose PDFs" })).toHaveProperty("disabled", false);
     expect(window.localStorage.getItem(CONSENT_KEY)).toBe("yes");
+  });
+
+  it("puts the draft before the sources in the page, so a phone shows the draft first", async () => {
+    await openApp(fakeServer());
+    const draft = screen.getByLabelText(/Draft text/);
+    const sources = screen.getByRole("heading", { name: "Your sources" });
+    expect(draft.compareDocumentPosition(sources) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

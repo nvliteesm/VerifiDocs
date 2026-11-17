@@ -18,6 +18,38 @@ const MAX_JSON_ATTEMPTS = 2;
  */
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/**
+ * Parses the model's JSON. The small model sometimes returns a complete, valid object followed by stray text
+ * (for example `{"sentence":"..."}` then a line with `"}`), which JSON.parse rejects as a whole. When that
+ * happens, the object or array that the reply STARTS with is taken and parsed on its own. Text before it
+ * (for example a ```json fence) is still rejected: that is not silently repaired.
+ */
+export function parseModelJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const start = text.search(/\S/);
+    if (start < 0 || (text[start] !== "{" && text[start] !== "[")) throw error;
+    const open = text[start]!;
+    const close = open === "{" ? "}" : "]";
+    let depth = 0;
+    let inString = false;
+    for (let i = start; i < text.length; i += 1) {
+      const char = text[i]!;
+      if (inString) {
+        if (char === "\\") i += 1;
+        else if (char === '"') inString = false;
+      } else if (char === '"') inString = true;
+      else if (char === open) depth += 1;
+      else if (char === close) {
+        depth -= 1;
+        if (depth === 0) return JSON.parse(text.slice(start, i + 1));
+      }
+    }
+    throw error;
+  }
+}
+
 export type EmbedTask = "document" | "query";
 
 const TASK_TYPES: Record<EmbedTask, string> = {
@@ -154,7 +186,7 @@ export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
 
       let parsed: unknown;
       try {
-        parsed = JSON.parse(text);
+        parsed = parseModelJson(text);
       } catch {
         lastProblem = "the model returned text that is not valid JSON";
         continue;

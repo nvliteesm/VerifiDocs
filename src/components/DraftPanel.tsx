@@ -17,9 +17,11 @@ interface Props {
   onTryExample?: () => void;
   /** Why the example could not be loaded, if it could not. */
   exampleNote?: string | null;
+  /** True until the student has pressed "Got it" on the privacy note: the example sends text out, so it waits too. */
+  locked?: boolean;
 }
 
-export function DraftPanel({ disabled, disabledReason, noReadySources = false, onStart, initial = null, onTryExample, exampleNote = null }: Props) {
+export function DraftPanel({ disabled, disabledReason, noReadySources = false, onStart, initial = null, onTryExample, exampleNote = null, locked = false }: Props) {
   const [mode, setMode] = useState<"paste" | "docx">(initial?.draft.kind === "docx" ? "docx" : "paste");
   const [text, setText] = useState(initial?.draft.kind === "paste" ? initial.draft.text : "");
   const [file, setFile] = useState<File | null>(initial?.draft.kind === "docx" ? initial.draft.file : null);
@@ -53,7 +55,7 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
 
       {onTryExample && text.trim() === "" && file === null && (
         <div className="example">
-          <button type="button" className="btn btn-quiet" onClick={onTryExample}>
+          <button type="button" className="btn btn-quiet" disabled={locked} onClick={onTryExample}>
             Try an example
           </button>
           <span className="hint">See a check on a made-up report and draft.</span>
@@ -117,7 +119,7 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
 
       {noReadySources && (
         <p className="notice notice-info">
-          No source added yet. Claims will show as &ldquo;Can&apos;t check yet&rdquo;.
+          Add your source PDFs, or claims will show as &ldquo;Can&apos;t check yet&rdquo;.
         </p>
       )}
 

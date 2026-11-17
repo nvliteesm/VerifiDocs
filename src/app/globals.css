@@ -117,6 +117,8 @@ select:disabled {
   gap: 12px;
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
+  /* Space under the header line for whatever comes first (the intro, a note, or the results). */
+  margin-bottom: 28px;
 }
 .wordmark {
   font-family: var(--serif);
@@ -128,7 +130,7 @@ select:disabled {
   color: var(--accent);
 }
 .intro {
-  padding: 40px 0 28px;
+  padding: 12px 0 28px;
   max-width: 44rem;
   display: grid;
   gap: 12px;
@@ -152,18 +154,12 @@ select:disabled {
 }
 @media (min-width: 920px) {
   .workspace {
-    grid-template-columns: 340px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 340px;
     gap: 40px;
   }
   .rail {
     position: sticky;
     top: 20px;
-  }
-}
-/* On narrow screens, once a check exists the results come before the sources tray. */
-@media (max-width: 919px) {
-  .has-run .main-col {
-    order: -1;
   }
 }
 .rail,
@@ -200,8 +196,8 @@ select:disabled {
 }
 
 /* Consent */
-.gate {
-  max-width: 40rem;
+.note {
+  margin-bottom: 24px;
 }
 .promise {
   list-style: none;
@@ -681,7 +677,7 @@ blockquote {
     padding: 0 16px 56px;
   }
   .intro {
-    padding: 28px 0 20px;
+    padding: 8px 0 20px;
   }
   .panel {
     padding: 18px;

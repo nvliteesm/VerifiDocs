@@ -257,10 +257,32 @@ describe("ResultsView verdict text", () => {
 });
 
 describe("ResultsView evidence and copying", () => {
-  it("shows the page in the evidence disclosure and starts it closed", () => {
-    view(stateOf([claim("contradicted", { quote: "five percent", page: 4, reason: "r" })]));
+  it("shows the page in the evidence disclosure, open for Contradicted and Partly supported", () => {
+    view(
+      stateOf([
+        claim("contradicted", { quote: "five percent", page: 4, reason: "r" }),
+        claim("partial", { quote: "six percent", page: 5, reason: "r" }),
+      ]),
+    );
+    expect(screen.getByText(/What your source says \(page 4\)/).closest("details")?.hasAttribute("open")).toBe(true);
+    expect(screen.getByText(/What your source says \(page 5\)/).closest("details")?.hasAttribute("open")).toBe(true);
+  });
+
+  it("keeps the evidence closed for a Supported claim, and counts an open only when the student clicks", async () => {
+    const user = userEvent.setup();
+    const onEvent = vi.fn();
+    view(stateOf([claim("supported", { quote: "five percent", page: 4 })]), onEvent);
     const summary = screen.getByText(/What your source says \(page 4\)/);
     expect(summary.closest("details")?.hasAttribute("open")).toBe(false);
+    expect(onEvent.mock.calls.filter(([name]) => name === "evidence_opened")).toHaveLength(0);
+    await user.click(summary);
+    expect(onEvent.mock.calls.filter(([name]) => name === "evidence_opened")).toHaveLength(1);
+  });
+
+  it("does not count a card that starts open as the student opening it", () => {
+    const onEvent = vi.fn();
+    view(stateOf([claim("contradicted", { quote: "five percent", page: 4, reason: "r" })]), onEvent);
+    expect(onEvent.mock.calls.filter(([name]) => name === "evidence_opened")).toHaveLength(0);
   });
 
   it("tells the student when a suggested sentence could not be copied", async () => {

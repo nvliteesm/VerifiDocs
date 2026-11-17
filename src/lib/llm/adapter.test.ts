@@ -7,6 +7,7 @@ import {
   LlmUnavailableError,
   createLlm,
   loadLlmConfig,
+  parseModelJson,
   type GeminiClientLike,
   type LlmConfig,
 } from "./adapter";
@@ -150,6 +151,22 @@ describe("generateJson", () => {
     });
     expect(result).toEqual({ verdict: "partial", page: 2 });
     expect(generateCalls).toHaveLength(2);
+  });
+
+  it("accepts a complete JSON object that is followed by stray text, without a retry", async () => {
+    const { client, generateCalls } = fakeClient({
+      texts: ['{"verdict":"partial","page":2}\n"}'],
+    });
+    const result = await createLlm(config, client).generateJson({ prompt: "p", schema: verdictSchema });
+    expect(result).toEqual({ verdict: "partial", page: 2 });
+    expect(generateCalls).toHaveLength(1);
+  });
+
+  it("does not mistake braces inside a string for the end of the object", () => {
+    expect(parseModelJson('{"sentence":"a } b \\" c"} trailing')).toEqual({ sentence: 'a } b " c' });
+    expect(() => parseModelJson('{"sentence":"unfinished')).toThrow();
+    expect(() => parseModelJson("no json here")).toThrow();
+    expect(() => parseModelJson('Here you go: {"a":1}')).toThrow(); // text BEFORE the object is not repaired
   });
 
   it("retries once when the JSON does not match the schema", async () => {

@@ -157,46 +157,6 @@ export function VerifierApp() {
 
   if (consent === null) return <Frame busy />;
 
-  if (!consent) {
-    return (
-      <Frame>
-        <div className="intro">
-          <h1>A self-check before you submit</h1>
-          <p className="lede">VerifiDocs reads each claim in your draft and checks it against the PDFs you cite. It is not an AI detector and not a grader.</p>
-        </div>
-        <section className="panel gate" aria-labelledby="notice-title">
-          <h2 id="notice-title">What happens to your files</h2>
-          <ul className="promise">
-            <li>
-              <strong>Kept for 30 days, then deleted</strong>
-              <span>Your draft, the text of your sources and your results. The PDF files themselves are deleted as soon as their text is read.</span>
-            </li>
-            <li>
-              <strong>Sent to other services to do the check</strong>
-              <span>Pieces of your text go to the Google Gemini API. Reference titles are looked up in Crossref and OpenAlex.</span>
-            </li>
-            <li>
-              <strong>No account, one private key</strong>
-              <span>This browser holds the key to your checks. If you clear your browser data, you lose access to them.</span>
-            </li>
-          </ul>
-          <div className="actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                writeStored(CONSENT_KEY, "yes");
-                setConsent(true);
-              }}
-            >
-              I understand, continue
-            </button>
-          </div>
-        </section>
-      </Frame>
-    );
-  }
-
   const readySources = sources.rows.filter((row) => row.phase === "ready").length;
 
   return (
@@ -209,6 +169,40 @@ export function VerifierApp() {
         </div>
       ) : (
         <h1 className="sr-only">Check every claim against your sources</h1>
+      )}
+
+      {/* The product is visible at once. Until the student presses "Got it", checking and uploading stay locked,
+          because both send text to other services. */}
+      {!consent && (
+        <section className="panel note" aria-labelledby="notice-title">
+          <h2 id="notice-title">Before you start</h2>
+          <ul className="promise">
+            <li>
+              <strong>Kept for 30 days</strong>
+              <span>Your draft, source text and results, unless you delete them sooner. PDFs are deleted once read.</span>
+            </li>
+            <li>
+              <strong>Sent to other services</strong>
+              <span>Text goes to Google Gemini. Reference titles go to Crossref and OpenAlex.</span>
+            </li>
+            <li>
+              <strong>No account</strong>
+              <span>This browser holds the key to your checks. Clear its data and they are gone.</span>
+            </li>
+          </ul>
+          <div className="actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                writeStored(CONSENT_KEY, "yes");
+                setConsent(true);
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </section>
       )}
 
       {deleteNote === "deleted" && idle && (
@@ -224,16 +218,13 @@ export function VerifierApp() {
       )}
 
       <div className={`workspace${idle ? "" : " has-run"}`}>
-        <div className="rail">
-          <SourcesPanel rows={sources.rows} loaded={sources.loaded} notice={sources.notice} onAdd={sources.addFiles} onRetry={sources.retryRow} onRemove={sources.remove} />
-        </div>
-
         <div className="main-col">
           {idle ? (
             <DraftPanel
               key={seedKey}
-              disabled={sources.busy}
-              disabledReason={sources.busy ? "Wait for your sources to finish reading." : null}
+              locked={!consent}
+              disabled={sources.busy || !consent}
+              disabledReason={!consent ? "Press “Got it” above first." : sources.busy ? "Wait for your sources to finish reading." : null}
               noReadySources={sources.loaded && readySources === 0}
               initial={lastInput}
               onStart={start}
@@ -381,6 +372,19 @@ export function VerifierApp() {
               )}
             </>
           )}
+        </div>
+
+        {/* After the draft in the page order, so a phone shows the draft first. On a wide screen it is the right-hand column. */}
+        <div className="rail">
+          <SourcesPanel
+            rows={sources.rows}
+            loaded={sources.loaded}
+            notice={sources.notice}
+            locked={!consent}
+            onAdd={sources.addFiles}
+            onRetry={sources.retryRow}
+            onRemove={sources.remove}
+          />
         </div>
       </div>
 

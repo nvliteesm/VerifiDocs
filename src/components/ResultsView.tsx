@@ -111,12 +111,15 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
       )}
 
       {claim.quote && (
-        <details
-          onToggle={(event) => {
-            if ((event.currentTarget as HTMLDetailsElement).open && verdict) onEvent("evidence_opened", { verdict });
-          }}
-        >
-          <summary>
+        // The quote is the proof, so it starts open for the verdicts that ask the student to change something.
+        <details open={verdict === "contradicted" || verdict === "partial"}>
+          <summary
+            onClick={(event) => {
+              // Counted only when the student opens it by hand: a toggle event would also fire for a card that starts open.
+              const details = event.currentTarget.parentElement as HTMLDetailsElement;
+              if (!details.open && verdict) onEvent("evidence_opened", { verdict });
+            }}
+          >
             What your source says{claim.page !== null ? ` (page ${claim.page})` : ""}
           </summary>
           <blockquote>{claim.quote}</blockquote>

@@ -11,6 +11,8 @@ interface Props {
   onAdd: (files: File[]) => void;
   onRetry: (row: SourceRow) => void;
   onRemove: (row: SourceRow) => void;
+  /** True until the student has pressed "Got it" on the privacy note: an upload sends text to other services. */
+  locked?: boolean;
 }
 
 function statusText(row: SourceRow): string {
@@ -28,7 +30,7 @@ function statusText(row: SourceRow): string {
   }
 }
 
-export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove }: Props) {
+export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, locked = false }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -51,10 +53,10 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove }:
         onDrop={(event) => {
           event.preventDefault();
           setDragging(false);
-          onAdd(Array.from(event.dataTransfer.files));
+          if (!locked) onAdd(Array.from(event.dataTransfer.files));
         }}
       >
-        <button type="button" className="btn" onClick={() => input.current?.click()}>
+        <button type="button" className="btn" disabled={locked} onClick={() => input.current?.click()}>
           Choose PDFs
         </button>
         <span className="hint">or drop them here</span>
