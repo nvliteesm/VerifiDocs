@@ -1,6 +1,6 @@
 # Architecture
 
-Status: design from 16 Nov 2026 (PRD v0.3), updated 17 Nov 2026 to match `docs/rebuild-brief.md`. Built so far (17 Nov 2026): the Neon schema, the Gemini adapter, quote normalization, the chunker, embedding helpers, hybrid retrieval, and stages 1 to 5 as library code (see "Stages 1 to 4 as built" and "Stage 5 as built"). Stages 7 to 9, the API routes and the UI are not built. The legacy Python app was removed and is preserved at the git tag `legacy-rag-chat` (see `docs/current-state.md`). Items marked "starting value" are meant to be tuned on the eval set. Items marked "unverified" must be checked before building.
+Status: design from 16 Nov 2026 (PRD v0.3), updated 17 Nov 2026 to match `docs/rebuild-brief.md`. Built so far (17 Nov 2026): the Neon schema, the Gemini adapter, quote normalization, the chunker, embedding helpers, hybrid retrieval, and stages 1 to 9 as library code (see "Stages 1 to 4 as built", "Stage 5 as built" and "Stages 6 to 9 as built"). The API routes, the session cookie and the UI are not built. The legacy Python app was removed and is preserved at the git tag `legacy-rag-chat` (see `docs/current-state.md`). Items marked "starting value" are meant to be tuned on the eval set. Items marked "unverified" must be checked before building.
 
 ## Components
 
@@ -76,6 +76,25 @@ Library code in `src/lib/pipeline/`, tested, not yet called by any API route.
 Real-PDF check (`npm run test:live`): a public two-column paper is read, chunked, and sentences quoted from it are found inside its chunks despite ligatures and line-break hyphenation.
 
 Not done yet: the API routes that call these functions, deciding when to give up and call `abandonDocument` after repeated batch failures, and the session cookie.
+
+## Stages 6 to 9 as built
+
+Library code in `src/lib/pipeline/` and `src/lib/events.ts`, tested, not yet called by an API route.
+
+- **6. Retrieve** (`src/lib/rag/retrieve.ts`): hybrid search over only the source(s) the claim cites, scoped to the session.
+- **7. Judge** (`judge.ts`) and **8. Verify quote** (`verify-quote.ts`): see `docs/decisions.md` for the rules. The judge's `chunk_id` carries a passage label (P1, P2, ...), mapped back to the real chunk in code.
+- **Fix this claim** (`fix.ts`): after stage 8, Partial and Contradicted only.
+- **9. Save and log** (`save-verdict.ts`): one transaction saves the verdict, marks the claim done and logs events. The database rejects evidence-rule violations. Idempotent, first verdict wins.
+- **`checkClaim`** (`claim-check.ts`) chains stages 2 to 9 for one claim and is what `POST /api/claims/:id/check` will call. It returns `done` with the saved verdict, or `retry` with the attempt number.
+- **Events** (`events.ts`): strict schemas for all 15 events in `docs/events.md`, a `logEvent` helper, and bucket helpers.
+- Not built yet: the API routes, setting the run to `checking` after extraction, the ranked fix list, the session cookie, the UI.
+
+**Live smoke test (17 Nov, `npm run test:live`, 11 hand-written claims, English and Bahasa Indonesia; not an accuracy measure):** 10 of 11 matched the expected verdict, and none of the 8 claims that should not be Supported was. One "contradicted" claim came out Partial. Judge calls took 0.7 to 1.1 seconds. Two of four fixes were produced; the number guard is conservative.
+
+**Known risks:**
+- *Garbled tables.* On a table whose cells did not extract in order, the judge said Supported for a wrong claim. Its quote failed verification, so the gate turned it into Can't tell, but a quote copied verbatim from a garbled row would pass. The eval needs table cases.
+- *Extraction recall.* A claim that stage 2 never extracts is never checked (see `docs/eval.md`).
+- *Judge nondeterminism.* Temperature is 0, but the answer can still vary between runs. The first saved verdict wins, so a claim does not flip-flop within a run.
 
 ## Judge output contract
 

@@ -16,6 +16,8 @@ import type { ReferenceResolution } from "./resolve-reference";
 import type { StageExit } from "./types";
 
 export interface PreludeEntry {
+  /** The reference_entries row, so a lookup can be cached against it. */
+  id: string;
   /** 1-based position in the reference list. */
   position: number;
   raw: string;
@@ -26,7 +28,7 @@ export interface PreludeEntry {
 type Found = Extract<ReferenceResolution, { status: "found" }>;
 
 export interface PreludeDeps {
-  resolve(raw: string): Promise<ReferenceResolution>;
+  resolve(entry: PreludeEntry): Promise<ReferenceResolution>;
   findSource(entry: PreludeEntry, resolution: Found): Promise<SourceLookup>;
 }
 
@@ -99,7 +101,7 @@ export async function runPrelude(
   const errors: string[] = [];
 
   for (const entry of matched) {
-    const resolution = await deps.resolve(entry.raw);
+    const resolution = await deps.resolve(entry);
     if (resolution.status === "not_found") {
       return {
         outcome: "exit",

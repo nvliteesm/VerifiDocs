@@ -4,9 +4,9 @@ import { runPrelude, type PreludeDeps, type PreludeEntry } from "./prelude";
 import type { ReferenceResolution } from "./resolve-reference";
 
 const entries: PreludeEntry[] = [
-  { position: 1, raw: "Smith, J., & Lee, K. (2021). Inflation and household spending. Journal of Economics.", documentId: null },
-  { position: 2, raw: "Lee, K. (2020). Consumer behaviour under price pressure. Economic Review.", documentId: null },
-  { position: 3, raw: "Wijaya, A. (2019). Dampak inflasi terhadap konsumsi. Jurnal Ekonomi.", documentId: null },
+  { id: "e1", position: 1, raw: "Smith, J., & Lee, K. (2021). Inflation and household spending. Journal of Economics.", documentId: null },
+  { id: "e2", position: 2, raw: "Lee, K. (2020). Consumer behaviour under price pressure. Economic Review.", documentId: null },
+  { id: "e3", position: 3, raw: "Wijaya, A. (2019). Dampak inflasi terhadap konsumsi. Jurnal Ekonomi.", documentId: null },
 ];
 
 const found = (title: string): ReferenceResolution => ({
@@ -21,8 +21,7 @@ function deps(options: {
   const resolved: number[] = [];
   const searched: number[] = [];
   const impl: PreludeDeps = {
-    async resolve(raw) {
-      const entry = entries.find((e) => e.raw === raw)!;
+    async resolve(entry) {
       resolved.push(entry.position);
       return options.resolutions?.[entry.position] ?? found(`Title ${entry.position}`);
     },

@@ -11,6 +11,12 @@ export const EMBEDDING_DIMENSIONS = 768;
 const EMBED_BATCH_SIZE = 100;
 /** One initial attempt plus one retry when the model's JSON is malformed or fails the schema. */
 const MAX_JSON_ATTEMPTS = 2;
+/**
+ * Every request has a hard deadline, because no request may run long (hard rule 6) and a stalled call would
+ * otherwise hang a claim check indefinitely. A timeout is reported as LlmUnavailableError, which the claim
+ * check retries a bounded number of times.
+ */
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 export type EmbedTask = "document" | "query";
 
@@ -23,6 +29,8 @@ export interface LlmConfig {
   apiKey: string;
   generationModel: string;
   embeddingModel: string;
+  /** Hard deadline for each Gemini request. Defaults to 15 seconds. */
+  timeoutMs?: number;
 }
 
 /** A required env var is missing. The message names the variable, never a value. */
@@ -51,12 +59,17 @@ export interface GeminiClientLike {
     generateContent(params: {
       model: string;
       contents: string;
-      config?: { systemInstruction?: string; responseMimeType?: string; temperature?: number };
+      config?: {
+        systemInstruction?: string;
+        responseMimeType?: string;
+        temperature?: number;
+        abortSignal?: AbortSignal;
+      };
     }): Promise<{ text?: string | undefined }>;
     embedContent(params: {
       model: string;
       contents: string[];
-      config?: { taskType?: string; outputDimensionality?: number };
+      config?: { taskType?: string; outputDimensionality?: number; abortSignal?: AbortSignal };
     }): Promise<{ embeddings?: { values?: number[] | undefined }[] | undefined }>;
   };
 }
@@ -94,6 +107,12 @@ function toUnavailable(error: unknown): LlmUnavailableError {
     typeof error === "object" && error !== null && "status" in error
       ? Number((error as { status: unknown }).status)
       : undefined;
+  const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name: unknown }).name) : "";
+  if (name === "TimeoutError" || name === "AbortError") {
+    const timedOut = new LlmUnavailableError("The Gemini API request timed out.");
+    timedOut.cause = error;
+    return timedOut;
+  }
   const detail = status !== undefined && !Number.isNaN(status) ? ` (HTTP ${status})` : "";
   const failure = new LlmUnavailableError(`The Gemini API request failed${detail}.`, status);
   failure.cause = error;
@@ -101,6 +120,7 @@ function toUnavailable(error: unknown): LlmUnavailableError {
 }
 
 export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
+  const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   // The SDK defaults to API version v1, which rejects JSON mode (responseMimeType). v1beta accepts it.
   const gemini: GeminiClientLike =
     client ??
@@ -116,6 +136,7 @@ export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
           model: config.generationModel,
           contents: request.prompt,
           config: {
+            abortSignal: AbortSignal.timeout(timeoutMs),
             responseMimeType: "application/json",
             temperature: request.temperature ?? 0,
             ...(request.system !== undefined ? { systemInstruction: request.system } : {}),
@@ -160,7 +181,11 @@ export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
         const response = await gemini.models.embedContent({
           model: config.embeddingModel,
           contents: batch,
-          config: { taskType: TASK_TYPES[task], outputDimensionality: EMBEDDING_DIMENSIONS },
+          config: {
+            abortSignal: AbortSignal.timeout(timeoutMs),
+            taskType: TASK_TYPES[task],
+            outputDimensionality: EMBEDDING_DIMENSIONS,
+          },
         });
         embeddings = response.embeddings;
       } catch (error) {

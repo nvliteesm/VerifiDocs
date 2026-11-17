@@ -1,6 +1,6 @@
 # Analytics events
 
-One row per event in the `events` table: `session_id`, `name`, `props` (JSON), `created_at`. Events carry ids, counts and buckets only. Never log draft text, quotes or reference text.
+One row per event in the `events` table: `session_id`, `name`, `props` (JSON), `created_at`. Events carry ids, counts and buckets only. Never log draft text, quotes or reference text. This is enforced in code: `src/lib/events.ts` gives every event below a strict schema (unexpected keys are rejected; strings are only enumerated values or short lowercase tokens), and `logEvent` is the only way to write one. Events are not deleted after 30 days (see `docs/decisions.md`).
 
 | Event | When | Props |
 | --- | --- | --- |

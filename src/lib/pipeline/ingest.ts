@@ -13,6 +13,7 @@
 // 'no_text' straight away, and a claim that needs it exits as Can't check.
 import { extractText, getDocumentProxy } from "unpdf";
 import type postgres from "postgres";
+import { atomically } from "../db-tx";
 import type { Llm } from "../llm/adapter";
 import { chunkPages, hasExtractableText, type PageText } from "../rag/chunker";
 import { embedChunks, toVectorLiteral } from "../rag/embed";
@@ -100,21 +101,6 @@ function cleanFilename(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? "";
   const cleaned = base.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, MAX_FILENAME_CHARS);
   return cleaned.length > 0 ? cleaned : "source.pdf";
-}
-
-type Atomic = <T>(fn: (tx: postgres.Sql) => Promise<T>) => Promise<T>;
-
-/** Runs `fn` in a transaction: a real one on a pool, a savepoint when already inside one. */
-function atomically(db: SqlLike): Atomic {
-  const handle = db as unknown as {
-    begin?: <T>(cb: (tx: postgres.TransactionSql) => Promise<T>) => Promise<T>;
-    savepoint?: <T>(cb: (tx: postgres.TransactionSql) => Promise<T>) => Promise<T>;
-  };
-  return (fn) => {
-    if (handle.savepoint) return handle.savepoint((tx) => fn(tx as unknown as postgres.Sql));
-    if (handle.begin) return handle.begin((tx) => fn(tx as unknown as postgres.Sql));
-    throw new Error("A database handle that can run transactions is required.");
-  };
 }
 
 export async function createDocumentFromPdf(db: SqlLike, args: CreateDocumentArgs): Promise<CreatedDocument> {

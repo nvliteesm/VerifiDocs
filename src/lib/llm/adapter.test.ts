@@ -86,10 +86,11 @@ describe("embed", () => {
 
     expect(embedCalls.map((call) => call.contents.length)).toEqual([100, 100, 50]);
     expect(embedCalls[0]?.model).toBe("test-embedding-model");
-    expect(embedCalls[0]?.config).toEqual({
+    expect(embedCalls[0]?.config).toMatchObject({
       taskType: "RETRIEVAL_DOCUMENT",
       outputDimensionality: 768,
     });
+    expect(embedCalls[0]?.config?.abortSignal).toBeInstanceOf(AbortSignal);
     expect(vectors).toHaveLength(250);
     // The fake fills each vector with its index inside the batch, so order is observable.
     expect(vectors[0]?.[0]).toBe(0);
@@ -131,11 +132,12 @@ describe("generateJson", () => {
     expect(result).toEqual({ verdict: "supported", page: 4 });
     expect(generateCalls).toHaveLength(1);
     expect(generateCalls[0]?.model).toBe("test-generation-model");
-    expect(generateCalls[0]?.config).toEqual({
+    expect(generateCalls[0]?.config).toMatchObject({
       responseMimeType: "application/json",
       temperature: 0,
       systemInstruction: "you are a judge",
     });
+    expect(generateCalls[0]?.config?.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
   it("retries once when the first answer is not valid JSON", async () => {
@@ -185,5 +187,65 @@ describe("generateJson", () => {
     await expect(attempt).rejects.toMatchObject({ status: 429 });
     await expect(attempt).rejects.not.toThrow(/prompt text/);
     expect(generateCalls).toHaveLength(1); // an API failure is not retried inside the adapter
+  });
+});
+
+describe("timeouts (hard rule 6: no request may run long)", () => {
+  /** Never answers; rejects only when the deadline aborts it, as the real client does. */
+  const hangsUntilAborted = (signal?: AbortSignal) =>
+    new Promise<never>((_, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason));
+    });
+
+  it("gives a generation call a deadline, reports a stall as unavailable, and does not retry it", async () => {
+    let calls = 0;
+    const client: GeminiClientLike = {
+      models: {
+        async generateContent(params) {
+          calls += 1;
+          return hangsUntilAborted(params.config?.abortSignal);
+        },
+        async embedContent() {
+          throw new Error("not used");
+        },
+      },
+    };
+    const attempt = createLlm({ ...config, timeoutMs: 25 }, client).generateJson({ prompt: "p", schema: verdictSchema });
+    await expect(attempt).rejects.toBeInstanceOf(LlmUnavailableError);
+    await expect(attempt).rejects.toThrow(/timed out/);
+    expect(calls).toBe(1);
+  });
+
+  it("gives an embedding call a deadline too", async () => {
+    const client: GeminiClientLike = {
+      models: {
+        async generateContent() {
+          throw new Error("not used");
+        },
+        async embedContent(params) {
+          return hangsUntilAborted(params.config?.abortSignal);
+        },
+      },
+    };
+    await expect(createLlm({ ...config, timeoutMs: 25 }, client).embed(["x"], "document")).rejects.toThrow(/timed out/);
+  });
+
+  it("uses a default deadline well under a serverless limit, and a call that answers in time is unaffected", async () => {
+    let signal: AbortSignal | undefined;
+    const client: GeminiClientLike = {
+      models: {
+        async generateContent(params) {
+          signal = params.config?.abortSignal;
+          return { text: '{"verdict":"supported","page":1}' };
+        },
+        async embedContent() {
+          throw new Error("not used");
+        },
+      },
+    };
+    const result = await createLlm(config, client).generateJson({ prompt: "p", schema: verdictSchema });
+    expect(result).toEqual({ verdict: "supported", page: 1 });
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
   });
 });
