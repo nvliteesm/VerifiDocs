@@ -212,6 +212,9 @@ export function VerifierApp() {
                 >
                   Start a new check
                 </button>
+                {state.phase === "done" && !lastInput && (
+                  <span className="hint">To check again after reopening, start a new check and paste your draft. Your draft is not kept in this browser.</span>
+                )}
                 <span className="sr-only" role="status">
                   {copied === "copied" ? "Report copied to clipboard." : copied === "failed" ? "Could not copy. Your browser blocked clipboard access." : ""}
                 </span>
