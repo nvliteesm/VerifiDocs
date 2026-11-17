@@ -1,6 +1,6 @@
 # Architecture
 
-Status: design from 16 Nov 2026 (PRD v0.3), updated 17 Nov 2026 to match `docs/rebuild-brief.md`. Built so far (17 Nov 2026): the Neon schema, the Gemini adapter, quote normalization, the chunker, embedding helpers, hybrid retrieval, and stages 1 to 9 as library code (see "Stages 1 to 4 as built", "Stage 5 as built" and "Stages 6 to 9 as built"). The API routes, the session cookie and the UI are not built. The legacy Python app was removed and is preserved at the git tag `legacy-rag-chat` (see `docs/current-state.md`). Items marked "starting value" are meant to be tuned on the eval set. Items marked "unverified" must be checked before building.
+Status: design from 16 Nov 2026 (PRD v0.3), updated 17 Nov 2026 to match `docs/rebuild-brief.md`. Built so far (17 Nov 2026): the Neon schema, the Gemini adapter, quote normalization, the chunker, embedding helpers, hybrid retrieval, stages 1 to 9 as library code, the API routes and the session cookie (see "Stages 1 to 4 as built", "Stage 5 as built", "Stages 6 to 9 as built" and "API as built"). The UI, the eval harness and deployment are not built. The legacy Python app was removed and is preserved at the git tag `legacy-rag-chat` (see `docs/current-state.md`). Items marked "starting value" are meant to be tuned on the eval set. Items marked "unverified" must be checked before building.
 
 ## Components
 
@@ -23,7 +23,7 @@ One module is the only code that calls Gemini, for generation and embeddings. Mo
 
 The host is free and card-less, so no request may run long: aim for under 10 seconds each. The browser drives the work.
 
-- `POST /api/runs`: parse the draft and extract claims; claims are saved as `pending`. Long drafts are extracted per section, one request each.
+- `POST /api/runs`: parse the draft, save it and its reference list (no model call). `POST /api/runs/:id/extract`: extract the claims of one unit of the draft, one request per unit; claims are saved as `pending`.
 - `POST /api/sources`: ingest one PDF (parse pages, chunk, embed, save chunks, delete the PDF). Long PDFs go in batches of pages, one request per batch. Ingest is all-or-nothing per PDF: if any batch fails, the partial rows are removed (or are never made visible), so no empty or half-filled source is left behind.
 - `POST /api/claims/:id/check`: run stages 3 to 9 for one claim. Must be idempotent and safe to retry.
 - `GET /api/runs/:id`: progress and verdicts.
@@ -87,14 +87,34 @@ Library code in `src/lib/pipeline/` and `src/lib/events.ts`, tested, not yet cal
 - **9. Save and log** (`save-verdict.ts`): one transaction saves the verdict, marks the claim done and logs events. The database rejects evidence-rule violations. Idempotent, first verdict wins.
 - **`checkClaim`** (`claim-check.ts`) chains stages 2 to 9 for one claim and is what `POST /api/claims/:id/check` will call. It returns `done` with the saved verdict, or `retry` with the attempt number.
 - **Events** (`events.ts`): strict schemas for all 15 events in `docs/events.md`, a `logEvent` helper, and bucket helpers.
-- Not built yet: the API routes, setting the run to `checking` after extraction, the ranked fix list, the session cookie, the UI.
+- Not built yet: the UI, the eval harness, deployment.
 
 **Live smoke test (17 Nov, `npm run test:live`, 11 hand-written claims, English and Bahasa Indonesia; not an accuracy measure):** 10 of 11 matched the expected verdict, and none of the 8 claims that should not be Supported was. One "contradicted" claim came out Partial. Judge calls took 0.7 to 1.1 seconds. Two of four fixes were produced; the number guard is conservative.
 
 **Known risks:**
 - *Garbled tables.* On a table whose cells did not extract in order, the judge said Supported for a wrong claim. Its quote failed verification, so the gate turned it into Can't tell, but a quote copied verbatim from a garbled row would pass. The eval needs table cases.
 - *Extraction recall.* A claim that stage 2 never extracts is never checked (see `docs/eval.md`).
-- *Judge nondeterminism.* Temperature is 0, but the answer can still vary between runs. The first saved verdict wins, so a claim does not flip-flop within a run.
+- *Verdict stability.* Temperature is 0 and the judge was stable (8 of 8 identical verdicts) on identical passages. The instability seen on 17 Nov (one claim got Contradicted, Partial and Not in sources over six live runs) came from retrieval: ties were broken by random chunk id, so the top 5 changed between ingests. That is fixed and four later runs agreed, but retrieval can still miss evidence, and a claim marked Not in sources because retrieval missed it is the worst failure. The first saved verdict wins, so a claim does not flip-flop within a run. Partial versus Contradicted is a judgement call the eval must measure.
+- *Concurrent lookups.* Several claims citing one reference can look it up at the same moment before the first result is cached, which hit Crossref's rate limit. The 7 second deadline bounds the damage; a per-reference lock would remove it (not built).
+
+## API as built
+
+Handlers in `src/lib/api/` (`runs.ts`, `sources.ts`, `claims.ts`), wrapped by `handler.ts`, with thin route files under `src/app/api/`. Everything below runs through `handleWith`: refuse a cross-site write, resolve the session, run the handler, attach a new session's cookie, map any error to a safe response.
+
+| Route | Does |
+| --- | --- |
+| `POST /api/runs` | Pasted draft (JSON) or .docx (multipart): parse, save the run and its reference list. Returns the unit count. |
+| `POST /api/runs/:id/extract` | `{ "unit": n }`: extract that unit's claims. Idempotent per unit. When the last unit lands the run becomes `checking`. |
+| `GET /api/runs/:id` | Run progress, every claim with its verdict, quote, page and fix, the references and their resolution, verdict counts, and the ranked fix list (ids). |
+| `POST /api/sources` | Multipart PDF. Saves page text, never the file. Returns the page count. |
+| `POST /api/sources/:id/ingest` | Chunk, embed and save the next 10 pages. Call until `done`. |
+| `GET /api/sources`, `DELETE /api/sources/:id` | List, and remove a source with its pages and chunks. |
+| `POST /api/claims/:id/check` | Stages 3 to 9 for one claim. `done` with the verdict, or `retry` with the attempt number. |
+| `POST /api/events` | Seven client-side events only, each strictly validated. |
+
+**Live end-to-end over real HTTP (`npm run smoke:api`, 17 Nov):** a 2.2 MB, 15-page PDF uploaded and ingested in two batches; four claims checked in parallel; the run closed. Verdicts: 2 Supported with exact quotes on page 1, 1 Partial (the training-time claim, against "Training took 3.5 days on 8 P100 GPUs." on page 8, with a correct suggested fix), 1 No citation given. 11 requests; after the fixes in `docs/decisions.md`, four runs gave identical verdicts, none took over 10 seconds, and the slowest was 7.7 seconds. The pooled Neon connection with prepared statements off worked.
+
+**Not done / unverified:** a per-reference lock for concurrent lookups; request-body limits on the chosen host (see `docs/decisions.md`); the first-request delay when Neon's compute is asleep was handled in code (503 with retry) but not measured live; deployment.
 
 ## Judge output contract
 

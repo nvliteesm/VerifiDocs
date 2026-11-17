@@ -118,6 +118,15 @@ function buildUnits(paragraphs: string[]): ExtractionUnit[] {
   return units;
 }
 
+/**
+ * Cuts an already-parsed body (ParsedDraft.text) into extraction units again, exactly as parseDraftText did.
+ * It deliberately does not look for a reference list: the body was already separated from it, and a body with
+ * a "References" heading of its own (a contents page) must not be split a second time.
+ */
+export function splitIntoUnits(bodyText: string): ExtractionUnit[] {
+  return buildUnits(bodyText.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean));
+}
+
 /** Parses already-extracted text. Exported for tests and for the .docx path. */
 export function parseDraftText(raw: string): ParsedDraft {
   const cleaned = cleanText(raw);

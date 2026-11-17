@@ -227,4 +227,18 @@ describe.skipIf(!enabled)("retrieveTopChunks (dev branch)", () => {
       ).toEqual([]);
     });
   });
+
+  it("breaks ties by upload order and chunk position, not by random id", async () => {
+    await inTx(async (tx) => {
+      const session = await newSession(tx);
+      const doc = await newDocument(tx, session);
+      // Identical text and vectors, so every score ties. Inserted out of order, with random uuids.
+      for (const index of [2, 0, 3, 1]) await addChunk(tx, doc, index, 1, "an identical passage about rates", axes({ 0: 1 }));
+
+      for (let repeat = 0; repeat < 3; repeat += 1) {
+        const results = await retrieveTopChunks(tx, { sessionId: session, queryEmbedding: query, queryText: "identical passage rates" });
+        expect(results.map((r) => r.chunkIndex)).toEqual([0, 1, 2, 3]);
+      }
+    });
+  });
 });

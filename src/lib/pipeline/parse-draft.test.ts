@@ -9,6 +9,7 @@ import {
   parseDraft,
   parseDraftText,
   parseReferenceList,
+  splitIntoUnits,
 } from "./parse-draft";
 
 describe("parseDraftText", () => {
@@ -99,6 +100,18 @@ describe("parseDraftText", () => {
     expect(parsed.units.map((u) => u.index)).toEqual(parsed.units.map((_, i) => i));
     const joined = parsed.units.map((u) => u.text).join("\n\n");
     for (let i = 0; i < 40; i += 1) expect(joined).toContain(`Paragraph ${i}.`);
+  });
+
+  it("splitIntoUnits reproduces the units of a parsed body, even when the body has its own References heading", () => {
+    const drafts = [
+      "Contents\n\nReferences\n\nBody paragraph one.\n\nReferences\n\nSmith, J. (2021). Title. Journal.",
+      Array.from({ length: 40 }, (_, i) => `Paragraph ${i}. ` + "Word ".repeat(120).trim() + ".").join("\n\n"),
+      "Plain text only.",
+    ];
+    for (const draft of drafts) {
+      const parsed = parseDraftText(draft);
+      expect(splitIntoUnits(parsed.text)).toEqual(parsed.units);
+    }
   });
 
   it("splits one huge paragraph at sentence boundaries", () => {

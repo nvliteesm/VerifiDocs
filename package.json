@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:live": "LIVE=1 vitest run tests/live",
+    "smoke:api": "node --env-file-if-exists=.env.local --env-file-if-exists=.env.development.local scripts/smoke-api.mjs",
     "db:migrate": "node --env-file-if-exists=.env.local --env-file-if-exists=.env.development.local scripts/migrate.ts"
   },
   "dependencies": {

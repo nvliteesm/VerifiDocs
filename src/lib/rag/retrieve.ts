@@ -6,6 +6,9 @@
 // - The full-text arm uses the 'simple' config (no stemming) because sources mix English and Bahasa
 //   Indonesia, and ORs the claim's content words, since a whole sentence rarely matches as an AND.
 // - No similarity threshold yet: deciding "not in sources" is the judge's job. Tune on the eval set.
+// - Ties are broken by upload order and chunk position, never by a random id. Chunk ids are new on every
+//   ingest, so an id tie-break reordered (and, at rank 5, changed) the passages between identical runs, which
+//   changed the judge's verdict for the same claim.
 import type postgres from "postgres";
 import { toVectorLiteral } from "./embed";
 
@@ -95,22 +98,25 @@ export async function retrieveTopChunks(
 
   const rows = await sql<Row[]>`
     with vec as (
-      select c.id, row_number() over (order by c.embedding <=> ${vector}::vector)::int as rnk
+      select c.id,
+             row_number() over (order by c.embedding <=> ${vector}::vector, d.created_at, c.chunk_index, c.id)::int as rnk
       from chunks c
       join documents d on d.id = c.document_id
       where d.session_id = ${args.sessionId} and d.status = 'ready' ${docFilter}
-      order by c.embedding <=> ${vector}::vector
+      order by c.embedding <=> ${vector}::vector, d.created_at, c.chunk_index, c.id
       limit ${CANDIDATES_PER_ARM}
     ),
     txt as (
       select c.id,
-             row_number() over (order by ts_rank_cd(c.fts, q.query) desc, c.id)::int as rnk
+             row_number() over (
+               order by ts_rank_cd(c.fts, q.query) desc, d.created_at, c.chunk_index, c.id
+             )::int as rnk
       from chunks c
       join documents d on d.id = c.document_id
       cross join (select to_tsquery('simple', ${tsQuery}) as query) q
       where d.session_id = ${args.sessionId} and d.status = 'ready' ${docFilter}
         and c.fts @@ q.query
-      order by ts_rank_cd(c.fts, q.query) desc, c.id
+      order by ts_rank_cd(c.fts, q.query) desc, d.created_at, c.chunk_index, c.id
       limit ${CANDIDATES_PER_ARM}
     )
     select c.id as chunk_id,
@@ -125,7 +131,8 @@ export async function retrieveTopChunks(
     from vec
     full join txt on txt.id = vec.id
     join chunks c on c.id = coalesce(vec.id, txt.id)
-    order by score desc, c.id
+    join documents dd on dd.id = c.document_id
+    order by score desc, dd.created_at, c.chunk_index, c.id
     limit ${limit}
   `;
 

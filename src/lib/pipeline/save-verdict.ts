@@ -80,6 +80,36 @@ export async function getVerdict(
   return row ? toSaved(row, false, false) : null;
 }
 
+/**
+ * Closes the run, and logs `run_completed` once, if it is in the 'checking' state and every claim has a verdict.
+ * Called after a verdict is saved, and after the last unit is extracted (claims may already be done by then,
+ * and a draft with no claims has none to wait for). Returns true only for the call that closed the run.
+ * Must run inside a transaction.
+ */
+export async function completeRunIfFinished(tx: postgres.Sql, sessionId: string, runId: string): Promise<boolean> {
+  const [open] = await tx<{ n: number }[]>`
+    select count(*)::int as n from claims where run_id = ${runId} and status <> 'done'`;
+  if ((open?.n ?? 1) !== 0) return false;
+
+  const closed = await tx<{ duration_ms: number }[]>`
+    update runs set status = 'completed', completed_at = now()
+    where id = ${runId} and status = 'checking'
+    returning (extract(epoch from (now() - created_at)) * 1000)::int as duration_ms`;
+  if (closed.length === 0) return false;
+
+  const rows = await tx<{ verdict: Verdict; n: number }[]>`
+    select v.verdict, count(*)::int as n
+    from verdicts v join claims c on c.id = v.claim_id
+    where c.run_id = ${runId} group by v.verdict`;
+  const verdictCounts: Partial<Record<Verdict, number>> = {};
+  for (const row of rows) if (VERDICTS.includes(row.verdict)) verdictCounts[row.verdict] = row.n;
+  await logEvent(tx, sessionId, "run_completed", {
+    duration_ms: Math.max(0, closed[0]!.duration_ms),
+    verdict_counts: verdictCounts,
+  });
+  return true;
+}
+
 export async function saveVerdict(db: SqlLike, args: SaveVerdictArgs): Promise<SavedVerdict> {
   return atomically(db)(async (tx) => {
     // Lock the claim so two overlapping saves for it are serialized.
@@ -112,28 +142,7 @@ export async function saveVerdict(db: SqlLike, args: SaveVerdictArgs): Promise<S
       }
     }
 
-    let runCompleted = false;
-    const [open] = await tx<{ n: number }[]>`
-      select count(*)::int as n from claims where run_id = ${claim.run_id} and status <> 'done'`;
-    if ((open?.n ?? 1) === 0) {
-      const closed = await tx<{ duration_ms: number }[]>`
-        update runs set status = 'completed', completed_at = now()
-        where id = ${claim.run_id} and status = 'checking'
-        returning (extract(epoch from (now() - created_at)) * 1000)::int as duration_ms`;
-      if (closed.length > 0) {
-        const rows = await tx<{ verdict: Verdict; n: number }[]>`
-          select v.verdict, count(*)::int as n
-          from verdicts v join claims c on c.id = v.claim_id
-          where c.run_id = ${claim.run_id} group by v.verdict`;
-        const verdictCounts: Partial<Record<Verdict, number>> = {};
-        for (const row of rows) if (VERDICTS.includes(row.verdict)) verdictCounts[row.verdict] = row.n;
-        await logEvent(tx, args.sessionId, "run_completed", {
-          duration_ms: Math.max(0, closed[0]!.duration_ms),
-          verdict_counts: verdictCounts,
-        });
-        runCompleted = true;
-      }
-    }
+    const runCompleted = await completeRunIfFinished(tx, args.sessionId, claim.run_id);
 
     const [stored] = await tx<VerdictRow[]>`
       select claim_id, verdict, quote, page, reason, exit_stage, fix_suggestion

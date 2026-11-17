@@ -150,13 +150,19 @@ interface DocRow {
   pages_ingested: number;
 }
 
-function progressOf(doc: DocRow): IngestProgress {
+/** The result of one ingest request. `completedNow` is true only for the call that finished the document. */
+export interface IngestResult extends IngestProgress {
+  completedNow: boolean;
+}
+
+function progressOf(doc: DocRow, completedNow = false): IngestResult {
   return {
     documentId: doc.id,
     status: doc.status,
     pagesIngested: doc.pages_ingested,
     pageCount: doc.page_count,
     done: doc.status !== "ingesting",
+    completedNow,
   };
 }
 
@@ -170,7 +176,7 @@ export interface IngestBatchArgs {
  * Chunks, embeds and saves the next batch of pages. Safe to call again after any failure, and safe if
  * two calls overlap: the second finds the document has moved on and writes nothing.
  */
-export async function ingestNextBatch(db: SqlLike, llm: Llm, args: IngestBatchArgs): Promise<IngestProgress> {
+export async function ingestNextBatch(db: SqlLike, llm: Llm, args: IngestBatchArgs): Promise<IngestResult> {
   const sql = db as postgres.Sql;
   const batchPages = args.batchPages ?? INGEST_BATCH_PAGES;
 
@@ -220,7 +226,7 @@ export async function ingestNextBatch(db: SqlLike, llm: Llm, args: IngestBatchAr
     }
     await tx`update documents set pages_ingested = ${pagesIngested}, status = ${status} where id = ${doc.id}`;
 
-    return progressOf({ ...locked, pages_ingested: pagesIngested, status });
+    return progressOf({ ...locked, pages_ingested: pagesIngested, status }, status !== "ingesting");
   });
 }
 

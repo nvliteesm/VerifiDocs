@@ -11,14 +11,21 @@
 import { z } from "zod";
 import { normalizeForMatch } from "./citations";
 
-export const REQUEST_TIMEOUT_MS = 8_000;
+/** Per request, and the cap on one whole reference lookup. A claim check has about 10 seconds in total. */
+export const REQUEST_TIMEOUT_MS = 5_000;
+export const RESOLVE_DEADLINE_MS = 7_000;
+/** Not worth starting a request with less time than this left. */
+const MIN_REQUEST_MS = 300;
 const USER_AGENT = "VerifiDocs-portfolio/0.1";
 const TITLE_CONTAINMENT_MIN = 0.8;
 const DOI_TITLE_CONTAINMENT_MIN = 0.6;
 const MAX_TITLE_QUERIES = 3;
 const MAX_QUERY_CHARS = 200;
 
-export type FetchFn = (url: string, init?: { headers?: Record<string, string> }) => Promise<Response>;
+export type FetchFn = (
+  url: string,
+  init?: { headers?: Record<string, string>; timeoutMs?: number },
+) => Promise<Response>;
 
 export type ReferenceResolution =
   | {
@@ -186,7 +193,22 @@ function pickBest(raw: string, candidates: (Candidate | null)[]): ReferenceResol
 }
 
 export const defaultFetch: FetchFn = (url, init) =>
-  fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  fetch(url, {
+    ...(init?.headers ? { headers: init.headers } : {}),
+    signal: AbortSignal.timeout(init?.timeoutMs ?? REQUEST_TIMEOUT_MS),
+  });
+
+/**
+ * Stops issuing requests once the overall deadline is spent, and caps each request's timeout at the time left.
+ * A request that cannot be made counts as a failed lookup, so the result is "error" (retry), never "not_found".
+ */
+function withDeadline(fetchFn: FetchFn, deadlineAt: number, now: () => number): FetchFn {
+  return async (url, init) => {
+    const remaining = deadlineAt - now();
+    if (remaining < MIN_REQUEST_MS) throw new Error("The lookup deadline was reached.");
+    return fetchFn(url, { ...init, timeoutMs: Math.min(remaining, REQUEST_TIMEOUT_MS) });
+  };
+}
 
 export type SleepFn = (ms: number) => Promise<void>;
 const defaultSleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -212,12 +234,21 @@ function withRetry(fetchFn: FetchFn, sleep: SleepFn): FetchFn {
   };
 }
 
+export interface ResolveOptions {
+  /** Total time one lookup may take, across every request and retry wait. */
+  deadlineMs?: number;
+  now?: () => number;
+}
+
 export async function resolveReference(
   raw: string,
   baseFetch: FetchFn = defaultFetch,
   sleep: SleepFn = defaultSleep,
+  options: ResolveOptions = {},
 ): Promise<ReferenceResolution> {
-  const fetchFn = withRetry(baseFetch, sleep);
+  const now = options.now ?? Date.now;
+  const deadlineAt = now() + (options.deadlineMs ?? RESOLVE_DEADLINE_MS);
+  const fetchFn = withRetry(withDeadline(baseFetch, deadlineAt, now), sleep);
   const entry = raw.trim();
   const errors: string[] = [];
   const note = (result: Fetched<unknown>) => {

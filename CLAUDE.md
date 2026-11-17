@@ -4,7 +4,7 @@ Check-before-you-send verifier for final-year students who write with AI-supplie
 
 ## Status
 
-Rebuild in progress as of 17 Nov 2026. The legacy Python/FastAPI and Vite app has been removed from the working tree; it is preserved at the git tag `legacy-rag-chat` (commit `847d49c`) and is the reference for the RAG design only. Built so far: the Next.js scaffold, the Neon schema, the single Gemini adapter, quote normalization, the chunker, embedding helpers, hybrid retrieval, and pipeline stages 1 to 9 as tested library code (the judge, the quote gate, "Fix this claim", verdict saving with strict events, and `checkClaim`, which chains stages 2 to 9 for one claim); the earlier stages (draft parsing including .docx, claim extraction, citation matching and Crossref/OpenAlex lookup, source finding, PDF text extraction with batched all-or-nothing ingest, per-run caching of resolved references, and the `runPrelude` router that chains stages 2 to 4 for one claim). Not built: the API routes that call `checkClaim` and the ingest functions, the session token, the ranked fix list, the UI, the eval harness. Follow `docs/rebuild-brief.md` for the order of work. If that file conflicts with another doc, the brief wins for the rebuild; tell Steven which doc needs updating.
+Rebuild in progress as of 17 Nov 2026. The legacy Python/FastAPI and Vite app has been removed from the working tree; it is preserved at the git tag `legacy-rag-chat` (commit `847d49c`) and is the reference for the RAG design only. Built so far: the Next.js scaffold, the Neon schema, the single Gemini adapter, quote normalization, the chunker, embedding helpers, hybrid retrieval, and pipeline stages 1 to 9 as tested library code (the judge, the quote gate, "Fix this claim", verdict saving with strict events, and `checkClaim`, which chains stages 2 to 9 for one claim); the earlier stages (draft parsing including .docx, claim extraction, citation matching and Crossref/OpenAlex lookup, source finding, PDF text extraction with batched all-or-nothing ingest, per-run caching of resolved references, and the `runPrelude` router that chains stages 2 to 4 for one claim). Also built: the API routes (runs, sources, claims, events), the httpOnly session cookie, the origin check, safe error mapping and the ranked fix list, all verified over real HTTP. Not built: the UI, the eval harness, deployment (host not chosen). Follow `docs/rebuild-brief.md` for the order of work. If that file conflicts with another doc, the brief wins for the rebuild; tell Steven which doc needs updating.
 
 ## What it does
 
@@ -51,6 +51,7 @@ npm run build        # production build
 npm run typecheck    # tsc --noEmit
 npm test             # vitest run: unit tests, plus database tests on the Neon dev branch
 npm run test:live    # opt-in (LIVE=1): real Crossref, OpenAlex and Gemini calls with synthetic text; skipped by npm test
+npm run smoke:api    # needs `npm run dev` running: a full check over real HTTP with a real PDF, timing every request; refuses unless NEON_BRANCH=dev and cleans up after itself
 npm run db:migrate   # apply db/migrations/*.sql in order; refuses the main branch unless --allow-main
 ```
 

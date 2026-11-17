@@ -43,4 +43,7 @@ Fill in once the harness exists: command, output location, and where results are
 
 - Never tune prompts against a label you have seen the answer to without recording it. Keep a held-out slice of the claims for the final score.
 - Report failures by verdict type, not only the overall percentage.
+- Measure retrieval, not only verdicts: for each labelled claim, is the passage with the expected quote in the top 5? A claim called Not in sources only because retrieval missed the evidence is the worst failure this tool can produce, and it looks like a correct "abstain" unless retrieval is measured separately. Add a "retrieval hit" column.
+- Measure stability: run each claim several times (at least 3) and report how often the verdict changes. On 17 Nov one claim changed verdict across live runs (see `docs/architecture.md`).
+- Include table and scanned-source cases. A judge said Supported for a wrong claim read from a garbled table, and only the quote check stopped it.
 - With only 35 non-Supported claims, the 5% bar allows one miss. Treat early results as indicative.

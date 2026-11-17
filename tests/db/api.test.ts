@@ -1,0 +1,640 @@
+// The API handlers against the Neon `dev` branch, driven with real Request objects and a fake model client.
+// Skipped unless NEON_BRANCH=dev. Each test runs in a transaction that is rolled back.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import postgres from "postgres";
+import { afterAll, describe, expect, it } from "vitest";
+import { checkClaimHandler, postEvent } from "../../src/lib/api/claims";
+import { handleWith, type ApiContext, type ApiDeps } from "../../src/lib/api/handler";
+import { MAX_RUNS_PER_SESSION, createRun, extractUnit, getRun } from "../../src/lib/api/runs";
+import { deleteSource, ingestSource, listSources, uploadSource } from "../../src/lib/api/sources";
+import {
+  EMBEDDING_DIMENSIONS,
+  LlmUnavailableError,
+  type GenerateJsonRequest,
+  type Llm,
+} from "../../src/lib/llm/adapter";
+import type { ReferenceResolution } from "../../src/lib/pipeline/resolve-reference";
+import { hashToken } from "../../src/lib/session";
+
+const url = process.env.DATABASE_URL_UNPOOLED;
+const enabled = Boolean(url) && process.env.NEON_BRANCH === "dev";
+
+class Rollback extends Error {}
+const sql = enabled ? postgres(url as string, { max: 1, onnotice: () => {} }) : null;
+
+async function inTx(fn: (tx: postgres.TransactionSql) => Promise<void>): Promise<void> {
+  if (!sql) return;
+  try {
+    await sql.begin(async (tx) => {
+      await fn(tx);
+      throw new Rollback();
+    });
+  } catch (error) {
+    if (!(error instanceof Rollback)) throw error;
+  }
+}
+
+const fixture = (name: string) => new Uint8Array(readFileSync(join(process.cwd(), "tests", "fixtures", name)));
+const probe = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => (i === 0 ? 1 : 0));
+
+interface Script {
+  extract?: (prompt: string) => { claims: { text: string; citation: string | null }[] };
+  judge?: () => unknown;
+  fix?: () => string;
+}
+
+function fakeLlm(script: Script = {}) {
+  const calls = { extract: 0, judge: 0, fix: 0 };
+  const llm: Llm = {
+    async generateJson<T>(request: GenerateJsonRequest<T>): Promise<T> {
+      if (request.prompt.includes("list every factual claim")) {
+        calls.extract += 1;
+        if (!script.extract) throw new Error("unexpected extraction call");
+        return request.schema.parse(script.extract(request.prompt));
+      }
+      if (request.prompt.includes("Decide whether the passages support the claim")) {
+        calls.judge += 1;
+        if (!script.judge) throw new Error("unexpected judge call");
+        return request.schema.parse(script.judge());
+      }
+      calls.fix += 1;
+      return request.schema.parse({ sentence: script.fix ? script.fix() : "" });
+    },
+    async embed(texts) {
+      return texts.map(() => [...probe]);
+    },
+  };
+  return { llm, calls };
+}
+
+interface Reply {
+  status: number;
+  body: any;
+  setCookie: string | null;
+  retryAfter: string | null;
+}
+
+/** One simulated browser: it keeps its own cookie, like a real session would. */
+function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["resolve"]) {
+  const deps: ApiDeps = { sql: tx, llm, ...(resolve ? { resolve } : {}) };
+  const client = {
+    cookie: null as string | null,
+    async send(
+      method: string,
+      path: string,
+      fn: (context: ApiContext, request: Request) => Promise<Response>,
+      options: { json?: unknown; form?: FormData; headers?: Record<string, string>; rawBody?: string } = {},
+    ): Promise<Reply> {
+      const headers: Record<string, string> = { ...(options.headers ?? {}) };
+      if (client.cookie) headers.cookie = client.cookie;
+      let body: BodyInit | null = null;
+      if (options.json !== undefined) {
+        headers["content-type"] = headers["content-type"] ?? "application/json";
+        body = JSON.stringify(options.json);
+      } else if (options.rawBody !== undefined) {
+        body = options.rawBody;
+      } else if (options.form) {
+        body = options.form;
+      }
+      const request = new Request(`http://localhost:3000${path}`, { method, headers, body });
+      const response = await handleWith(deps, request, (context) => fn(context, request));
+      const setCookie = response.headers.get("set-cookie");
+      if (setCookie) client.cookie = setCookie.split(";")[0]!;
+      const text = await response.text();
+      return {
+        status: response.status,
+        body: text ? JSON.parse(text) : null,
+        setCookie,
+        retryAfter: response.headers.get("retry-after"),
+      };
+    },
+    createRun: (json: unknown, headers?: Record<string, string>) =>
+      client.send("POST", "/api/runs", (c, r) => createRun(c, r), { json, ...(headers ? { headers } : {}) }),
+    createRunForm: (form: FormData) => client.send("POST", "/api/runs", (c, r) => createRun(c, r), { form }),
+    extract: (runId: string, unit: number) =>
+      client.send("POST", `/api/runs/${runId}/extract`, (c, r) => extractUnit(c, runId, r), { json: { unit } }),
+    getRun: (runId: string) => client.send("GET", `/api/runs/${runId}`, (c) => getRun(c, runId)),
+    listSources: () => client.send("GET", "/api/sources", (c) => listSources(c)),
+    upload: (form: FormData) => client.send("POST", "/api/sources", (c, r) => uploadSource(c, r), { form }),
+    ingest: (id: string) => client.send("POST", `/api/sources/${id}/ingest`, (c) => ingestSource(c, id)),
+    deleteSource: (id: string) => client.send("DELETE", `/api/sources/${id}`, (c) => deleteSource(c, id)),
+    check: (claimId: string) => client.send("POST", `/api/claims/${claimId}/check`, (c) => checkClaimHandler(c, claimId)),
+    event: (json: unknown) => client.send("POST", "/api/events", (c, r) => postEvent(c, r), { json }),
+    sessionId: async () => {
+      const token = client.cookie!.split("=")[1]!;
+      const [row] = await tx<{ id: string }[]>`select id from sessions where token_hash = ${hashToken(token)}`;
+      return row!.id;
+    },
+  };
+  return client;
+}
+
+const pdfForm = (name: string, filename = "paper.pdf") => {
+  const form = new FormData();
+  form.set("file", new File([fixture(name)], filename, { type: "application/pdf" }));
+  return form;
+};
+
+const DRAFT =
+  "Inflation rose to 5 percent in 2023 (Smith, 2021).\n\nReferences\n\n" +
+  "Smith, J. (2021). Inflation and household spending. Journal of Economics.\n\n" +
+  "Lee, K. (2020). Consumer behaviour. Review.";
+
+const singleClaim = () => ({ claims: [{ text: "Inflation rose to 5 percent in 2023", citation: "(Smith, 2021)" }] });
+
+async function events(tx: postgres.TransactionSql, sessionId: string) {
+  return tx<{ name: string; props: any }[]>`select name, props from events where session_id = ${sessionId} order by id`;
+}
+
+async function countSessions(tx: postgres.TransactionSql): Promise<number> {
+  const [row] = await tx<{ n: number }[]>`select count(*)::int as n from sessions`;
+  return row!.n;
+}
+
+afterAll(async () => {
+  await sql?.end();
+});
+
+describe.skipIf(!enabled)("session and cookie", () => {
+  it("starts a session with a safe cookie on the first request, and reuses it afterwards", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const first = await client.listSources();
+      expect(first.status).toBe(200);
+      expect(first.body).toEqual({ sources: [] });
+      expect(first.setCookie).toMatch(/^vd_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000$/);
+
+      const second = await client.listSources();
+      expect(second.setCookie).toBeNull();
+
+      const started = await events(tx, await client.sessionId());
+      expect(started.map((e) => e.name)).toEqual(["session_started"]);
+    });
+  });
+
+  it("stores only a hash of the token", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      await client.listSources();
+      const token = client.cookie!.split("=")[1]!;
+      expect(await tx`select token_hash from sessions where token_hash = ${token}`).toHaveLength(0);
+      expect(await tx`select 1 from sessions where token_hash = ${hashToken(token)}`).toHaveLength(1);
+    });
+  });
+
+  it("gives an unknown or malformed cookie a fresh, empty session and never another session's data", async () => {
+    await inTx(async (tx) => {
+      const owner = newClient(tx, fakeLlm().llm);
+      await owner.upload(pdfForm("sample.pdf"));
+      expect((await owner.listSources()).body.sources).toHaveLength(1);
+
+      for (const cookie of [`vd_session=${"A".repeat(43)}`, "vd_session=not-a-token", "vd_session="]) {
+        const stranger = newClient(tx, fakeLlm().llm);
+        stranger.cookie = cookie;
+        const reply = await stranger.listSources();
+        expect(reply.status).toBe(200);
+        expect(reply.setCookie).not.toBeNull();
+        expect(reply.body.sources).toEqual([]);
+      }
+    });
+  });
+
+  it("refuses a write from another site before doing anything, and allows a same-site one", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const before = await countSessions(tx);
+      const refused = await client.createRun({ draft: DRAFT }, { origin: "https://evil.example" });
+      expect(refused.status).toBe(403);
+      expect(refused.body.error.code).toBe("bad_origin");
+      expect(await countSessions(tx)).toBe(before);
+
+      const allowed = await client.createRun({ draft: DRAFT }, { origin: "http://localhost:3000" });
+      expect(allowed.status).toBe(201);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("creating a run", () => {
+  it("saves a pasted draft without its reference list, the references in order, and ids-only events", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const reply = await client.createRun({ draft: DRAFT });
+      expect(reply.status).toBe(201);
+      expect(reply.body).toMatchObject({ status: "extracting", unitCount: 1, referenceCount: 2 });
+
+      const [run] = await tx`select status, unit_count, draft_text, input_type from runs where id = ${reply.body.runId}`;
+      expect(run).toMatchObject({ status: "extracting", unit_count: 1, input_type: "paste" });
+      expect(run!.draft_text).toContain("Inflation rose to 5 percent");
+      expect(run!.draft_text).not.toContain("Lee, K.");
+
+      const refs = await tx`select position, raw_text from reference_entries where run_id = ${reply.body.runId} order by position`;
+      expect(refs.map((r) => r.position)).toEqual([1, 2]);
+      expect(refs[0]!.raw_text).toBe("Smith, J. (2021). Inflation and household spending. Journal of Economics.");
+
+      const logged = await events(tx, await client.sessionId());
+      expect(logged.map((e) => e.name)).toEqual(["session_started", "draft_submitted", "references_added"]);
+      expect(logged[1]!.props).toEqual({ input_type: "paste", length_bucket: "short" });
+      expect(logged[2]!.props).toEqual({ count: 2 });
+      expect(JSON.stringify(logged)).not.toContain("Inflation");
+    });
+  });
+
+  it("uses a separately supplied reference list instead of one inside the draft", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const reply = await client.createRun({
+        draft: "Plain text with no references heading in it.",
+        references: "1. Jones, A. (2019). A title here. Journal.\n2. Brown, T. (2018). Another title. Review.",
+      });
+      expect(reply.body.referenceCount).toBe(2);
+      const refs = await tx`select raw_text from reference_entries where run_id = ${reply.body.runId} order by position`;
+      expect(refs.map((r) => r.raw_text)).toEqual(["Jones, A. (2019). A title here. Journal.", "Brown, T. (2018). Another title. Review."]);
+    });
+  });
+
+  it("reads a .docx draft and its reference list", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const form = new FormData();
+      form.set("file", new File([fixture("sample.docx")], "draft.docx"));
+      const reply = await client.createRunForm(form);
+      expect(reply.status).toBe(201);
+      expect(reply.body.referenceCount).toBe(2);
+      const logged = await events(tx, await client.sessionId());
+      expect(logged.find((e) => e.name === "draft_submitted")!.props.input_type).toBe("docx");
+    });
+  });
+
+  it("allows a draft with no reference list", async () => {
+    await inTx(async (tx) => {
+      const reply = await newClient(tx, fakeLlm().llm).createRun({ draft: "Just a sentence about rates in 2020." });
+      expect(reply.status).toBe(201);
+      expect(reply.body.referenceCount).toBe(0);
+    });
+  });
+
+  it("rejects bad input with a clear code", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      expect((await client.createRun({ draft: "   " })).body.error.code).toBe("empty");
+      expect((await client.createRun({ draft: 5 })).body.error.code).toBe("invalid_request");
+      expect((await client.createRun({ nothing: true })).status).toBe(400);
+      const wrongType = await client.send("POST", "/api/runs", (c, r) => createRun(c, r), { rawBody: "x", headers: { "content-type": "text/plain" } });
+      expect(wrongType.status).toBe(415);
+      const tooLong = await client.createRun({ draft: "word ".repeat(13_000) });
+      expect(tooLong.body.error.code).toBe("too_long");
+    });
+  });
+
+  it("limits how many runs one session can create", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      await client.listSources();
+      const sessionId = await client.sessionId();
+      for (let i = 0; i < MAX_RUNS_PER_SESSION; i += 1) {
+        await tx`insert into runs (session_id, draft_text, input_type) values (${sessionId}, 'x', 'paste')`;
+      }
+      const reply = await client.createRun({ draft: DRAFT });
+      expect(reply.status).toBe(409);
+      expect(reply.body.error.code).toBe("too_many_runs");
+    });
+  });
+});
+
+describe.skipIf(!enabled)("extracting claims", () => {
+  it("extracts a single-unit draft, moves the run to checking, and does it only once", async () => {
+    await inTx(async (tx) => {
+      const { llm, calls } = fakeLlm({ extract: singleClaim });
+      const client = newClient(tx, llm);
+      const { body: created } = await client.createRun({ draft: DRAFT });
+
+      const first = await client.extract(created.runId, 0);
+      expect(first.status).toBe(200);
+      expect(first.body).toMatchObject({ claimsAdded: 1, alreadyExtracted: false, status: "checking", unitsExtracted: 1, unitCount: 1, claimCount: 1 });
+
+      const claims = await tx`select position, text, citation_text, status from claims where run_id = ${created.runId}`;
+      expect(claims).toEqual([{ position: 1, text: "Inflation rose to 5 percent in 2023", citation_text: "(Smith, 2021)", status: "pending" }]);
+
+      const logged = await events(tx, await client.sessionId());
+      expect(logged.find((e) => e.name === "run_started")!.props).toEqual({ claim_count: 1 });
+
+      const again = await client.extract(created.runId, 0);
+      expect(again.body).toMatchObject({ alreadyExtracted: true, claimsAdded: 0, status: "checking" });
+      expect(calls.extract).toBe(1);
+      expect(await tx`select 1 from claims where run_id = ${created.runId}`).toHaveLength(1);
+      expect((await events(tx, await client.sessionId())).filter((e) => e.name === "run_started")).toHaveLength(1);
+    });
+  });
+
+  it("keeps the run extracting until the last unit of a long draft, with unique ordered positions", async () => {
+    await inTx(async (tx) => {
+      const draft = Array.from({ length: 40 }, (_, i) => `Paragraph ${i} states a fact. ` + "Some filler words continue here. ".repeat(9)).join("\n\n");
+      const { llm } = fakeLlm({
+        extract: (prompt) => {
+          const first = /Paragraph \d+ states a fact\./.exec(prompt);
+          return { claims: first ? [{ text: first[0], citation: null }] : [] };
+        },
+      });
+      const client = newClient(tx, llm);
+      const { body: created } = await client.createRun({ draft });
+      expect(created.unitCount).toBeGreaterThan(1);
+
+      for (let unit = 0; unit < created.unitCount; unit += 1) {
+        const reply = await client.extract(created.runId, unit);
+        expect(reply.body.unitsExtracted).toBe(unit + 1);
+        expect(reply.body.status).toBe(unit + 1 < created.unitCount ? "extracting" : "checking");
+      }
+
+      const run = await client.getRun(created.runId);
+      expect(run.body.claims).toHaveLength(created.unitCount);
+      const positions = run.body.claims.map((c: any) => c.position);
+      expect(positions).toEqual([...positions].sort((a: number, b: number) => a - b));
+      expect(new Set(positions).size).toBe(positions.length);
+      expect(run.body.run).toMatchObject({ status: "checking", unitsExtracted: created.unitCount });
+    });
+  });
+
+  it("completes a run with no claims straight away", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm({ extract: () => ({ claims: [] }) }).llm);
+      const { body: created } = await client.createRun({ draft: "Some thoughts with nothing checkable in them." });
+      const reply = await client.extract(created.runId, 0);
+      expect(reply.body).toMatchObject({ status: "completed", claimCount: 0 });
+      const logged = await events(tx, await client.sessionId());
+      expect(logged.map((e) => e.name)).toContain("run_completed");
+      expect(logged.find((e) => e.name === "run_completed")!.props.verdict_counts).toEqual({});
+    });
+  });
+
+  it("rejects a unit that does not exist, and a run that is not the caller's", async () => {
+    await inTx(async (tx) => {
+      const mine = newClient(tx, fakeLlm({ extract: singleClaim }).llm);
+      const theirs = newClient(tx, fakeLlm({ extract: singleClaim }).llm);
+      const { body: created } = await mine.createRun({ draft: DRAFT });
+      await theirs.listSources();
+
+      expect((await mine.extract(created.runId, 5)).body.error.code).toBe("unit_out_of_range");
+      expect((await theirs.extract(created.runId, 0)).status).toBe(404);
+      expect((await mine.extract("not-a-uuid", 0)).status).toBe(404);
+      expect((await mine.send("POST", `/api/runs/${created.runId}/extract`, (c, r) => extractUnit(c, created.runId, r), { json: { unit: -1 } })).status).toBe(400);
+    });
+  });
+
+  it("answers 503 with a retry hint when the model is unavailable, and records nothing until it works", async () => {
+    await inTx(async (tx) => {
+      let failing = true;
+      const { llm } = fakeLlm({
+        extract: () => {
+          if (failing) throw new LlmUnavailableError("The Gemini API request failed (HTTP 503).", 503);
+          return singleClaim();
+        },
+      });
+      const client = newClient(tx, llm);
+      const { body: created } = await client.createRun({ draft: DRAFT });
+
+      const failed = await client.extract(created.runId, 0);
+      expect(failed.status).toBe(503);
+      expect(failed.body.error).toMatchObject({ code: "model_unavailable", retry: true });
+      expect(failed.retryAfter).toBe("2");
+      expect(await tx`select 1 from run_units where run_id = ${created.runId}`).toHaveLength(0);
+
+      failing = false;
+      expect((await client.extract(created.runId, 0)).status).toBe(200);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("sources", () => {
+  it("uploads a PDF, ingests it, lists it, and deletes it, logging source_uploaded once", async () => {
+    await inTx(async (tx) => {
+      const { llm } = fakeLlm();
+      const client = newClient(tx, llm);
+
+      const uploaded = await client.upload(pdfForm("sample.pdf"));
+      expect(uploaded.status).toBe(201);
+      expect(uploaded.body).toMatchObject({ status: "ingesting", pageCount: 3 });
+      const id = uploaded.body.documentId;
+      expect((await client.listSources()).body.sources[0]).toMatchObject({ id, filename: "paper.pdf", status: "ingesting", pageCount: 3 });
+
+      const done = await client.ingest(id);
+      expect(done.body).toEqual({ documentId: id, status: "ready", pagesIngested: 3, pageCount: 3, done: true });
+      const again = await client.ingest(id);
+      expect(again.body.done).toBe(true);
+
+      const uploadedEvents = (await events(tx, await client.sessionId())).filter((e) => e.name === "source_uploaded");
+      expect(uploadedEvents).toHaveLength(1);
+      expect(uploadedEvents[0]!.props).toMatchObject({ page_bucket: "1_to_10" });
+      expect(typeof uploadedEvents[0]!.props.ingest_ms).toBe("number");
+
+      expect((await client.listSources()).body.sources[0].status).toBe("ready");
+      const removed = await client.deleteSource(id);
+      expect(removed.status).toBe(204);
+      expect((await client.listSources()).body.sources).toEqual([]);
+      expect((await client.deleteSource(id)).status).toBe(404);
+    });
+  });
+
+  it("reports a scanned PDF as no_text at upload", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const uploaded = await client.upload(pdfForm("scanned.pdf", "scan.pdf"));
+      expect(uploaded.body).toMatchObject({ status: "no_text", pageCount: 2 });
+      const logged = (await events(tx, await client.sessionId())).filter((e) => e.name === "source_uploaded");
+      expect(logged).toHaveLength(1);
+      expect(logged[0]!.props.ingest_ms).toBe(0);
+    });
+  });
+
+  it("rejects a file that is not a PDF, a missing file, and an oversized file", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+
+      const text = new FormData();
+      text.set("file", new File(["hello, this is plain text"], "notes.pdf"));
+      expect((await client.upload(text)).body.error.code).toBe("not_a_pdf");
+
+      expect((await client.upload(new FormData())).body.error.code).toBe("missing_file");
+
+      const huge = new FormData();
+      huge.set("file", new File([new Uint8Array(10 * 1024 * 1024 + 1)], "huge.pdf"));
+      expect((await client.upload(huge)).status).toBe(413);
+
+      expect((await client.listSources()).body.sources).toEqual([]);
+    });
+  });
+
+  it("never lets one session ingest, list or delete another session's source", async () => {
+    await inTx(async (tx) => {
+      const mine = newClient(tx, fakeLlm().llm);
+      const theirs = newClient(tx, fakeLlm().llm);
+      const { body } = await theirs.upload(pdfForm("sample.pdf"));
+
+      expect((await mine.ingest(body.documentId)).status).toBe(404);
+      expect((await mine.deleteSource(body.documentId)).status).toBe(404);
+      expect((await mine.listSources()).body.sources).toEqual([]);
+      expect((await mine.ingest("not-a-uuid")).status).toBe(404);
+      expect((await theirs.listSources()).body.sources).toHaveLength(1);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("checking claims, end to end", () => {
+  const DRAFT2 =
+    "The dominant sequence transduction models are based on complex recurrent networks (Vaswani, 2017).\n\nReferences\n\n" +
+    "Vaswani, A. (2017). Attention is all you need. Advances in Neural Information Processing Systems.";
+  const found: ReferenceResolution = { status: "found", resolver: "crossref", doi: "10.1/x", title: "Attention Is All You Need", year: 2017, yearMismatch: false };
+  const claim2 = () => ({ claims: [{ text: "The dominant sequence transduction models are based on complex recurrent networks (Vaswani, 2017).", citation: "(Vaswani, 2017)" }] });
+
+  it("runs create, extract, upload, ingest and check, then shows a verified quote and closes the run", async () => {
+    await inTx(async (tx) => {
+      const { llm } = fakeLlm({
+        extract: claim2,
+        judge: () => ({
+          verdict: "supported",
+          quote: "The dominant sequence transduction models are based on complex recurrent networks",
+          page: 1,
+          chunk_id: "P1",
+          reason: "The source states it.",
+        }),
+      });
+      const client = newClient(tx, llm, async () => found);
+
+      const { body: created } = await client.createRun({ draft: DRAFT2 });
+      await client.extract(created.runId, 0);
+      const { body: source } = await client.upload(pdfForm("sample.pdf"));
+      await client.ingest(source.documentId);
+
+      const before = await client.getRun(created.runId);
+      expect(before.body.run.status).toBe("checking");
+      expect(before.body.claims[0]).toMatchObject({ status: "pending", verdict: null });
+      const claimId = before.body.claims[0].id;
+
+      const checked = await client.check(claimId);
+      expect(checked.status).toBe(200);
+      expect(checked.body).toMatchObject({
+        outcome: "done",
+        runCompleted: true,
+        verdict: { verdict: "supported", page: 1, exitStage: 7, quote: "The dominant sequence transduction models are based on complex recurrent networks" },
+      });
+
+      const after = await client.getRun(created.runId);
+      expect(after.body.run.status).toBe("completed");
+      expect(after.body.counts).toEqual({ supported: 1 });
+      expect(after.body.progress).toEqual({ checked: 1, total: 1 });
+      expect(after.body.fixList).toEqual([]);
+      expect(after.body.references[0]).toMatchObject({ position: 1, resolution: "found", resolvedTitle: "Attention Is All You Need" });
+
+      const logged = await events(tx, await client.sessionId());
+      expect(logged.map((e) => e.name)).toEqual([
+        "session_started", "draft_submitted", "references_added", "run_started", "source_uploaded", "claim_checked", "run_completed",
+      ]);
+      const everything = JSON.stringify(logged);
+      for (const secret of ["dominant", "Vaswani", "Attention", "transduction"]) expect(everything).not.toContain(secret);
+    });
+  });
+
+  it("asks the browser to retry when a lookup fails, with the attempt number", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm({ extract: claim2 }).llm, async () => ({ status: "error", reason: "Crossref returned HTTP 503" }));
+      const { body: created } = await client.createRun({ draft: DRAFT2 });
+      await client.extract(created.runId, 0);
+      const claimId = (await client.getRun(created.runId)).body.claims[0].id;
+
+      const reply = await client.check(claimId);
+      expect(reply.status).toBe(200);
+      expect(reply.body).toEqual({ outcome: "retry", reason: "Crossref returned HTTP 503", attempt: 1 });
+    });
+  });
+
+  it("ends a claim that cites a reference not in the list as Reference not found, with the reason", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm({ extract: () => ({ claims: [{ text: "Rates rose sharply in 2019 overall", citation: "(Jones, 2019)" }] }) }).llm, async () => found);
+      const { body: created } = await client.createRun({ draft: "Rates rose sharply in 2019 overall (Jones, 2019).\n\nReferences\n\nSmith, J. (2021). A title here. Journal." });
+      await client.extract(created.runId, 0);
+      const claimId = (await client.getRun(created.runId)).body.claims[0].id;
+      const reply = await client.check(claimId);
+      expect(reply.body.verdict).toMatchObject({ verdict: "reference_not_found", exitStage: 3 });
+      expect(reply.body.verdict.reason).toMatch(/not in your reference list/);
+    });
+  });
+
+  it("returns 404 for an unknown claim and for another session's claim", async () => {
+    await inTx(async (tx) => {
+      const mine = newClient(tx, fakeLlm({ extract: claim2 }).llm, async () => found);
+      const theirs = newClient(tx, fakeLlm().llm);
+      const { body: created } = await mine.createRun({ draft: DRAFT2 });
+      await mine.extract(created.runId, 0);
+      const claimId = (await mine.getRun(created.runId)).body.claims[0].id;
+      await theirs.listSources();
+
+      expect((await theirs.check(claimId)).status).toBe(404);
+      expect((await mine.check("0b9d8a52-7f0e-4a6a-9d0c-6f1f7a3c2b11")).status).toBe(404);
+      expect((await mine.check("not-a-uuid")).status).toBe(404);
+      expect((await theirs.getRun(created.runId)).status).toBe(404);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("the ranked fix list", () => {
+  it("lists claims that need attention most serious first, and leaves out Supported ones", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm({ extract: singleClaim }).llm);
+      const { body: created } = await client.createRun({ draft: DRAFT });
+      const sessionId = await client.sessionId();
+
+      const verdicts: [number, string][] = [[1, "partial"], [2, "supported"], [3, "contradicted"], [4, "cant_check"], [5, "contradicted"]];
+      const ids = new Map<number, string>();
+      for (const [position, verdict] of verdicts) {
+        const [row] = await tx<{ id: string }[]>`
+          insert into claims (run_id, session_id, position, text, status)
+          values (${created.runId}, ${sessionId}, ${position}, ${`Claim ${position}`}, 'done') returning id`;
+        ids.set(position, row!.id);
+        await tx`
+          insert into verdicts (claim_id, session_id, verdict, quote, page, reason, exit_stage)
+          values (${row!.id}, ${sessionId}, ${verdict}, ${verdict === "cant_check" ? null : "A quote long enough to count"}, ${verdict === "cant_check" ? null : 2}, 'r', ${verdict === "cant_check" ? 4 : 7})`;
+      }
+
+      const run = await client.getRun(created.runId);
+      expect(run.body.fixList).toEqual([ids.get(3), ids.get(5), ids.get(1), ids.get(4)]);
+      expect(run.body.counts).toEqual({ partial: 1, supported: 1, contradicted: 2, cant_check: 1 });
+      expect(run.body.claims.map((c: any) => c.position)).toEqual([1, 2, 3, 4, 5]);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("client events", () => {
+  it("accepts an allowed client event and stores only its fields", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const reply = await client.event({ name: "evidence_opened", props: { verdict: "supported" } });
+      expect(reply.status).toBe(204);
+      const logged = (await events(tx, await client.sessionId())).filter((e) => e.name === "evidence_opened");
+      expect(logged).toHaveLength(1);
+      expect(logged[0]!.props).toEqual({ verdict: "supported" });
+    });
+  });
+
+  it("refuses events the server logs itself, unknown events, extra keys, and free text", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const bad: unknown[] = [
+        { name: "claim_checked", props: { verdict: "supported", exit_stage: 7, latency_ms: 1, retries: 0 } },
+        { name: "run_completed", props: { duration_ms: 1, verdict_counts: {} } },
+        { name: "made_up_event", props: {} },
+        { name: "verdict_flagged_wrong", props: { verdict: "partial", quote: "the student's private quote" } },
+        { name: "would_pay_answered", props: { answer: "yes", price_bucket: "a long sentence of free text" } },
+        { name: "evidence_opened", props: { verdict: "not a verdict" } },
+        { props: {} },
+      ];
+      for (const body of bad) {
+        const reply = await client.event(body);
+        expect(reply.status, JSON.stringify(body)).toBe(400);
+      }
+      const stored = (await events(tx, await client.sessionId())).map((e) => e.name);
+      expect(stored).toEqual(["session_started"]);
+      expect((await client.send("POST", "/api/events", (c, r) => postEvent(c, r), { rawBody: "x", headers: { "content-type": "text/plain" } })).status).toBe(415);
+    });
+  });
+});

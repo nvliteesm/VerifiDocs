@@ -302,6 +302,62 @@ describe("resolveReference", () => {
     expect((await resolveReference(VASWANI, fn)).status).toBe("error");
   });
 
+  describe("overall deadline", () => {
+    /** A fake clock that moves forward `step` ms on every request, and a fetch that records the timeouts it was given. */
+    function slowNetwork(step: number) {
+      let clock = 0;
+      const timeouts: (number | undefined)[] = [];
+      const urls: string[] = [];
+      const fn: FetchFn = async (url, init) => {
+        urls.push(url);
+        timeouts.push(init?.timeoutMs);
+        clock += step;
+        return isCrossrefSearch(url) ? crossrefList([]) : openAlexList([]);
+      };
+      return { fn, timeouts, urls, now: () => clock };
+    }
+
+    it("gives each request only the time that is left, up to the per-request cap", async () => {
+      const net = slowNetwork(3000);
+      await resolveReference(VASWANI, net.fn, noSleep, { deadlineMs: 7000, now: net.now });
+      expect(net.timeouts).toEqual([5000, 4000, 1000]);
+    });
+
+    it("stops issuing requests once the deadline is spent, and reports an error, never not_found", async () => {
+      // A normal lookup is three requests (Crossref, then two OpenAlex title searches). At 4 s each, the
+      // third would start at 8 s, after the 7 s deadline, so it is not sent.
+      const net = slowNetwork(4000);
+      const result = await resolveReference(VASWANI, net.fn, noSleep, { deadlineMs: 7000, now: net.now });
+      expect(net.urls).toHaveLength(2);
+      expect(result.status).toBe("error");
+    });
+
+    it("a lookup that finishes in time is unaffected", async () => {
+      const net = slowNetwork(10);
+      const result = await resolveReference(VASWANI, net.fn, noSleep, { deadlineMs: 7000, now: net.now });
+      expect(result.status).toBe("not_found"); // every request ran and answered, and nothing matched
+      expect(net.urls).toHaveLength(3);
+    });
+
+    it("counts a Retry-After wait against the deadline", async () => {
+      let clock = 0;
+      let crossrefCalls = 0;
+      const fn: FetchFn = async (url) => {
+        if (isCrossrefSearch(url)) {
+          crossrefCalls += 1;
+          return new Response("{}", { status: 429, headers: { "retry-after": "3" } });
+        }
+        return openAlexList([]);
+      };
+      const sleep = async (ms: number) => {
+        clock += ms;
+      };
+      const result = await resolveReference(VASWANI, fn, sleep, { deadlineMs: 2000, now: () => clock });
+      expect(crossrefCalls).toBe(1); // after waiting 3 s the deadline is gone, so the retry is not sent
+      expect(result.status).toBe("error");
+    });
+  });
+
   it("sends a generic User-Agent and only the reference text", async () => {
     const { fn, urls, headers } = fakeFetch((u) => (isCrossrefSearch(u) ? crossrefList([]) : openAlexList([])));
     await resolveReference(VASWANI, fn);

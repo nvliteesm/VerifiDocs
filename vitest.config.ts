@@ -16,5 +16,7 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
     environment: "node",
+    // Database tests talk to Neon over the internet, and a waking compute can add seconds.
+    testTimeout: 30_000,
   },
 });
