@@ -1,0 +1,97 @@
+// Stage 4: find the uploaded source file for a resolved reference.
+//
+// Reads only: the session's documents that are 'ready' or 'no_text', and the first three pages of each.
+// A source is matched, in order of strength, by (1) a link the student made, (2) the DOI printed in the
+// first pages, (3) the resolved title printed in the first pages, (4) the title words in the filename.
+// The filename is the only clue for a scanned PDF, which has no text to read.
+import type { SqlLike } from "../rag/retrieve";
+import { normalizeForMatch } from "./citations";
+import type postgres from "postgres";
+
+const HEAD_PAGES = 3;
+const FILENAME_TITLE_MATCH_MIN = 0.6;
+const MIN_TITLE_TOKENS = 2;
+
+export type SourceLookup =
+  | { kind: "found"; documentId: string }
+  /** A matching PDF was uploaded but has no extractable text (a scan; there is no OCR). */
+  | { kind: "no_text"; documentId: string }
+  | { kind: "none" };
+
+export interface FindSourceArgs {
+  sessionId: string;
+  /** A document the student linked to this reference, if any. It wins over any guess. */
+  linkedDocumentId?: string | null;
+  /** DOI of the resolved reference, if known. */
+  doi?: string | null;
+  /** Title of the resolved reference. */
+  title: string;
+}
+
+interface Row {
+  id: string;
+  status: "ready" | "no_text";
+  filename: string;
+  head: string;
+}
+
+function titleTokens(title: string): string[] {
+  return normalizeForMatch(title).split(" ").filter((token) => token.length >= 2);
+}
+
+function lookupOf(row: Pick<Row, "id" | "status">): SourceLookup {
+  return row.status === "ready" ? { kind: "found", documentId: row.id } : { kind: "no_text", documentId: row.id };
+}
+
+export async function findSourceDocument(db: SqlLike, args: FindSourceArgs): Promise<SourceLookup> {
+  const sql = db as postgres.Sql;
+
+  if (args.linkedDocumentId) {
+    const [linked] = await sql<{ id: string; status: string }[]>`
+      select id, status from documents
+      where id = ${args.linkedDocumentId} and session_id = ${args.sessionId}`;
+    if (linked && (linked.status === "ready" || linked.status === "no_text")) {
+      return lookupOf({ id: linked.id, status: linked.status });
+    }
+    return { kind: "none" };
+  }
+
+  const rows = await sql<Row[]>`
+    select d.id, d.status, d.filename,
+           coalesce(string_agg(p.text, ' ' order by p.page_number), '') as head
+    from documents d
+    left join pages p on p.document_id = d.id and p.page_number <= ${HEAD_PAGES}
+    where d.session_id = ${args.sessionId} and d.status in ('ready', 'no_text')
+    group by d.id, d.status, d.filename, d.created_at
+    order by d.created_at, d.id`;
+  if (rows.length === 0) return { kind: "none" };
+
+  const title = titleTokens(args.title);
+  const normalizedTitle = title.join(" ");
+  const doi = args.doi?.trim().toLowerCase() ?? "";
+  const matches: { row: Row; strength: number }[] = [];
+
+  for (const row of rows) {
+    const head = normalizeForMatch(row.head);
+    const rawHead = row.head.toLowerCase();
+    let strength = 0;
+
+    if (doi.length > 0 && rawHead.includes(doi)) strength = 3;
+    else if (title.length >= MIN_TITLE_TOKENS && ` ${head} `.includes(` ${normalizedTitle} `)) strength = 2;
+    else if (title.length >= MIN_TITLE_TOKENS) {
+      const fileTokens = new Set(normalizeForMatch(row.filename.replace(/\.pdf$/i, "")).split(" "));
+      const share = title.filter((token) => fileTokens.has(token)).length / title.length;
+      if (share >= FILENAME_TITLE_MATCH_MIN) strength = 1;
+    }
+    if (strength > 0) matches.push({ row, strength });
+  }
+  if (matches.length === 0) return { kind: "none" };
+
+  // Strongest match first; among equals, a readable PDF beats a scan, then the earliest upload.
+  matches.sort(
+    (a, b) =>
+      b.strength - a.strength ||
+      Number(b.row.status === "ready") - Number(a.row.status === "ready"),
+  );
+  return lookupOf(matches[0]!.row);
+}

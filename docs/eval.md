@@ -18,6 +18,7 @@ Treat an unsupported claim as one labelled Partial, Contradicted or Not in sourc
 - Suggested columns: `id`, `claim`, `source_file`, `language`, `expected_verdict`, `expected_quote`, `expected_page`, `notes`.
 - Quote and page columns are still empty in the Sheet, because the source PDFs have not been matched to rows yet.
 - To build: about 10 claims in Bahasa Indonesia, and Reference-not-found, Can't check and No citation given cases. The 50 existing claims do not cover those verdicts.
+- To build: a small set of whole drafts (English and Bahasa Indonesia) in which every factual claim is labelled, to measure **extraction recall** (stage 2). The 50 claims are already extracted, so they cannot show a claim the extractor never surfaces. A live check on 17 Nov missed one plain uncited claim out of five. Report recall next to verdict accuracy, keep a held-out slice, and do not tune the extraction prompt on the held-out drafts.
 - Do not edit labels without asking Steven. Three labels were changed in the Sheet during review: B04 to Partial, and B19 and C03 to Not in sources (see the Sheet's notes column).
 
 ## Models

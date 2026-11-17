@@ -1,6 +1,6 @@
 # Architecture
 
-Status: design from 16 Nov 2026 (PRD v0.3), updated 17 Nov 2026 to match `docs/rebuild-brief.md`. Built so far (17 Nov 2026): the Neon schema, the Gemini adapter, quote normalization, the chunker, embedding helpers and hybrid retrieval. Stages 1 to 4, 7 to 9 and the UI are not built. The legacy Python app was removed and is preserved at the git tag `legacy-rag-chat` (see `docs/current-state.md`). Items marked "starting value" are meant to be tuned on the eval set. Items marked "unverified" must be checked before building.
+Status: design from 16 Nov 2026 (PRD v0.3), updated 17 Nov 2026 to match `docs/rebuild-brief.md`. Built so far (17 Nov 2026): the Neon schema, the Gemini adapter, quote normalization, the chunker, embedding helpers, hybrid retrieval, and stages 1 to 5 as library code (see "Stages 1 to 4 as built" and "Stage 5 as built"). Stages 7 to 9, the API routes and the UI are not built. The legacy Python app was removed and is preserved at the git tag `legacy-rag-chat` (see `docs/current-state.md`). Items marked "starting value" are meant to be tuned on the eval set. Items marked "unverified" must be checked before building.
 
 ## Components
 
@@ -51,6 +51,31 @@ The browser keeps up to 5 claim checks in flight. Reopening a run resumes the `p
 | 9 | Save and log | Final verdict | Verdict row and events | No | none |
 
 Stages 3 to 9 run per claim. A failed claim gets a bounded retry, then Can't tell with the reason logged. Fix this claim runs after stage 8 for Partial and Contradicted verdicts and must use only the verified quote. A source whose pages have no extractable text (a scanned PDF; there is no OCR) is not a valid source for stage 4, so the claim exits as Can't check.
+
+## Stages 1 to 4 as built
+
+Library code in `src/lib/pipeline/`, tested, not yet called by any API route.
+
+- **1. Parse draft** (`parse-draft.ts`): pasted text or .docx (via `mammoth`) to cleaned text, sections, an optional trailing reference list ("References", "Daftar Pustaka" and similar; the last such heading wins, so a contents page is ignored), and extraction units of at most about 6,000 characters. A separate `parseReferenceList` splits a pasted list into entries; an entry's 1-based position is what a numeric citation refers to. Known limit: an unnumbered list whose entries wrap across lines with no blank lines between them splits too finely.
+- **2. Extract claims** (`extract-claims.ts`): one request per unit through the adapter. Every claim and citation must appear in the unit after normalization or it is dropped and counted. A claim with no citation exits as No citation given in `runPrelude`.
+- **3. Resolve reference** (`citations.ts`, `resolve-reference.ts`): read the citation marker, find the reference-list entry, then look the entry up (a DOI first, then Crossref, then OpenAlex title searches). Rules are in `docs/decisions.md`. Only the entry's text is sent to those services.
+- **4. Find source file** (`find-source.ts`): see `docs/decisions.md`. Reads documents with status `ready` or `no_text` for the session only.
+- **`runPrelude`** (`prelude.ts`) chains 2 to 4 for one claim and returns an exit (a verdict with a reason and the exit stage), a retry request (a lookup failed), or the documents to retrieve from. The lookups are injected, so it is tested with fakes.
+
+**Reference caching** (`reference-cache.ts`): `resolveEntryCached` looks an entry up once per run and saves the answer on its `reference_entries` row (migration 0003 adds `resolved_year` and `year_mismatch`), so five claims citing one paper make one lookup. Only found and not_found are saved; a failed lookup never is; the first saved answer wins if two claims race; reads and writes are scoped to the session.
+
+## Stage 5 as built
+
+`src/lib/pipeline/ingest.ts`. No file store, and no request runs long.
+
+- **`createDocumentFromPdf`**: reads the PDF with `unpdf`, normalizes each page's text and saves the pages. The bytes are never stored. A PDF with no extractable text becomes `no_text` immediately. Limits (starting values): 10 MB, 300 pages, 10 sources per session; the filename is cleaned.
+- **`ingestNextBatch`**: chunks the next 10 saved pages, embeds them (outside the transaction, through the adapter), then in one transaction locks the document row, checks nobody else advanced it, saves the chunks with contiguous indexes, advances `pages_ingested`, and on the last batch sets `ready` (or `no_text` if there were no chunks). A failed or overlapping call writes nothing.
+- **`abandonDocument`**: deletes a document, and its pages and chunks by cascade.
+- Retrieval reads only `ready` documents, so a half-ingested source is never searched. A real 15-page paper reads in about 0.3 seconds, so the page save fits easily in one short request; embedding is the slow part and is the reason for batches.
+
+Real-PDF check (`npm run test:live`): a public two-column paper is read, chunked, and sentences quoted from it are found inside its chunks despite ligatures and line-break hyphenation.
+
+Not done yet: the API routes that call these functions, deciding when to give up and call `abandonDocument` after repeated batch failures, and the session cookie.
 
 ## Judge output contract
 
