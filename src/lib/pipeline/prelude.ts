@@ -129,6 +129,13 @@ export async function runPrelude(
       };
     }
     if (resolution.status === "error") {
+      // The online lookup failed (a rate limit, a timeout). If the student uploaded a PDF that matches the entry,
+      // the PDF is the evidence and the lookup is not needed, so do not fail the claim over it.
+      const uploaded = deps.findUploaded ? await deps.findUploaded(entry) : ({ kind: "none" } as SourceLookup);
+      if (uploaded.kind !== "none") {
+        lookups.push(uploaded);
+        continue;
+      }
       errors.push(resolution.reason);
       continue;
     }

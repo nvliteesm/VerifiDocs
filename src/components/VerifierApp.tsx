@@ -166,7 +166,7 @@ export function VerifierApp() {
             />
           ) : (
             <>
-              <ResultsView state={state} onRetryClaim={verification.retry} onEvent={event} />
+              <ResultsView state={state} focusWhenDone={lastInput !== null} onRetryClaim={verification.retry} onEvent={event} />
               <div className="actions">
                 {state.phase === "done" && (
                   <>
@@ -196,6 +196,11 @@ export function VerifierApp() {
                         }}
                       >
                         Check again with my sources
+                      </button>
+                    )}
+                    {lastInput && (
+                      <button type="button" className="btn" onClick={() => verification.reset()}>
+                        Edit draft
                       </button>
                     )}
                   </>

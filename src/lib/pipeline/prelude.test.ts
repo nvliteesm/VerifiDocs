@@ -130,6 +130,21 @@ describe("runPrelude", () => {
     expect((result as { documentIds: string[] }).documentIds.sort()).toEqual(["doc-1", "doc-2"]);
   });
 
+  it("uses a matching uploaded PDF even when the online lookup failed, instead of failing the claim", async () => {
+    const { impl } = deps({ resolutions: { 1: { status: "error", reason: "OpenAlex returned HTTP 429" } } });
+    const result = await runPrelude({ citation: "(Smith & Lee, 2021)" }, entries, {
+      ...impl,
+      findUploaded: async () => ({ kind: "found", documentId: "doc-report" }),
+    });
+    expect(result).toMatchObject({ outcome: "ready", documentIds: ["doc-report"] });
+  });
+
+  it("still asks for a retry when the lookup failed and no uploaded PDF matches", async () => {
+    const { impl } = deps({ resolutions: { 1: { status: "error", reason: "OpenAlex returned HTTP 429" } } });
+    const result = await runPrelude({ citation: "(Smith & Lee, 2021)" }, entries, { ...impl, findUploaded: async () => ({ kind: "none" }) });
+    expect(result).toEqual({ outcome: "retry", reason: "OpenAlex returned HTTP 429" });
+  });
+
   it("asks for a retry, never a verdict, when a lookup failed", async () => {
     const { impl } = deps({ resolutions: { 1: { status: "error", reason: "Crossref returned HTTP 503" } } });
     const result = await runPrelude({ citation: "(Smith & Lee, 2021)" }, entries, impl);

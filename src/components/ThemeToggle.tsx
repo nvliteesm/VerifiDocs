@@ -14,7 +14,20 @@ export function ThemeToggle() {
 
   useEffect(() => {
     const saved = document.documentElement.dataset.theme;
-    setDark(saved === "dark" ? true : saved === "light" ? false : systemPrefersDark());
+    if (saved === "dark" || saved === "light") {
+      setDark(saved === "dark");
+      return;
+    }
+    setDark(systemPrefersDark());
+    // Until the student chooses, the page follows the system (for example an automatic switch at sunset), so the
+    // switch must follow it too. Once they choose, data-theme is set and the system no longer matters.
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event: MediaQueryListEvent) => {
+      if (!document.documentElement.dataset.theme) setDark(event.matches);
+    };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
   }, []);
 
   function toggle() {

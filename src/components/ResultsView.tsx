@@ -8,6 +8,11 @@ import type { VerifierState } from "@/lib/client/verifier-state";
 
 interface Props {
   state: VerifierState;
+  /**
+   * Move focus to the Results heading when the check finishes. True only when the student started this check in
+   * this visit: they pressed a button that has since left the page. A check reopened after a reload must not take focus.
+   */
+  focusWhenDone?: boolean;
   onRetryClaim: (claimId: string) => void;
   onEvent: (name: "evidence_opened" | "verdict_flagged_wrong" | "fix_accepted", props?: Record<string, unknown>) => void;
 }
@@ -128,7 +133,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
   );
 }
 
-export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
+export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEvent }: Props) {
   const [chosen, setFilter] = useState<Verdict | "attention" | "all">("attention");
   const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set());
   const [copiedFix, setCopiedFix] = useState<Record<string, "copied" | "failed">>({});
@@ -145,12 +150,12 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
   const heading = useRef<HTMLHeadingElement>(null);
   const wasFinished = useRef(finished);
   useEffect(() => {
-    if (finished && !wasFinished.current) {
+    if (focusWhenDone && finished && !wasFinished.current) {
       const active = document.activeElement;
       if (!active || active === document.body) heading.current?.focus();
     }
     wasFinished.current = finished;
-  }, [finished]);
+  }, [finished, focusWhenDone]);
 
   const shown = useMemo(() => {
     const ranked = new Map(state.fixList.map((id, index) => [id, index]));

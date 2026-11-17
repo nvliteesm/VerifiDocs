@@ -14,7 +14,8 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   test: {
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    // Component tests are .test.tsx and opt into jsdom with a "@vitest-environment jsdom" comment on their first line.
+    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.ts"],
     environment: "node",
     // Database tests talk to Neon over the internet, and a waking compute can add seconds.
     testTimeout: 30_000,
