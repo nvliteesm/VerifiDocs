@@ -1,0 +1,43 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - link "Skip to content" [ref=f1e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=f1e4]:
+      - generic [ref=f1e5]: VerifiDocs
+      - switch "Dark mode" [ref=f1e6] [cursor=pointer]
+    - main [ref=f1e9]:
+      - generic [ref=f1e10]:
+        - heading "Check every claim against your sources" [level=1] [ref=f1e11]
+        - paragraph [ref=f1e12]: Add the PDFs you cite, paste your draft, and see which claims your sources really support.
+      - generic [ref=f1e13]:
+        - region "Your sources" [ref=f1e15]:
+          - generic [ref=f1e16]:
+            - paragraph [ref=f1e17]: Step 1 of 2
+            - heading "Your sources" [level=2] [ref=f1e18]
+            - paragraph [ref=f1e19]: The PDFs you cite. Up to 10 files of 10 MB each. Text PDFs only; scans can't be read. Each PDF is deleted once its text is read.
+          - generic [ref=f1e20]:
+            - button "Choose PDFs" [ref=f1e21] [cursor=pointer]
+            - generic [ref=f1e22]: or drop them here
+        - region "Your draft" [ref=f1e24]:
+          - generic [ref=f1e25]:
+            - paragraph [ref=f1e26]: Step 2 of 2
+            - heading "Your draft" [level=2] [ref=f1e27]
+            - paragraph [ref=f1e28]: Paste the paragraphs you want checked, or upload a Word file. Keep your citations as you wrote them.
+          - group "How to add your draft" [ref=f1e29]:
+            - button "Paste text" [pressed] [ref=f1e30] [cursor=pointer]
+            - button "Upload .docx" [ref=f1e31] [cursor=pointer]
+          - generic [ref=f1e32]:
+            - generic [ref=f1e33] [cursor=pointer]: Draft text
+            - textbox "Draft text" [ref=f1e34]:
+              - /placeholder: Paste your paragraphs here, with the citations as you wrote them.
+            - paragraph [ref=f1e35]: 0 / 60,000 characters
+          - generic [ref=f1e36]:
+            - generic [ref=f1e37] [cursor=pointer]: Reference list (optional if it is already inside your draft)
+            - textbox "Reference list (optional if it is already inside your draft)" [ref=f1e38]:
+              - /placeholder: One reference per line, as in your bibliography.
+          - generic [ref=f1e39]:
+            - button "Check my claims" [disabled] [ref=f1e40]
+            - generic [ref=f1e41]: Add your draft to continue.
+      - generic [ref=f1e42]: Drafts, source text and results are deleted 30 days after upload.
+  - button "Open Next.js Dev Tools" [ref=f1e48] [cursor=pointer]
+  - alert [ref=f1e52]

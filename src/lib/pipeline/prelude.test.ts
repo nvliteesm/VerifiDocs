@@ -56,6 +56,15 @@ describe("runPrelude", () => {
     expect(resolved).toEqual([]); // no network call for a citation that is not even listed
   });
 
+  it("says the reference list is missing when no entries were added", async () => {
+    const { impl, resolved } = deps({});
+    const result = await runPrelude({ citation: "(Smith, 2021)" }, [], impl);
+    expect(result).toMatchObject({ outcome: "exit", exit: { verdict: "reference_not_found", exitStage: 3 } });
+    if (result.outcome !== "exit") throw new Error("expected exit");
+    expect(result.exit.reason).toContain("no reference list was added");
+    expect(resolved).toEqual([]);
+  });
+
   it("exits with Reference not found for a citation that cannot be read", async () => {
     const { impl } = deps({});
     const result = await runPrelude({ citation: "see above" }, entries, impl);

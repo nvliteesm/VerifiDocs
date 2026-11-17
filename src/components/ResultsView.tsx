@@ -29,9 +29,19 @@ function Badge({ verdict }: { verdict: Verdict }) {
   );
 }
 
-function ClaimCard({ claim, error, onRetry, onEvent }: { claim: ClaimView; error: string | undefined; onRetry: () => void; onEvent: Props["onEvent"] }) {
-  const [flagged, setFlagged] = useState(false);
-  const [copied, setCopied] = useState(false);
+interface CardProps {
+  claim: ClaimView;
+  error: string | undefined;
+  flagged: boolean;
+  copied: "idle" | "copied" | "failed";
+  onFlag: () => void;
+  onCopied: (result: "copied" | "failed") => void;
+  onRetry: () => void;
+  onEvent: Props["onEvent"];
+}
+
+// `flagged` and `copied` live in ResultsView, because a card unmounts whenever the filter changes.
+function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent }: CardProps) {
   const verdict = claim.verdict;
   const info = verdict ? VERDICT_INFO[verdict] : null;
 
@@ -72,12 +82,14 @@ function ClaimCard({ claim, error, onRetry, onEvent }: { claim: ClaimView; error
             type="button"
             className="btn btn-small"
             onClick={async () => {
-              setCopied(await copy(claim.fixSuggestion!));
-              onEvent("fix_accepted");
+              const ok = await copy(claim.fixSuggestion!);
+              onCopied(ok ? "copied" : "failed");
+              if (ok) onEvent("fix_accepted");
             }}
           >
-            {copied ? "Copied" : "Copy sentence"}
+            {copied === "copied" ? "Copied" : "Copy sentence"}
           </button>
+          {copied === "failed" && <span className="hint hint-bad">Could not copy. Select the sentence and copy it by hand.</span>}
         </div>
       )}
 
@@ -97,7 +109,7 @@ function ClaimCard({ claim, error, onRetry, onEvent }: { claim: ClaimView; error
             className="link"
             disabled={flagged}
             onClick={() => {
-              setFlagged(true);
+              onFlag();
               onEvent("verdict_flagged_wrong", { verdict });
             }}
           >
@@ -110,10 +122,16 @@ function ClaimCard({ claim, error, onRetry, onEvent }: { claim: ClaimView; error
 }
 
 export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
-  const [filter, setFilter] = useState<Verdict | "attention" | "all">("attention");
+  const [chosen, setFilter] = useState<Verdict | "attention" | "all">("attention");
+  const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set());
+  const [copiedFix, setCopiedFix] = useState<Record<string, "copied" | "failed">>({});
   const checked = state.claims.filter((claim) => claim.verdict !== null).length;
   const total = state.claims.length;
   const attention = attentionCount(state.counts);
+  const finished = state.phase === "done";
+  // When nothing needs attention, an empty "Needs attention" list would contradict the tally, so show everything.
+  const filter = chosen === "attention" && finished && attention === 0 ? "all" : chosen;
+  const tally = attention === 0 ? "Every checked claim is supported." : `${attention} of ${total} claims need attention.`;
 
   const shown = useMemo(() => {
     const ranked = new Map(state.fixList.map((id, index) => [id, index]));
@@ -134,14 +152,17 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
     });
   }, [state.claims, state.fixList, filter]);
 
-  const finished = state.phase === "done";
-
   return (
     <section className="panel" aria-labelledby="results-title">
       <div className="panel-head">
-        <p className="eyebrow">Step 2 of 2</p>
+        <p className="eyebrow">{finished ? "Check complete" : state.phase === "error" ? "Check stopped" : "Checking"}</p>
         <h2 id="results-title">Results</h2>
       </div>
+
+      {/* Stays mounted so screen readers hear the outcome when the progress line goes away. */}
+      <p className="sr-only" role="status">
+        {finished ? (total === 0 ? "Check finished. No checkable claims were found." : `Check finished. ${tally}`) : ""}
+      </p>
 
       {!finished && state.phase !== "error" && (
         <div className="progress" aria-live="polite">
@@ -161,10 +182,8 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
       {total > 0 && (
         <>
           <div className="tally">
-            <p className="tally-number">
-              {attention === 0 && finished ? "Every checked claim is supported." : `${attention} of ${total} claims need attention.`}
-            </p>
-            <p className="hint">Most urgent first. Open a claim to see the quote from your source.</p>
+            {finished && <p className="tally-number">{tally}</p>}
+            <p className="hint">Most urgent first. Where a claim has one, open &ldquo;What your source says&rdquo; to see the exact quote.</p>
           </div>
 
           <div className="chips" role="group" aria-label="Filter claims">
@@ -183,7 +202,17 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
 
           <ol className="claims">
             {shown.map((claim) => (
-              <ClaimCard key={claim.id} claim={claim} error={state.claimErrors[claim.id]} onRetry={() => onRetryClaim(claim.id)} onEvent={onEvent} />
+              <ClaimCard
+                key={claim.id}
+                claim={claim}
+                error={state.claimErrors[claim.id]}
+                flagged={flagged.has(claim.id)}
+                copied={copiedFix[claim.id] ?? "idle"}
+                onFlag={() => setFlagged((prev) => new Set(prev).add(claim.id))}
+                onCopied={(result) => setCopiedFix((prev) => ({ ...prev, [claim.id]: result }))}
+                onRetry={() => onRetryClaim(claim.id)}
+                onEvent={onEvent}
+              />
             ))}
           </ol>
           {shown.length === 0 && <p className="empty">Nothing in this filter.</p>}

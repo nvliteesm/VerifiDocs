@@ -11,13 +11,15 @@ interface Props {
   /** True once the source list has loaded and none of them is ready to check against. */
   noReadySources?: boolean;
   onStart: (input: VerifyInput) => void;
+  /** The last submitted input, so a failed or finished check can be edited instead of retyped. */
+  initial?: VerifyInput | null;
 }
 
-export function DraftPanel({ disabled, disabledReason, noReadySources = false, onStart }: Props) {
-  const [mode, setMode] = useState<"paste" | "docx">("paste");
-  const [text, setText] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [references, setReferences] = useState("");
+export function DraftPanel({ disabled, disabledReason, noReadySources = false, onStart, initial = null }: Props) {
+  const [mode, setMode] = useState<"paste" | "docx">(initial?.draft.kind === "docx" ? "docx" : "paste");
+  const [text, setText] = useState(initial?.draft.kind === "paste" ? initial.draft.text : "");
+  const [file, setFile] = useState<File | null>(initial?.draft.kind === "docx" ? initial.draft.file : null);
+  const [references, setReferences] = useState(initial?.references ?? "");
   const [fileError, setFileError] = useState<string | null>(null);
 
   const tooLong = text.length > MAX_DRAFT_CHARS;
@@ -85,7 +87,7 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
 
       <div className="field">
         <label htmlFor="draft-refs">
-          Reference list <span className="hint">(optional if it is already inside your draft)</span>
+          Reference list <span className="hint">(needed to match your citations, unless the list is already inside your draft)</span>
         </label>
         <textarea
           id="draft-refs"
@@ -103,11 +105,19 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
       )}
 
       <div className="actions">
-        <button type="button" className="btn btn-primary" disabled={!canStart} onClick={() => onStart({ draft: mode === "paste" ? { kind: "paste", text } : { kind: "docx", file: file! }, references })}>
+        <button type="button" className="btn btn-primary" disabled={!canStart} aria-describedby={canStart ? undefined : "start-reason"} onClick={() => onStart({ draft: mode === "paste" ? { kind: "paste", text } : { kind: "docx", file: file! }, references })}>
           Check my claims
         </button>
-        {disabled && disabledReason && <span className="hint">{disabledReason}</span>}
-        {!disabled && !hasDraft && <span className="hint">Add your draft to continue.</span>}
+        {disabled && disabledReason && (
+          <span id="start-reason" className="hint">
+            {disabledReason}
+          </span>
+        )}
+        {!disabled && !hasDraft && (
+          <span id="start-reason" className="hint">
+            Add your draft to continue.
+          </span>
+        )}
       </div>
     </section>
   );

@@ -194,6 +194,12 @@ select:disabled {
     top: 20px;
   }
 }
+/* On narrow screens, once a check exists the results come before the sources tray. */
+@media (max-width: 919px) {
+  .has-run .main-col {
+    order: -1;
+  }
+}
 .rail,
 .main-col {
   display: grid;
@@ -618,6 +624,36 @@ summary {
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 10px;
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+/* The chevron is the cue that this opens: it is the product's main evidence, so it must not look like a static label. */
+summary::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+details[open] > summary::before {
+  transform: rotate(45deg);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 blockquote {
   margin: 0 0 8px;

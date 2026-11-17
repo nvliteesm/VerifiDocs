@@ -88,7 +88,10 @@ export async function runPrelude(
         exit: {
           verdict: "reference_not_found",
           exitStage: 3,
-          reason: `"${label(marker)}" is not in your reference list.`,
+          reason:
+            entries.length === 0
+              ? `"${label(marker)}" cannot be matched because no reference list was added. Paste your reference list and check again.`
+              : `"${label(marker)}" is not in your reference list.`,
         },
       };
     }

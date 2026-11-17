@@ -1,0 +1,86 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - link "Skip to content" [ref=f1e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=f1e4]:
+      - generic [ref=f1e5]: VerifiDocs
+      - switch "Dark mode" [ref=f1e6] [cursor=pointer]
+    - main [ref=f1e9]:
+      - generic [ref=f1e10]:
+        - heading "Check every claim against your sources" [level=1] [ref=f1e11]
+        - paragraph [ref=f1e12]: Add the PDFs you cite, paste your draft, and see which claims your sources really support.
+      - generic [ref=f1e13]:
+        - region "Your sources" [ref=f1e15]:
+          - generic [ref=f1e16]:
+            - paragraph [ref=f1e17]: Step 1 of 2
+            - heading "Your sources" [level=2] [ref=f1e18]
+            - paragraph [ref=f1e19]: The PDFs you cite. Up to 10 files of 10 MB each. Text PDFs only; scans can't be read. Each PDF is deleted once its text is read.
+          - generic [ref=f1e20]:
+            - button "Choose PDFs" [ref=f1e21] [cursor=pointer]
+            - generic [ref=f1e22]: or drop them here
+          - list [ref=f1e53]:
+            - listitem [ref=f1e54]:
+              - generic [ref=f1e55]:
+                - generic [ref=f1e56]: sample.pdf
+                - generic [ref=f1e57]: Ready, 3 pages
+              - button "Remove sample.pdf" [ref=f1e59] [cursor=pointer]: Remove
+        - generic [ref=f1e23]:
+          - region "Results" [ref=f1e60]:
+            - generic [ref=f1e61]:
+              - paragraph [ref=f1e62]: Step 2 of 2
+              - heading "Results" [level=2] [ref=f1e63]
+            - generic [ref=f1e67]:
+              - paragraph [ref=f1e68]: 3 of 3 claims need attention.
+              - paragraph [ref=f1e69]: Most urgent first. Open a claim to see the quote from your source.
+            - group "Filter claims" [ref=f1e70]:
+              - button "Needs attention (3)" [pressed] [ref=f1e90] [cursor=pointer]
+              - button "Reference not found (2)" [ref=f1e91] [cursor=pointer]: "! Reference not found (2)"
+              - button "No citation (1)" [ref=f1e92] [cursor=pointer]: ○ No citation (1)
+              - button "All (3)" [ref=f1e72] [cursor=pointer]
+            - list [ref=f1e73]:
+              - listitem [ref=f1e74]:
+                - generic [ref=f1e75]:
+                  - generic [ref=f1e93]: "! Reference not found"
+                  - generic [ref=f1e77]: (Vaswani et al., 2017)
+                - paragraph [ref=f1e78]: International trade rose 5 percent
+                - paragraph [ref=f1e94]: This citation is not in your reference list, or no record of it was found in Crossref or OpenAlex. It may be mistyped or made up.
+                - paragraph [ref=f1e95]: "\"vaswani 2017\" is not in your reference list."
+                - paragraph [ref=f1e96]:
+                  - strong [ref=f1e97]: "What to do:"
+                  - text: Check the citation exists and is spelled correctly.
+                - button "This verdict is wrong" [ref=f1e99] [cursor=pointer]
+              - listitem [ref=f1e79]:
+                - generic [ref=f1e80]:
+                  - generic [ref=f1e100]: "! Reference not found"
+                  - generic [ref=f1e82]: (Vaswani et al., 2017)
+                - paragraph [ref=f1e83]: International trade rose 20 percent
+                - paragraph [ref=f1e101]: This citation is not in your reference list, or no record of it was found in Crossref or OpenAlex. It may be mistyped or made up.
+                - paragraph [ref=f1e102]: "\"vaswani 2017\" is not in your reference list."
+                - paragraph [ref=f1e103]:
+                  - strong [ref=f1e104]: "What to do:"
+                  - text: Check the citation exists and is spelled correctly.
+                - button "This verdict is wrong" [ref=f1e106] [cursor=pointer]
+              - listitem [ref=f1e84]:
+                - generic [ref=f1e85]: ○ No citation
+                - paragraph [ref=f1e87]: Transformers were first proposed in 1995
+                - paragraph [ref=f1e108]: This looks like a factual claim but has no citation.
+                - paragraph [ref=f1e109]: The claim has no citation.
+                - paragraph [ref=f1e110]:
+                  - strong [ref=f1e111]: "What to do:"
+                  - text: Add a citation, or take the claim out.
+                - button "This verdict is wrong" [ref=f1e113] [cursor=pointer]
+          - generic [ref=f1e88]:
+            - button "Copy report" [ref=f1e114] [cursor=pointer]
+            - button "Check again with my sources" [ref=f1e115] [cursor=pointer]
+            - button "Start a new check" [ref=f1e89] [cursor=pointer]
+          - region "One question" [ref=f1e116]:
+            - heading "One question" [level=2] [ref=f1e117]
+            - paragraph [ref=f1e118]: If a tool like this were not free, would you pay for it?
+            - group "Would you pay" [ref=f1e119]:
+              - button "Yes" [ref=f1e120] [cursor=pointer]
+              - button "Maybe" [ref=f1e121] [cursor=pointer]
+              - button "No" [ref=f1e122] [cursor=pointer]
+            - button "Send answer" [disabled] [ref=f1e124]
+      - generic [ref=f1e42]: Drafts, source text and results are deleted 30 days after upload.
+  - button "Open Next.js Dev Tools" [ref=f1e48] [cursor=pointer]
+  - alert [ref=f1e52]

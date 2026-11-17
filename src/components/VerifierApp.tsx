@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createApi } from "@/lib/client/api";
 import { buildReport } from "@/lib/client/report";
 import type { ClientEventName, VerifyInput } from "@/lib/client/types";
@@ -43,8 +43,9 @@ export function VerifierApp() {
   const [waking, setWaking] = useState(false);
   const [api] = useState(() => createApi({ onWaking: setWaking }));
   const [consent, setConsent] = useState<boolean | null>(null);
-  const lastInput = useRef<VerifyInput | null>(null);
-  const [copied, setCopied] = useState(false);
+  // Kept in memory only: it lets a failed check be retried or edited without retyping. Never stored (Hard Rules 4 and 11).
+  const [lastInput, setLastInput] = useState<VerifyInput | null>(null);
+  const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
   const [paid, setPaid] = useState<{ answer: "yes" | "maybe" | "no"; bucket: string } | null>(null);
   const [answered, setAnswered] = useState(false);
 
@@ -70,8 +71,15 @@ export function VerifierApp() {
   const running = state.phase === "starting" || state.phase === "extracting" || state.phase === "checking";
   const idle = state.phase === "idle";
 
+  useEffect(() => {
+    if (copied === "idle") return;
+    const timer = setTimeout(() => setCopied("idle"), 3000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   const start = (input: VerifyInput) => {
-    lastInput.current = input;
+    setLastInput(input);
+    setCopied("idle");
     setAnswered(false);
     verification.start(input);
   };
@@ -133,7 +141,7 @@ export function VerifierApp() {
         </p>
       )}
 
-      <div className="workspace">
+      <div className={`workspace${idle ? "" : " has-run"}`}>
         <div className="rail">
           <SourcesPanel rows={sources.rows} loaded={sources.loaded} notice={sources.notice} onAdd={sources.addFiles} onRetry={sources.retryRow} onRemove={sources.remove} />
         </div>
@@ -144,6 +152,7 @@ export function VerifierApp() {
               disabled={sources.busy}
               disabledReason={sources.busy ? "Wait for your sources to finish reading." : null}
               noReadySources={sources.loaded && readySources === 0}
+              initial={lastInput}
               onStart={start}
             />
           ) : (
@@ -158,23 +167,23 @@ export function VerifierApp() {
                       onClick={async () => {
                         try {
                           await navigator.clipboard.writeText(buildReport(state.claims, state.fixList));
-                          setCopied(true);
+                          setCopied("copied");
                           event("report_exported", { format: "copy" });
                         } catch {
-                          setCopied(false);
+                          setCopied("failed");
                         }
                       }}
                     >
-                      {copied ? "Report copied" : "Copy report"}
+                      {copied === "copied" ? "Report copied" : "Copy report"}
                     </button>
-                    {lastInput.current && (
+                    {lastInput && (
                       <button
                         type="button"
                         className="btn"
                         disabled={sources.busy}
                         onClick={() => {
                           event("recheck_started", { claims_rechecked: state.claims.length });
-                          start(lastInput.current!);
+                          start(lastInput);
                         }}
                       >
                         Check again with my sources
@@ -182,9 +191,31 @@ export function VerifierApp() {
                     )}
                   </>
                 )}
-                <button type="button" className="btn btn-quiet" disabled={running} onClick={() => verification.reset()}>
+                {state.phase === "error" && lastInput && (
+                  <>
+                    <button type="button" className="btn btn-primary" onClick={() => start(lastInput)}>
+                      Try again
+                    </button>
+                    <button type="button" className="btn" onClick={() => verification.reset()}>
+                      Edit draft
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  disabled={running}
+                  onClick={() => {
+                    setLastInput(null);
+                    verification.reset();
+                  }}
+                >
                   Start a new check
                 </button>
+                <span className="sr-only" role="status">
+                  {copied === "copied" ? "Report copied to clipboard." : copied === "failed" ? "Could not copy. Your browser blocked clipboard access." : ""}
+                </span>
+                {copied === "failed" && <span className="hint hint-bad">Could not copy the report. Your browser blocked clipboard access.</span>}
               </div>
 
               {state.phase === "done" && (
