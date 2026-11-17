@@ -3,6 +3,7 @@
 // private window, so the page must work without it. Nothing from a draft or a source is ever stored here.
 export const CONSENT_KEY = "verifidocs.notice.v1";
 export const LAST_RUN_KEY = "verifidocs.lastRun";
+export const THEME_KEY = "verifidocs.theme";
 
 export function readStored(key: string): string | null {
   try {

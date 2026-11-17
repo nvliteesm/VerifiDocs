@@ -43,12 +43,13 @@ function ClaimCard({ claim, error, onRetry, onEvent }: { claim: ClaimView; error
       </div>
       <p className="claim-text">{claim.text}</p>
 
-      {info && (
-        <p className="meaning">
-          {info.meaning} {info.advice}
+      {info && <p className="meaning">{info.meaning}</p>}
+      {claim.reason && <p className="reason">{claim.reason}</p>}
+      {info && info.advice && (
+        <p className="next">
+          <strong>What to do:</strong> {info.advice}
         </p>
       )}
-      {claim.reason && <p className="reason">{claim.reason}</p>}
 
       {claim.quote && (
         <details
@@ -90,17 +91,19 @@ function ClaimCard({ claim, error, onRetry, onEvent }: { claim: ClaimView; error
       )}
 
       {verdict && (
-        <button
-          type="button"
-          className="link"
-          disabled={flagged}
-          onClick={() => {
-            setFlagged(true);
-            onEvent("verdict_flagged_wrong", { verdict });
-          }}
-        >
-          {flagged ? "Thanks, noted" : "This verdict is wrong"}
-        </button>
+        <div>
+          <button
+            type="button"
+            className="link"
+            disabled={flagged}
+            onClick={() => {
+              setFlagged(true);
+              onEvent("verdict_flagged_wrong", { verdict });
+            }}
+          >
+            {flagged ? "Thanks, noted" : "This verdict is wrong"}
+          </button>
+        </div>
       )}
     </li>
   );
@@ -131,14 +134,21 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
     });
   }, [state.claims, state.fixList, filter]);
 
-  return (
-    <section className="card" aria-labelledby="results-title">
-      <h2 id="results-title">Results</h2>
+  const finished = state.phase === "done";
 
-      <div className="progress" aria-live="polite">
-        <progress max={Math.max(total, 1)} value={checked} aria-label="Claims checked" />
-        <span>{state.message || (total > 0 ? `${checked} of ${total} claims checked` : "Working…")}</span>
+  return (
+    <section className="panel" aria-labelledby="results-title">
+      <div className="panel-head">
+        <p className="eyebrow">Step 2 of 2</p>
+        <h2 id="results-title">Results</h2>
       </div>
+
+      {!finished && state.phase !== "error" && (
+        <div className="progress" aria-live="polite">
+          <progress max={Math.max(total, 1)} value={checked} aria-label="Claims checked" />
+          <span className="hint">{state.message || (total > 0 ? `${checked} of ${total} claims checked` : "Working…")}</span>
+        </div>
+      )}
 
       {state.phase === "error" && state.error && (
         <p role="alert" className="notice notice-bad">
@@ -146,27 +156,27 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
         </p>
       )}
 
+      {finished && total === 0 && <p className="empty">No checkable claims were found in this draft. Try pasting a section with factual statements and citations.</p>}
+
       {total > 0 && (
         <>
-          <p className="summary">
-            {attention === 0 && state.phase === "done" ? "Every checked claim is supported." : `${attention} of ${total} claims need attention.`}
-          </p>
+          <div className="tally">
+            <p className="tally-number">
+              {attention === 0 && finished ? "Every checked claim is supported." : `${attention} of ${total} claims need attention.`}
+            </p>
+            <p className="hint">Most urgent first. Open a claim to see the quote from your source.</p>
+          </div>
+
           <div className="chips" role="group" aria-label="Filter claims">
-            <button type="button" className={`chip${filter === "attention" ? " chip-on" : ""}`} aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>
+            <button type="button" className="chip" aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>
               Needs attention ({attention})
             </button>
             {SUMMARY_ORDER.filter((verdict) => (state.counts[verdict] ?? 0) > 0).map((verdict) => (
-              <button
-                key={verdict}
-                type="button"
-                className={`chip${filter === verdict ? " chip-on" : ""}`}
-                aria-pressed={filter === verdict}
-                onClick={() => setFilter(verdict)}
-              >
+              <button key={verdict} type="button" className="chip" aria-pressed={filter === verdict} onClick={() => setFilter(verdict)}>
                 <span aria-hidden="true">{VERDICT_INFO[verdict].symbol}</span> {VERDICT_INFO[verdict].label} ({state.counts[verdict]})
               </button>
             ))}
-            <button type="button" className={`chip${filter === "all" ? " chip-on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
+            <button type="button" className="chip" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
               All ({total})
             </button>
           </div>
@@ -176,7 +186,7 @@ export function ResultsView({ state, onRetryClaim, onEvent }: Props) {
               <ClaimCard key={claim.id} claim={claim} error={state.claimErrors[claim.id]} onRetry={() => onRetryClaim(claim.id)} onEvent={onEvent} />
             ))}
           </ol>
-          {shown.length === 0 && <p className="hint">Nothing in this filter.</p>}
+          {shown.length === 0 && <p className="empty">Nothing in this filter.</p>}
         </>
       )}
     </section>

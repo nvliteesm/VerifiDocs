@@ -8,10 +8,12 @@ interface Props {
   /** True while sources are still being read or a check is running. */
   disabled: boolean;
   disabledReason: string | null;
+  /** True once the source list has loaded and none of them is ready to check against. */
+  noReadySources?: boolean;
   onStart: (input: VerifyInput) => void;
 }
 
-export function DraftPanel({ disabled, disabledReason, onStart }: Props) {
+export function DraftPanel({ disabled, disabledReason, noReadySources = false, onStart }: Props) {
   const [mode, setMode] = useState<"paste" | "docx">("paste");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -37,21 +39,25 @@ export function DraftPanel({ disabled, disabledReason, onStart }: Props) {
   }
 
   return (
-    <section className="card" aria-labelledby="draft-title">
-      <h2 id="draft-title">Your draft</h2>
+    <section className="panel" aria-labelledby="draft-title">
+      <div className="panel-head">
+        <p className="eyebrow">Step 2 of 2</p>
+        <h2 id="draft-title">Your draft</h2>
+        <p className="hint">Paste the paragraphs you want checked, or upload a Word file. Keep your citations as you wrote them.</p>
+      </div>
 
-      <div className="tabs" role="group" aria-label="How to add your draft">
-        <button type="button" className={`tab${mode === "paste" ? " tab-on" : ""}`} aria-pressed={mode === "paste"} onClick={() => setMode("paste")}>
+      <div className="segment" role="group" aria-label="How to add your draft">
+        <button type="button" aria-pressed={mode === "paste"} onClick={() => setMode("paste")}>
           Paste text
         </button>
-        <button type="button" className={`tab${mode === "docx" ? " tab-on" : ""}`} aria-pressed={mode === "docx"} onClick={() => setMode("docx")}>
+        <button type="button" aria-pressed={mode === "docx"} onClick={() => setMode("docx")}>
           Upload .docx
         </button>
       </div>
 
       {mode === "paste" ? (
         <div className="field">
-          <label htmlFor="draft-text">Paste the part of your draft to check</label>
+          <label htmlFor="draft-text">Draft text</label>
           <textarea
             id="draft-text"
             rows={10}
@@ -59,7 +65,7 @@ export function DraftPanel({ disabled, disabledReason, onStart }: Props) {
             onChange={(event) => setText(event.target.value)}
             placeholder="Paste your paragraphs here, with the citations as you wrote them."
           />
-          <p className={`hint${tooLong ? " hint-bad" : ""}`}>
+          <p className={`hint${tooLong ? " hint-bad" : ""}`} aria-live="polite">
             {text.length.toLocaleString()} / {MAX_DRAFT_CHARS.toLocaleString()} characters
             {tooLong ? ". Too long: check one chapter at a time." : ""}
           </p>
@@ -90,11 +96,18 @@ export function DraftPanel({ disabled, disabledReason, onStart }: Props) {
         />
       </div>
 
+      {noReadySources && (
+        <p className="notice notice-info">
+          You have not added a readable source yet. You can still run a check, but claims will show as &ldquo;Can&apos;t check yet&rdquo; until you upload the PDFs you cite.
+        </p>
+      )}
+
       <div className="actions">
         <button type="button" className="btn btn-primary" disabled={!canStart} onClick={() => onStart({ draft: mode === "paste" ? { kind: "paste", text } : { kind: "docx", file: file! }, references })}>
           Check my claims
         </button>
         {disabled && disabledReason && <span className="hint">{disabledReason}</span>}
+        {!disabled && !hasDraft && <span className="hint">Add your draft to continue.</span>}
       </div>
     </section>
   );
