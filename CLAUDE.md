@@ -4,7 +4,7 @@ Check-before-you-send verifier for final-year students who write with AI-supplie
 
 ## Status
 
-Rebuild in progress as of 17 Nov 2026. The repo still contains the legacy Python/FastAPI and Vite app (a general PDF chat tool) until the rebuild's step 2. The legacy code is tagged `legacy-rag-chat` (commit `847d49c`) and is the reference for the RAG design only. Follow `docs/rebuild-brief.md` for the order of work. If that file conflicts with another doc, the brief wins for the rebuild; tell Steven which doc needs updating.
+Rebuild in progress as of 17 Nov 2026. The legacy Python/FastAPI and Vite app has been removed from the working tree; it is preserved at the git tag `legacy-rag-chat` (commit `847d49c`) and is the reference for the RAG design only. Built so far: the Next.js scaffold, the Neon schema, the single Gemini adapter, quote normalization, the chunker, embedding helpers and hybrid retrieval. Not built: pipeline stages 1 to 4 and 7 to 9, PDF and .docx parsing, the UI, the session token, the eval harness. Follow `docs/rebuild-brief.md` for the order of work. If that file conflicts with another doc, the brief wins for the rebuild; tell Steven which doc needs updating.
 
 ## What it does
 
@@ -43,7 +43,22 @@ Neon credentials live in the git-ignored `.env.local`. Never print them.
 
 ## Commands
 
-Not yet confirmed. The Next.js project is not scaffolded. Fill this section in with the real dev, test, lint, build and migration commands during rebuild step 8, after running each one. Until then, do not assume any command works.
+Run on 17 Nov 2026 with Node 24 (the scripts rely on `node --env-file-if-exists` and built-in TypeScript type stripping, so older Node versions may not work). Each of these was run and worked:
+
+```bash
+npm run dev          # Next.js dev server on http://localhost:3000 (GET / returned 200)
+npm run build        # production build
+npm run typecheck    # tsc --noEmit
+npm test             # vitest run: unit tests, plus database tests on the Neon dev branch
+npm run db:migrate   # apply db/migrations/*.sql in order; refuses the main branch unless --allow-main
+```
+
+Env files, both git-ignored: `.env.local` holds the Neon `main` branch strings and the Gemini key and model names; `.env.development.local` holds the Neon `dev` branch strings and `NEON_BRANCH=dev`, and wins in dev and in tests. `.env.example` lists names only.
+
+- Database tests (`tests/db/`) run only when `NEON_BRANCH=dev` and are skipped otherwise, so they never touch `main`. Each runs in a rolled-back transaction.
+- The Neon `dev` branch expires on 24 Nov 2026 (the 7-day policy in `neon.ts`). Re-create it with `neon checkout dev --create --no-env-pull`, rewrite `.env.development.local` from `neon connection-string dev`, then run `npm run db:migrate`. `--no-env-pull` matters: without it the CLI pulls variables into a local `.env`.
+- Not run, so unconfirmed: `npm start`, any lint command (none is set up), and any eval command (there is no eval harness yet).
+- Plain `node` cannot import the `src/` files directly, because the imports have no `.js` or `.ts` extension; use vitest for ad-hoc checks.
 
 ## Conventions
 

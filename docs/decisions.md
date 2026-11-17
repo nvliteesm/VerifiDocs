@@ -31,6 +31,16 @@ Settled unless marked proposed. Do not reopen without asking Steven. Updated 17 
 | 17 Nov 2026 | Users: no accounts; a session token identifies the user; no shared API key in the browser bundle; reads and deletes scoped to the token |
 | 17 Nov 2026 | Host: Vercel Hobby under consideration, not final; every request designed to finish in under about 10 seconds either way |
 | 17 Nov 2026 | Neon project `VerifiDocs` created in the Singapore region (`aws-ap-southeast-1`); credentials in git-ignored `.env.local` |
+| 17 Nov 2026 | Dependencies approved: `next`, `react`, `react-dom`, `typescript`, `postgres` (no ORM; SQL migration files), `@google/genai`, `js-tiktoken` (pinned 1.0.21), `zod`, `vitest`, and the `@neon/config` and `@neon/env` packages from `neon init`. A PDF text library and a .docx reader are not yet chosen and need approval when stage 5 and stage 1 are built. |
+| 17 Nov 2026 | Tokenizer: `js-tiktoken` with `cl100k_base`, pinned, bundled (no download). It is only a deterministic size measure; Gemini does not use it. Chunks are cut at word boundaries so no chunk ends in a broken character. |
+| 17 Nov 2026 | Quote normalization: one function (`src/lib/rag/normalize.ts`: NFKC so ligatures expand, soft hyphens and zero-width characters removed, curly quotes and dash variants made plain, line-break hyphenation rejoined, whitespace collapsed; case-sensitive). It is applied to page text before chunking and to the judge's quote at verification. |
+| 17 Nov 2026 | Retrieval settings (starting values, tune on the eval set): full-text config `simple` (no stemming, because sources mix English and Bahasa Indonesia); OR query of content words with a small English and Indonesian stopword list; reciprocal rank fusion with k = 60 over 20 candidates per arm; no vector index, so an exact scan; no similarity threshold. |
+| 17 Nov 2026 | Gemini calls use API version `v1beta`, because the SDK default `v1` rejects JSON mode. Model names come from `GEMINI_MODEL` and `GEMINI_EMBEDDING_MODEL`. |
+| 17 Nov 2026 | Test database: a Neon `dev` branch (expires 24 Nov 2026 under the 7-day policy in `neon.ts`). Database tests run only when `NEON_BRANCH=dev`, each in a rolled-back transaction; `npm run db:migrate` refuses `main` unless `--allow-main` is passed. |
+| 17 Nov 2026 | Schema rules enforced in the database: Supported needs a quote and page; only supported, partial and contradicted verdicts may carry a quote; a fix suggestion exists only for partial and contradicted; one verdict per claim. The reference-list table is `reference_entries`, because `references` is a reserved SQL word. |
+| 17 Nov 2026 | Events retention (decided by Steven): `events` rows do not expire and have no foreign key to sessions, so the beta metrics survive a 30-day purge. Events hold ids, counts and buckets only, never draft text, quotes or reference text. This is the one exception to "every row expires in 30 days". |
+| 17 Nov 2026 | Dev branch (decided by Steven): leave the 7-day expiry as is and recreate the branch when it expires, using the steps in `CLAUDE.md`. |
+| 17 Nov 2026 | `AGENTS.md` (decided by Steven): not kept. `agentRules: false` in `next.config.ts` stops `next dev` generating it; `CLAUDE.md` is the single source of agent guidance. |
 
 ## Why some things are out
 
