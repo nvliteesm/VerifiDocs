@@ -201,10 +201,15 @@ export function VerifierApp() {
 
   return (
     <Frame>
-      <div className="intro">
-        <h1>Check every claim against your sources</h1>
-        <p className="lede">Add the PDFs you cite, paste your draft, and see which claims your sources really support.</p>
-      </div>
+      {/* Once a check exists the results come first; the heading stays for screen readers (one h1 per page). */}
+      {idle ? (
+        <div className="intro">
+          <h1>Check every claim against your sources</h1>
+          <p className="lede">Paste your draft and see which claims your sources really support.</p>
+        </div>
+      ) : (
+        <h1 className="sr-only">Check every claim against your sources</h1>
+      )}
 
       {deleteNote === "deleted" && idle && (
         <p role="status" className="notice notice-info" style={{ marginBottom: 20 }} ref={deletedNote} tabIndex={-1}>
@@ -214,7 +219,7 @@ export function VerifierApp() {
 
       {waking && (
         <p role="status" className="notice notice-info" style={{ marginBottom: 20 }}>
-          The database is waking up. This can take a few seconds the first time. Please wait, nothing is lost.
+          Waking up the database. This takes a few seconds.
         </p>
       )}
 
@@ -309,7 +314,7 @@ export function VerifierApp() {
                 )}
                 {confirmingDelete && (
                   <span className="confirm" role="group" aria-label="Delete this check?">
-                    <span className="hint">This removes your draft and these results from our servers. It cannot be undone.</span>
+                    <span className="hint">Delete your draft and results? This can&apos;t be undone.</span>
                     <button
                       type="button"
                       className="btn"
@@ -337,7 +342,7 @@ export function VerifierApp() {
                   </span>
                 )}
                 {state.phase === "done" && !lastInput && (
-                  <span className="hint">To check again after reopening, start a new check and paste your draft. Your draft is not kept in this browser.</span>
+                  <span className="hint">To recheck, start a new check and paste your draft again.</span>
                 )}
                 <span className="sr-only" role="status">
                   {copied === "copied" ? "Report copied to clipboard." : copied === "failed" ? "Could not copy. Your browser blocked clipboard access." : ""}
@@ -346,12 +351,13 @@ export function VerifierApp() {
               </div>
 
               {state.phase === "done" && (
-                <section className="panel" aria-labelledby="pay-title">
-                  <h2 id="pay-title">One question</h2>
+                <div className="survey">
                   {!answered && (
                     <>
-                      <p>If a tool like this were not free, would you pay for it?</p>
-                      <div className="chips" role="group" aria-label="Would you pay">
+                      <span className="hint" id="pay-title">
+                        Would you pay for this if it were not free?
+                      </span>
+                      <div className="chips" role="group" aria-labelledby="pay-title">
                         {(["yes", "maybe", "no"] as const).map((answer) => (
                           <button
                             key={answer}
@@ -368,8 +374,10 @@ export function VerifierApp() {
                       </div>
                     </>
                   )}
-                  <p role="status">{answered ? "Thank you." : ""}</p>
-                </section>
+                  <span className="hint" role="status">
+                    {answered ? "Thank you." : ""}
+                  </span>
+                </div>
               )}
             </>
           )}
@@ -377,7 +385,7 @@ export function VerifierApp() {
       </div>
 
       <footer className="hint" style={{ marginTop: 40 }}>
-        Drafts, source text and results are deleted 30 days after upload, or sooner when you delete them.
+        Deleted 30 days after upload, or sooner if you delete them.
       </footer>
     </Frame>
   );

@@ -219,9 +219,11 @@ describe("ResultsView verdict text", () => {
     expect(screen.queryByText(/no readable PDF of it was uploaded/)).toBeNull();
   });
 
-  it("still shows the general explanation for a judged verdict", () => {
+  it("shows a judged verdict's reason and one short what-to-do line, with no general explanation", () => {
     view(stateOf([claim("contradicted", { reason: "The source says 5 percent.", quote: "five percent" })]));
-    expect(screen.getByText(/the opposite, or gives a different value/)).toBeTruthy();
+    expect(screen.getByText("The source says 5 percent.")).toBeTruthy();
+    expect(screen.getByText(/Change the sentence to match the source/)).toBeTruthy();
+    expect(screen.queryByText(/the opposite, or gives a different value/)).toBeNull();
   });
 
   it("gives no upload-a-PDF advice when the real cause is an empty reference list", () => {
@@ -238,7 +240,7 @@ describe("ResultsView verdict text", () => {
 
   it("tells the student to add the entry when a citation is not in their reference list", () => {
     view(stateOf([claim("reference_not_found", { reason: '"smith 2021" is not in your reference list.' })]));
-    expect(screen.getByText(/Add this reference to your reference list/)).toBeTruthy();
+    expect(screen.getByText(/Add it to your reference list/)).toBeTruthy();
     expect(screen.queryByText(/upload its PDF/)).toBeNull();
   });
 

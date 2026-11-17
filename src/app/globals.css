@@ -563,7 +563,6 @@ progress {
   color: var(--muted);
   font-size: 0.9rem;
 }
-.meaning,
 .reason {
   color: var(--muted);
   font-size: 0.95rem;
@@ -666,6 +665,15 @@ blockquote {
   color: var(--text);
   font-family: var(--serif);
   font-size: 1.05rem;
+}
+
+/* The pay question: a small optional line under the results, not a panel of its own. */
+.survey {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 8px;
 }
 
 @media (max-width: 480px) {

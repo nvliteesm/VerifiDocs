@@ -54,7 +54,8 @@ const SNIPPET = 70;
 
 function label(marker: CitationMarker): string {
   if (marker.kind === "numeric") return `[${marker.number}]`;
-  if (marker.kind === "author-year") return `${marker.surnames.join(" & ")} ${marker.year}`;
+  // Surnames are stored lowercased for matching; show them capitalised so the student recognises their own citation.
+  if (marker.kind === "author-year") return `${marker.surnames.join(" & ").replace(/(^|[\s&-])(\p{L})/gu, (_, gap: string, letter: string) => gap + letter.toUpperCase())} ${marker.year}`;
   return marker.raw;
 }
 

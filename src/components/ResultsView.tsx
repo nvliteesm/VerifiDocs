@@ -90,9 +90,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
       thanks.current?.focus();
     }
   }, [flagged]);
-  // These two end before the judge, with a reason that already says exactly what happened. The general
-  // explanation would repeat it, and for an empty reference list it would even point the wrong way.
-  const reasonSaysItAll = (verdict === "cant_check" || verdict === "reference_not_found") && Boolean(claim.reason);
+  // For an empty reference list the usual advice would point the wrong way, so it is left out (the reason says what to do).
   const listMissing = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NO_REFERENCE_LIST));
   const notInList = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NOT_IN_REFERENCE_LIST));
 
@@ -104,12 +102,11 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
       </div>
       <p className="claim-text">{claim.text}</p>
 
-      {info && !reasonSaysItAll && <p className="meaning">{info.meaning}</p>}
       {claim.reason && <p className="reason">{claim.reason}</p>}
       {info && info.advice && !listMissing && (
         <p className="next">
           <strong>What to do:</strong>{" "}
-          {notInList ? "Add this reference to your reference list, or correct the citation so it matches an entry." : info.advice}
+          {notInList ? "Add it to your reference list, or fix the citation." : info.advice}
         </p>
       )}
 
@@ -293,10 +290,11 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
 
       {total > 0 && (
         <>
-          <div className="tally">
-            {finished && <p className="tally-number">{tally}</p>}
-            <p className="hint">Most urgent first. Where a claim has one, open &ldquo;What your source says&rdquo; to see the exact quote.</p>
-          </div>
+          {finished && (
+            <div className="tally">
+              <p className="tally-number">{tally}</p>
+            </div>
+          )}
 
           <div className="chips" role="group" aria-label="Filter claims">
             <button type="button" className="chip" aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>

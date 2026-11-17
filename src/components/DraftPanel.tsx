@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MAX_DOCX_BYTES, MAX_DRAFT_CHARS, MAX_REFERENCES, megabytes } from "@/lib/client/limits";
+import { MAX_DOCX_BYTES, MAX_DRAFT_CHARS, megabytes } from "@/lib/client/limits";
 import type { VerifyInput } from "@/lib/client/types";
 
 interface Props {
@@ -47,9 +47,8 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
   return (
     <section className="panel" aria-labelledby="draft-title">
       <div className="panel-head">
-        <p className="eyebrow">Step 2 of 2</p>
         <h2 id="draft-title">Your draft</h2>
-        <p className="hint">Paste the paragraphs you want checked, or upload a Word file. Keep your citations as you wrote them.</p>
+        <p className="hint">Paste your paragraphs or upload a Word file. Keep your citations.</p>
       </div>
 
       {onTryExample && text.trim() === "" && file === null && (
@@ -57,7 +56,7 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
           <button type="button" className="btn btn-quiet" onClick={onTryExample}>
             Try an example
           </button>
-          <span className="hint">See a check on a made-up report and draft. None of your files are used.</span>
+          <span className="hint">See a check on a made-up report and draft.</span>
         </div>
       )}
       {exampleNote && (
@@ -83,7 +82,7 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
             rows={10}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Paste your paragraphs here, with the citations as you wrote them."
+            placeholder="Paste your draft here."
           />
           <p className={`hint${tooLong ? " hint-bad" : ""}`} aria-live="polite">
             {text.length.toLocaleString()} / {MAX_DRAFT_CHARS.toLocaleString()} characters
@@ -105,23 +104,20 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
 
       <div className="field">
         <label htmlFor="draft-refs">
-          Reference list{" "}
-          <span className="hint">
-            (needed to match your citations, unless the list is already inside your draft. Up to {MAX_REFERENCES} entries.)
-          </span>
+          Reference list <span className="hint">(to match your citations)</span>
         </label>
         <textarea
           id="draft-refs"
           rows={6}
           value={references}
           onChange={(event) => setReferences(event.target.value)}
-          placeholder="One reference per line, as in your bibliography."
+          placeholder="One reference per line."
         />
       </div>
 
       {noReadySources && (
         <p className="notice notice-info">
-          You have not added a readable source yet. You can still run a check, but claims will show as &ldquo;Can&apos;t check yet&rdquo; until you upload the PDFs you cite.
+          No source added yet. Claims will show as &ldquo;Can&apos;t check yet&rdquo;.
         </p>
       )}
 

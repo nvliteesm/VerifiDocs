@@ -4,13 +4,12 @@ import { FIX_LIST_ORDER } from "../fix-list";
 import { SUMMARY_ORDER, VERDICT_INFO, attentionCount, needsAttention } from "./verdict-info";
 
 describe("VERDICT_INFO", () => {
-  it("describes every one of the eight verdicts, with a label, symbol and meaning", () => {
+  it("describes every one of the eight verdicts, with a label and a symbol", () => {
     expect(Object.keys(VERDICT_INFO).sort()).toEqual([...VERDICTS].sort());
     for (const verdict of VERDICTS) {
       const info = VERDICT_INFO[verdict];
       expect(info.label.length, verdict).toBeGreaterThan(2);
       expect(info.symbol.length, verdict).toBeGreaterThan(0);
-      expect(info.meaning.length, verdict).toBeGreaterThan(15);
     }
   });
 
@@ -25,6 +24,7 @@ describe("VERDICT_INFO", () => {
     for (const verdict of VERDICTS) {
       if (verdict === "supported") expect(VERDICT_INFO[verdict].advice).toBe("");
       else expect(VERDICT_INFO[verdict].advice.length, verdict).toBeGreaterThan(10);
+      expect(VERDICT_INFO[verdict].advice.length, verdict).toBeLessThanOrEqual(90); // short on purpose
     }
   });
 

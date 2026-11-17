@@ -169,11 +169,17 @@ describe("a finished check", () => {
     return { user, server };
   }
 
-  it("shows the verdict, the quote disclosure and the one-question survey", async () => {
+  it("shows the verdict, the quote disclosure and the small pay question", async () => {
     await finishedCheck();
     expect(screen.getAllByText("Every checked claim is supported.").length).toBeGreaterThan(0);
     expect(screen.getByText("International trade rose 5 percent")).toBeTruthy();
-    expect(screen.getByText("One question")).toBeTruthy();
+    expect(screen.getByText("Would you pay for this if it were not free?")).toBeTruthy();
+  });
+
+  it("drops the intro text once a check exists, but keeps one heading for screen readers", async () => {
+    await finishedCheck();
+    expect(screen.queryByText(/Paste your draft and see which claims/)).toBeNull();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
   it("moves focus to the Results heading when the check finishes", async () => {
@@ -276,7 +282,7 @@ describe("deleting a check", () => {
     const { user, server } = await finishedCheck();
     await user.click(screen.getByRole("button", { name: "Delete this check" }));
     const group = screen.getByRole("group", { name: "Delete this check?" });
-    expect(group.textContent).toContain("cannot be undone");
+    expect(group.textContent).toContain("can't be undone");
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Keep it" })); // the safe choice has focus
 
     await user.click(screen.getByRole("button", { name: "Keep it" }));

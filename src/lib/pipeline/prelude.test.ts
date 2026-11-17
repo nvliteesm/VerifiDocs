@@ -51,7 +51,7 @@ describe("runPrelude", () => {
     const result = await runPrelude({ citation: "(Brown, 2017)" }, entries, impl);
     expect(result).toMatchObject({
       outcome: "exit",
-      exit: { verdict: "reference_not_found", exitStage: 3, reason: '"brown 2017" is not in your reference list.' },
+      exit: { verdict: "reference_not_found", exitStage: 3, reason: '"Brown 2017" is not in your reference list.' },
     });
     expect(resolved).toEqual([]); // no network call for a citation that is not even listed
   });

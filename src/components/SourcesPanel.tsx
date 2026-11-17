@@ -22,7 +22,7 @@ function statusText(row: SourceRow): string {
     case "ready":
       return row.pageCount ? `Ready, ${row.pageCount} page${row.pageCount === 1 ? "" : "s"}` : "Ready";
     case "no_text":
-      return "No readable text. This looks like a scan. Upload a text PDF instead.";
+      return "No text found. Upload a text PDF, not a scan.";
     case "failed":
       return row.error ?? "Could not be read.";
   }
@@ -35,11 +35,9 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove }:
   return (
     <section className="panel panel-tray" aria-labelledby="sources-title">
       <div className="panel-head">
-        <p className="eyebrow">Step 1 of 2</p>
         <h2 id="sources-title">Your sources</h2>
         <p className="hint">
-          The PDFs you cite. Up to {MAX_SOURCES} files of {megabytes(MAX_PDF_BYTES)} each. Text PDFs only; scans can&apos;t be read. Each PDF is deleted once its
-          text is read.
+          PDFs you cite. Up to {MAX_SOURCES} files, {megabytes(MAX_PDF_BYTES)} each. Text PDFs only, no scans.
         </p>
       </div>
 
@@ -80,7 +78,7 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove }:
         </p>
       )}
 
-      {loaded && rows.length === 0 && <p className="empty">No sources yet. Claims that cite a source you haven&apos;t uploaded show as &ldquo;Can&apos;t check yet&rdquo;.</p>}
+      {loaded && rows.length === 0 && <p className="empty">No sources yet.</p>}
 
       {rows.length > 0 && (
         <ul className="source-list">
