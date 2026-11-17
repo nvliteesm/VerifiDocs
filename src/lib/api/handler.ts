@@ -8,6 +8,7 @@ import { getLlm, type Llm } from "../llm/adapter";
 import type { ReferenceResolution } from "../pipeline/resolve-reference";
 import { limitModelUse, type Limits } from "../rate-limit";
 import type { SqlLike } from "../rag/retrieve";
+import { purgeIfDue } from "../retention";
 import { resolveSession } from "../session";
 import { assertSameOrigin, errorResponse } from "./http";
 
@@ -57,6 +58,8 @@ export async function handleWith(
     assertSameOrigin(request);
     const session = await resolveSession(deps.sql, request, deps.limits);
     cookie = session.setCookie;
+    // Hard rule 4: delete expired data. At most once an hour, and never allowed to fail the request.
+    if (session.active) await purgeIfDue(deps.sql);
     if (options.model) await limitModelUse(deps.sql, request, session.sessionId, deps.limits);
     return withCookie(await fn({ deps, sessionId: session.sessionId }), cookie);
   } catch (error) {

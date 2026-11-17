@@ -54,6 +54,11 @@ export interface SessionContext {
   sessionId: string;
   /** A Set-Cookie header value when a new session was started, otherwise null. */
   setCookie: string | null;
+  /**
+   * True when this request started the session or was the first from it in five minutes. These are the requests
+   * that may trigger the hourly retention purge, so an ordinary busy page does not.
+   */
+  active: boolean;
 }
 
 export async function resolveSession(db: SqlLike, request: Request, limits?: Limits): Promise<SessionContext> {
@@ -65,10 +70,11 @@ export async function resolveSession(db: SqlLike, request: Request, limits?: Lim
       select id from sessions where token_hash = ${hashToken(token)}`;
     if (existing) {
       // Touch it at most every five minutes, so a busy page does not write on every request.
-      await sql`
+      const touched = await sql<{ id: string }[]>`
         update sessions set last_seen_at = now()
-        where id = ${existing.id} and last_seen_at < now() - interval '5 minutes'`;
-      return { sessionId: existing.id, setCookie: null };
+        where id = ${existing.id} and last_seen_at < now() - interval '5 minutes'
+        returning id`;
+      return { sessionId: existing.id, setCookie: null, active: touched.length > 0 };
     }
   }
 
@@ -78,5 +84,5 @@ export async function resolveSession(db: SqlLike, request: Request, limits?: Lim
   const [created] = await sql<{ id: string }[]>`
     insert into sessions (token_hash) values (${hashToken(fresh)}) returning id`;
   await logEvent(sql, created!.id, "session_started", { source: "direct" });
-  return { sessionId: created!.id, setCookie: buildSessionCookie(fresh, isSecureRequest(request)) };
+  return { sessionId: created!.id, setCookie: buildSessionCookie(fresh, isSecureRequest(request)), active: true };
 }

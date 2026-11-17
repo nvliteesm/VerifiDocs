@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import postgres from "postgres";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { checkClaimHandler, postEvent } from "../../src/lib/api/claims";
 import { handleWith, type ApiContext, type ApiDeps } from "../../src/lib/api/handler";
 import { MAX_RUNS_PER_SESSION, createRun, deleteRun, extractUnit, getRun } from "../../src/lib/api/runs";
@@ -415,7 +415,52 @@ describe.skipIf(!enabled)("deleting a check", () => {
   });
 });
 
+describe.skipIf(!enabled)("retention", () => {
+  async function expiredRun(tx: postgres.TransactionSql): Promise<string> {
+    const [owner] = await tx<{ id: string }[]>`
+      insert into sessions (token_hash) values (${`hash-${Math.random()}`}) returning id`;
+    const [run] = await tx<{ id: string }[]>`
+      insert into runs (session_id, draft_text, input_type) values (${owner!.id}, 'an old draft', 'paste') returning id`;
+    await tx`update runs set expires_at = now() - interval '1 day' where id = ${run!.id}`;
+    return run!.id;
+  }
+  const exists = async (tx: postgres.TransactionSql, id: string) => (await tx`select id from runs where id = ${id}`).length === 1;
+
+  it("deletes expired drafts when a session starts, and runs only once per window", async () => {
+    await inTx(async (tx) => {
+      await tx`delete from rate_limits where key = 'purge:expired'`; // open the window (rolled back with the test)
+      const first = await expiredRun(tx);
+      const visitor = newClient(tx, fakeLlm().llm);
+      expect((await visitor.listSources()).status).toBe(200); // a new session: this request may purge
+      expect(await exists(tx, first)).toBe(false);
+
+      // The window is now closed: a second new session does not purge again.
+      const second = await expiredRun(tx);
+      expect((await newClient(tx, fakeLlm().llm).listSources()).status).toBe(200);
+      expect(await exists(tx, second)).toBe(true);
+    });
+  });
+
+  it("does not run for a returning session's ordinary requests", async () => {
+    await inTx(async (tx) => {
+      const visitor = newClient(tx, fakeLlm().llm);
+      await visitor.listSources(); // starts the session (this one may purge)
+      await tx`delete from rate_limits where key = 'purge:expired'`;
+      const expired = await expiredRun(tx);
+      await visitor.listSources(); // same session, seen a moment ago: not "active"
+      expect(await exists(tx, expired)).toBe(true);
+    });
+  });
+});
+
 describe.skipIf(!enabled)("rate limits", () => {
+  // The forwarded address is only believed behind a trusted proxy, so these tests say they are behind one.
+  beforeAll(() => {
+    process.env.TRUST_PROXY_HEADERS = "1";
+  });
+  afterAll(() => {
+    delete process.env.TRUST_PROXY_HEADERS;
+  });
   const tight: Limits = { ...DEFAULT_LIMITS, newSessionsPerAddress: 3, modelPerSession: 2, modelPerAddress: 50 };
   const from = (address: string) => ({ "x-forwarded-for": address });
 

@@ -37,10 +37,20 @@ export class RateLimitError extends Error {
 }
 
 /**
- * The caller's address as far as the host reports it. Behind a trusted proxy (Vercel sets x-forwarded-for) this
- * is the real client; with no proxy the header can be forged, so treat the per-address limits as best effort.
+ * True only where the forwarded-address headers can be believed: on Vercel (which sets VERCEL=1 and overwrites
+ * x-forwarded-for with the real client), or when the operator sets TRUST_PROXY_HEADERS=1 for a proxy they control.
+ * Anywhere else a caller can send any address it likes, so the headers are ignored.
+ */
+export function trustsProxyHeaders(): boolean {
+  return process.env.VERCEL === "1" || process.env.TRUST_PROXY_HEADERS === "1";
+}
+
+/**
+ * The caller's address. Without a trusted proxy every caller shares the one address "unknown", so the per-address
+ * limits act as a limit for the whole site instead of being dodged by a forged header.
  */
 export function callerAddress(request: Request): string {
+  if (!trustsProxyHeaders()) return "unknown";
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   return forwarded || request.headers.get("x-real-ip")?.trim() || "unknown";
 }
