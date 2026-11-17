@@ -198,6 +198,20 @@ interface ClaimRow {
   fix_suggestion: string | null;
 }
 
+/**
+ * Deletes one of the caller's checks now: the draft text, claims, verdicts and reference entries go with it (on
+ * delete cascade). Events are kept: they hold only ids, counts and buckets. Source PDFs are separate and have
+ * their own delete.
+ */
+export async function deleteRun(context: ApiContext, runId: string): Promise<Response> {
+  const sql = context.deps.sql as postgres.Sql;
+  assertId(runId);
+  const rows = await sql<{ id: string }[]>`
+    delete from runs where id = ${runId} and session_id = ${context.sessionId} returning id`;
+  if (rows.length === 0) throw new ApiError(404, "not_found", "Not found.");
+  return new Response(null, { status: 204 });
+}
+
 export async function getRun(context: ApiContext, runId: string): Promise<Response> {
   const sql = context.deps.sql as postgres.Sql;
   const { sessionId } = context;

@@ -22,6 +22,8 @@ export interface VerifierState {
   /** Claims whose check failed in the browser (not a verdict). The student can retry them. */
   claimErrors: Record<string, string>;
   error: string | null;
+  /** True when the student pressed Stop. The check then ends as "done" with some claims left unchecked. */
+  stopped: boolean;
 }
 
 export const initialState: VerifierState = {
@@ -37,6 +39,7 @@ export const initialState: VerifierState = {
   fixList: [],
   claimErrors: {},
   error: null,
+  stopped: false,
 };
 
 export type VerifyEvent =
@@ -48,7 +51,8 @@ export type VerifyEvent =
   | { type: "claim"; verdict: CheckedVerdict }
   | { type: "claimError"; id: string; message: string }
   | { type: "claimRetry"; id: string }
-  | { type: "failed"; message: string };
+  | { type: "failed"; message: string }
+  | { type: "stopped" };
 
 export function countVerdicts(claims: ClaimView[]): Partial<Record<Verdict, number>> {
   const counts: Partial<Record<Verdict, number>> = {};
@@ -124,6 +128,11 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
 
     case "failed":
       return { ...state, phase: "error", error: event.message, message: "" };
+
+    case "stopped":
+      // Only a check that is still running can be stopped. A late Stop after the end changes nothing.
+      if (state.phase === "idle" || state.phase === "done" || state.phase === "error") return state;
+      return { ...state, phase: "done", stopped: true, message: "", error: null };
   }
 }
 

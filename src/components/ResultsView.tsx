@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FLAG_REASON_LABELS, type FlagReason } from "@/lib/flag-reasons";
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
 import type { ClaimView, Verdict } from "@/lib/client/types";
 import { SUMMARY_ORDER, VERDICT_INFO, attentionCount } from "@/lib/client/verdict-info";
@@ -40,16 +41,48 @@ interface CardProps {
   error: string | undefined;
   flagged: boolean;
   copied: "idle" | "copied" | "failed";
-  onFlag: () => void;
+  /** The student says the verdict is wrong, for one of a fixed list of reasons. */
+  onFlag: (reason: FlagReason) => void;
   onCopied: (result: "copied" | "failed") => void;
   onRetry: () => void;
   onEvent: Props["onEvent"];
+  /** The check has ended, so a claim with no verdict was not checked rather than waiting. */
+  ended: boolean;
+}
+
+/** The reasons that make sense for this verdict. A quote-based reason is offered only when there is a quote. */
+function reasonsFor(claim: ClaimView): FlagReason[] {
+  const verdict = claim.verdict;
+  const judged = verdict === "supported" || verdict === "partial" || verdict === "contradicted" || verdict === "not_in_sources" || verdict === "cant_tell";
+  const noSourceMatch = verdict === "cant_check" || verdict === "reference_not_found" || verdict === "not_in_sources";
+  return [
+    ...(claim.quote ? (["quote_does_not_support", "wrong_page"] as const) : []),
+    ...(judged ? (["source_says_otherwise"] as const) : []),
+    "claim_misread",
+    ...(noSourceMatch ? (["source_was_uploaded"] as const) : []),
+    "other",
+  ];
 }
 
 // `flagged` and `copied` live in ResultsView, because a card unmounts whenever the filter changes.
-function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent }: CardProps) {
+function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, ended }: CardProps) {
   const verdict = claim.verdict;
   const info = verdict ? VERDICT_INFO[verdict] : null;
+  // After "This verdict is wrong", the student picks a reason. The button they pressed has left the page, so focus
+  // goes to the first reason, and then to the thank-you line once they choose.
+  const [asking, setAsking] = useState(false);
+  const firstReason = useRef<HTMLButtonElement>(null);
+  const thanks = useRef<HTMLParagraphElement>(null);
+  const justChose = useRef(false);
+  useEffect(() => {
+    if (asking) firstReason.current?.focus();
+  }, [asking]);
+  useEffect(() => {
+    if (flagged && justChose.current) {
+      justChose.current = false;
+      thanks.current?.focus();
+    }
+  }, [flagged]);
   // These two end before the judge, with a reason that already says exactly what happened. The general
   // explanation would repeat it, and for an empty reference list it would even point the wrong way.
   const reasonSaysItAll = (verdict === "cant_check" || verdict === "reference_not_found") && Boolean(claim.reason);
@@ -59,7 +92,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
   return (
     <li className="claim" id={`claim-${claim.id}`}>
       <div className="claim-head">
-        {verdict ? <Badge verdict={verdict} /> : <span className="badge badge-muted">{error ? "Not checked" : "Waiting…"}</span>}
+        {verdict ? <Badge verdict={verdict} /> : <span className="badge badge-muted">{error || ended ? "Not checked" : "Waiting…"}</span>}
         {claim.citation && <span className="citation">{claim.citation}</span>}
       </div>
       <p className="claim-text">{claim.text}</p>
@@ -114,21 +147,42 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
         </p>
       )}
 
-      {verdict && (
-        <div>
-          <button
-            type="button"
-            className="link"
-            disabled={flagged}
-            onClick={() => {
-              onFlag();
-              onEvent("verdict_flagged_wrong", { verdict });
-            }}
-          >
-            {flagged ? "Thanks, noted" : "This verdict is wrong"}
-          </button>
-        </div>
-      )}
+      {verdict &&
+        (flagged ? (
+          <p className="hint" role="status" ref={thanks} tabIndex={-1}>
+            Thanks, noted.
+          </p>
+        ) : asking ? (
+          <div className="flag-reasons" role="group" aria-label="What looks wrong with this verdict?">
+            <p className="hint">What looks wrong?</p>
+            <div className="chips">
+              {reasonsFor(claim).map((reason, index) => (
+                <button
+                  key={reason}
+                  type="button"
+                  className="chip"
+                  ref={index === 0 ? firstReason : undefined}
+                  onClick={() => {
+                    justChose.current = true;
+                    setAsking(false);
+                    onFlag(reason);
+                  }}
+                >
+                  {FLAG_REASON_LABELS[reason]}
+                </button>
+              ))}
+              <button type="button" className="link" onClick={() => setAsking(false)}>
+                Never mind
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <button type="button" className="link" onClick={() => setAsking(true)}>
+              This verdict is wrong
+            </button>
+          </div>
+        ))}
     </li>
   );
 }
@@ -143,7 +197,14 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
   const finished = state.phase === "done";
   // When nothing needs attention, an empty "Needs attention" list would contradict the tally, so show everything.
   const filter = chosen === "attention" && finished && attention === 0 ? "all" : chosen;
-  const tally = attention === 0 ? "Every checked claim is supported." : `${attention} of ${total} ${total === 1 ? "claim needs" : "claims need"} attention.`;
+  const stopped = state.stopped;
+  const tally = stopped
+    ? checked === 0
+      ? "Stopped before any claim was checked."
+      : `Stopped after ${checked} of ${total} ${total === 1 ? "claim" : "claims"}.${attention > 0 ? ` ${attention} ${attention === 1 ? "needs" : "need"} attention.` : ""}`
+    : attention === 0
+      ? "Every checked claim is supported."
+      : `${attention} of ${total} ${total === 1 ? "claim needs" : "claims need"} attention.`;
 
   // A keyboard or screen-reader user who pressed "Check my claims" has lost that button (it left the page), so
   // when the results arrive, move focus to the Results heading instead of leaving it on the page body.
@@ -179,7 +240,9 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
   return (
     <section className="panel" aria-labelledby="results-title">
       <div className="panel-head">
-        <p className="eyebrow">{finished ? "Check complete" : state.phase === "error" ? "Check stopped" : "Checking"}</p>
+        <p className="eyebrow">
+          {finished ? (stopped ? "Check stopped by you" : "Check complete") : state.phase === "error" ? "Check stopped" : "Checking"}
+        </p>
         <h2 id="results-title" ref={heading} tabIndex={-1}>
           Results
         </h2>
@@ -187,7 +250,13 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
 
       {/* Stays mounted so screen readers hear the outcome when the progress line goes away. */}
       <p className="sr-only" role="status">
-        {finished ? (total === 0 ? "Check finished. No checkable claims were found." : `Check finished. ${tally}`) : ""}
+        {finished
+          ? total === 0
+            ? stopped
+              ? "Check stopped before any claims were found."
+              : "Check finished. No checkable claims were found."
+            : `${stopped ? "Check stopped" : "Check finished"}. ${tally}`
+          : ""}
       </p>
 
       {!finished && state.phase !== "error" && (
@@ -203,7 +272,10 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
         </p>
       )}
 
-      {finished && total === 0 && <p className="empty">No checkable claims were found in this draft. Try pasting a section with factual statements and citations.</p>}
+      {finished && total === 0 && !stopped && (
+        <p className="empty">No checkable claims were found in this draft. Try pasting a section with factual statements and citations.</p>
+      )}
+      {finished && total === 0 && stopped && <p className="empty">You stopped the check before any claims were found.</p>}
 
       {total > 0 && (
         <>
@@ -234,7 +306,11 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
                 error={state.claimErrors[claim.id]}
                 flagged={flagged.has(claim.id)}
                 copied={copiedFix[claim.id] ?? "idle"}
-                onFlag={() => setFlagged((prev) => new Set(prev).add(claim.id))}
+                ended={finished}
+                onFlag={(reason) => {
+                  setFlagged((prev) => new Set(prev).add(claim.id));
+                  if (claim.verdict) onEvent("verdict_flagged_wrong", { verdict: claim.verdict, reason });
+                }}
                 onCopied={(result) => setCopiedFix((prev) => ({ ...prev, [claim.id]: result }))}
                 onRetry={() => onRetryClaim(claim.id)}
                 onEvent={onEvent}

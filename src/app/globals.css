@@ -5,74 +5,40 @@
   One accent (teal ink) is used only for the primary action, focus rings and the selected state. Verdict colours are
   status colours, not accents, and every verdict also carries a symbol and a text label.
 */
+/*
+  Each colour is written once as light-dark(light value, dark value). `color-scheme` decides which one applies:
+  "light dark" follows the system, and the saved choice (data-theme, set before first paint by layout.tsx) pins it.
+  So the dark palette exists in one place, not three.
+*/
 :root {
-  --bg: #f5f0e6;
-  --surface: #fffdf8;
-  --sunken: #ece5d6;
-  --text: #211e17;
-  --muted: #5a5547;
-  --line: #d8cfba;
-  --line-strong: #b9ad90;
-  --accent: #0e5a61;
-  --accent-text: #ffffff;
-  --accent-soft: #dcebea;
-  --good: #1b5e34;
-  --good-bg: #e0efe1;
-  --warn: #7a4a00;
-  --warn-bg: #f8e9c6;
-  --bad: #9b1c1c;
-  --bad-bg: #f6dfda;
-  --info: #1d4a7a;
-  --info-bg: #e0ebf4;
-  --shadow: 0 1px 0 rgb(33 30 23 / 6%);
+  color-scheme: light dark;
+  --bg: light-dark(#f5f0e6, #14171a);
+  --surface: light-dark(#fffdf8, #1b2024);
+  --sunken: light-dark(#ece5d6, #101316);
+  --text: light-dark(#211e17, #e9e6dc);
+  --muted: light-dark(#5a5547, #a9a89c);
+  --line: light-dark(#d8cfba, #333a40);
+  --line-strong: light-dark(#b9ad90, #4b545b);
+  --accent: light-dark(#0e5a61, #7cc7cc);
+  --accent-text: light-dark(#ffffff, #06272a);
+  --accent-soft: light-dark(#dcebea, #16312f);
+  --good: light-dark(#1b5e34, #84dca3);
+  --good-bg: light-dark(#e0efe1, #163021);
+  --warn: light-dark(#7a4a00, #f0c36b);
+  --warn-bg: light-dark(#f8e9c6, #362b12);
+  --bad: light-dark(#9b1c1c, #ff9f98);
+  --bad-bg: light-dark(#f6dfda, #3b1d1b);
+  --info: light-dark(#1d4a7a, #9cc6f5);
+  --info-bg: light-dark(#e0ebf4, #172637);
+  /* A shadow is not a colour, so only its colour switches: a hairline in light, invisible in dark. */
+  --shadow: 0 1px 0 light-dark(rgb(33 30 23 / 6%), transparent);
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+:root[data-theme="light"] {
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #14171a;
-    --surface: #1b2024;
-    --sunken: #101316;
-    --text: #e9e6dc;
-    --muted: #a9a89c;
-    --line: #333a40;
-    --line-strong: #4b545b;
-    --accent: #7cc7cc;
-    --accent-text: #06272a;
-    --accent-soft: #16312f;
-    --good: #84dca3;
-    --good-bg: #163021;
-    --warn: #f0c36b;
-    --warn-bg: #362b12;
-    --bad: #ff9f98;
-    --bad-bg: #3b1d1b;
-    --info: #9cc6f5;
-    --info-bg: #172637;
-    --shadow: none;
-    color-scheme: dark;
-  }
-}
 :root[data-theme="dark"] {
-  --bg: #14171a;
-  --surface: #1b2024;
-  --sunken: #101316;
-  --text: #e9e6dc;
-  --muted: #a9a89c;
-  --line: #333a40;
-  --line-strong: #4b545b;
-  --accent: #7cc7cc;
-  --accent-text: #06272a;
-  --accent-soft: #16312f;
-  --good: #84dca3;
-  --good-bg: #163021;
-  --warn: #f0c36b;
-  --warn-bg: #362b12;
-  --bad: #ff9f98;
-  --bad-bg: #3b1d1b;
-  --info: #9cc6f5;
-  --info-bg: #172637;
-  --shadow: none;
   color-scheme: dark;
 }
 
@@ -431,6 +397,26 @@ textarea::placeholder {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+/* "Try an example": a quiet button and one line of explanation, only while the draft is empty. */
+.example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+/* "This verdict is wrong": a short question and the reason buttons under a claim. */
+.flag-reasons {
+  display: grid;
+  gap: 8px;
+  padding-top: 6px;
+}
+/* "Delete this check": the warning and its two buttons sit on one wrapping line with the other actions. */
+.confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
 }
 .chip {
   font: inherit;

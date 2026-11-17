@@ -12,12 +12,12 @@ One row per event in the `events` table: `session_id`, `name`, `props` (JSON), `
 | `claim_checked` | A claim reaches a verdict | `verdict`, `exit_stage`, `latency_ms`, `retries` |
 | `run_completed` | All claims have verdicts | `duration_ms`, `verdict_counts` |
 | `evidence_opened` | User opens a quote and page | `verdict` |
-| `verdict_flagged_wrong` | "This verdict is wrong" pressed | `verdict` |
+| `verdict_flagged_wrong` | "This verdict is wrong" pressed and a reason chosen | `verdict`, `reason` (quote_does_not_support, wrong_page, source_says_otherwise, claim_misread, source_was_uploaded, other; a fixed list, no free text) |
 | `fix_suggested` | Fix this claim shown | `verdict` |
 | `fix_accepted` | User applies the suggested sentence | none |
 | `recheck_started` | User re-runs after editing | `claims_rechecked` |
 | `report_exported` | Report downloaded or copied | `format` |
-| `would_pay_answered` | Beta prompt answered | `answer` (yes, maybe, no), `price_bucket` |
+| `would_pay_answered` | Beta prompt answered | `answer` (yes, maybe, no). No price figures: price is probed in interviews, not in the product. |
 | `feature_interest_answered` | Optional beta question about a feature not built | `feature`, `answer` |
 
 ## What each metric needs

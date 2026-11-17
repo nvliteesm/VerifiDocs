@@ -13,9 +13,13 @@ interface Props {
   onStart: (input: VerifyInput) => void;
   /** The last submitted input, so a failed or finished check can be edited instead of retyped. */
   initial?: VerifyInput | null;
+  /** Loads the made-up example report and draft. Offered only while the draft is still empty. */
+  onTryExample?: () => void;
+  /** Why the example could not be loaded, if it could not. */
+  exampleNote?: string | null;
 }
 
-export function DraftPanel({ disabled, disabledReason, noReadySources = false, onStart, initial = null }: Props) {
+export function DraftPanel({ disabled, disabledReason, noReadySources = false, onStart, initial = null, onTryExample, exampleNote = null }: Props) {
   const [mode, setMode] = useState<"paste" | "docx">(initial?.draft.kind === "docx" ? "docx" : "paste");
   const [text, setText] = useState(initial?.draft.kind === "paste" ? initial.draft.text : "");
   const [file, setFile] = useState<File | null>(initial?.draft.kind === "docx" ? initial.draft.file : null);
@@ -47,6 +51,20 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
         <h2 id="draft-title">Your draft</h2>
         <p className="hint">Paste the paragraphs you want checked, or upload a Word file. Keep your citations as you wrote them.</p>
       </div>
+
+      {onTryExample && text.trim() === "" && file === null && (
+        <div className="example">
+          <button type="button" className="btn btn-quiet" onClick={onTryExample}>
+            Try an example
+          </button>
+          <span className="hint">See a check on a made-up report and draft. None of your files are used.</span>
+        </div>
+      )}
+      {exampleNote && (
+        <p role="alert" className="notice notice-warn">
+          {exampleNote}
+        </p>
+      )}
 
       <div className="segment" role="group" aria-label="How to add your draft">
         <button type="button" aria-pressed={mode === "paste"} onClick={() => setMode("paste")}>

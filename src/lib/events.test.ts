@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EVENT_SCHEMAS, lengthBucket, pageBucket, type EventName } from "./events";
+import { EVENT_SCHEMAS, FLAG_REASONS, lengthBucket, pageBucket, type EventName } from "./events";
 
 const valid: Record<EventName, unknown> = {
   session_started: { source: "direct" },
@@ -10,12 +10,12 @@ const valid: Record<EventName, unknown> = {
   claim_checked: { verdict: "partial", exit_stage: 8, latency_ms: 5300, retries: 1 },
   run_completed: { duration_ms: 90000, verdict_counts: { supported: 20, partial: 5, cant_tell: 1 } },
   evidence_opened: { verdict: "supported" },
-  verdict_flagged_wrong: { verdict: "contradicted" },
+  verdict_flagged_wrong: { verdict: "contradicted", reason: "wrong_page" },
   fix_suggested: { verdict: "partial" },
   fix_accepted: {},
   recheck_started: { claims_rechecked: 4 },
   report_exported: { format: "markdown" },
-  would_pay_answered: { answer: "maybe", price_bucket: "under_5_usd" },
+  would_pay_answered: { answer: "maybe" },
   feature_interest_answered: { feature: "humanizer", answer: "no" },
 };
 
@@ -38,6 +38,13 @@ describe("event schemas", () => {
 
   it("does not let a sentence into a string prop", () => {
     expect(EVENT_SCHEMAS.would_pay_answered.safeParse({ answer: "yes", price_bucket: "Inflation rose to 5 percent" }).success).toBe(false);
+    expect(EVENT_SCHEMAS.would_pay_answered.safeParse({ answer: "yes", note: "free text" }).success).toBe(false);
+    // The reason is one of a fixed list: free text, a missing reason and an unknown reason are all refused.
+    const flag = EVENT_SCHEMAS.verdict_flagged_wrong;
+    expect(flag.safeParse({ verdict: "contradicted", reason: "The quote on page 4 says 5 percent, not what you wrote" }).success).toBe(false);
+    expect(flag.safeParse({ verdict: "contradicted" }).success).toBe(false);
+    expect(flag.safeParse({ verdict: "contradicted", reason: "other", note: "text" }).success).toBe(false);
+    for (const reason of FLAG_REASONS) expect(flag.safeParse({ verdict: "contradicted", reason }).success).toBe(true);
     expect(EVENT_SCHEMAS.feature_interest_answered.safeParse({ feature: "a long free text answer", answer: "yes" }).success).toBe(false);
     expect(EVENT_SCHEMAS.feature_interest_answered.safeParse({ feature: "x".repeat(41), answer: "yes" }).success).toBe(false);
     expect(EVENT_SCHEMAS.claim_checked.safeParse({ verdict: "Smith 2021", exit_stage: 8, latency_ms: 1, retries: 0 }).success).toBe(false);

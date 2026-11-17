@@ -114,6 +114,10 @@ export function createApi(options: ApiOptions = {}) {
     extract: (runId: string, unit: number) =>
       send<ExtractResponse>("POST", `/api/runs/${runId}/extract`, { json: { unit } }),
     getRun: (runId: string) => send<RunResponse>("GET", `/api/runs/${runId}`),
+    /** Deletes a check now (its draft text, claims and verdicts). */
+    deleteRun: async (runId: string): Promise<void> => {
+      await send<null>("DELETE", `/api/runs/${runId}`);
+    },
     check: (claimId: string) => send<CheckResponse>("POST", `/api/claims/${claimId}/check`),
     listSources: async () => (await send<{ sources: SourceView[] }>("GET", "/api/sources")).sources,
     upload(file: File): Promise<UploadResponse> {

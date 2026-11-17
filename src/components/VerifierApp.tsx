@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createApi } from "@/lib/client/api";
+import { EXAMPLE_DRAFT, EXAMPLE_REFERENCES, EXAMPLE_SOURCE_FILENAME, EXAMPLE_SOURCE_URL } from "@/lib/client/example";
 import { buildReport } from "@/lib/client/report";
 import type { ClientEventName, VerifyInput } from "@/lib/client/types";
 import { DraftPanel } from "./DraftPanel";
@@ -11,14 +12,6 @@ import { CONSENT_KEY, readStored, writeStored } from "./storage";
 import { ThemeToggle } from "./ThemeToggle";
 import { useSources } from "./useSources";
 import { useVerification } from "./useVerification";
-
-// PLACEHOLDER WORDING AND BUCKETS: the privacy notice and the would-pay answers are drafts for Steven to approve.
-const PRICE_BUCKETS = [
-  { token: "free_only", label: "Only if it is free" },
-  { token: "under_25k_idr", label: "Under Rp25.000" },
-  { token: "25k_to_75k_idr", label: "Rp25.000 to Rp75.000" },
-  { token: "over_75k_idr", label: "Over Rp75.000" },
-];
 
 function Frame({ children, busy }: { children?: React.ReactNode; busy?: boolean }) {
   return (
@@ -46,14 +39,23 @@ export function VerifierApp() {
   // Kept in memory only: it lets a failed check be retried or edited without retyping. Never stored (Hard Rules 4 and 11).
   const [lastInput, setLastInput] = useState<VerifyInput | null>(null);
   const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
-  const [paid, setPaid] = useState<{ answer: "yes" | "maybe" | "no"; bucket: string } | null>(null);
   const [answered, setAnswered] = useState(false);
+  // Deleting a check is permanent, so it takes a second, explicit step.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteNote, setDeleteNote] = useState<"deleted" | "failed" | null>(null);
+  const keepButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirmingDelete) keepButton.current?.focus();
+  }, [confirmingDelete]);
 
   const sources = useSources(api);
   const verification = useVerification(api);
   const { state } = verification;
 
+  // Whether the notice was acknowledged lives in the browser's storage, which the server cannot read, so it is
+  // read after mount. Reading it during render would make the server and the first client render disagree.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setConsent(readStored(CONSENT_KEY) === "yes");
   }, []);
 
@@ -84,12 +86,33 @@ export function VerifierApp() {
     if (state.phase === "idle" || state.phase === "done" || state.phase === "error") starting.current = false;
   }, [state.phase]);
 
+  // "Try an example": the made-up report goes through the normal upload path (so the student sees it read like any
+  // other source), and the made-up draft and reference list fill the form. Remounting the form (the key) applies them.
+  const [seedKey, setSeedKey] = useState(0);
+  const [exampleNote, setExampleNote] = useState<string | null>(null);
+  const tryExample = async () => {
+    setExampleNote(null);
+    try {
+      const response = await fetch(EXAMPLE_SOURCE_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const file = new File([await response.blob()], EXAMPLE_SOURCE_FILENAME, { type: "application/pdf" });
+      // A second press must not upload it again (the server would refuse the duplicate).
+      if (!sources.rows.some((row) => row.filename === EXAMPLE_SOURCE_FILENAME)) sources.addFiles([file]);
+      setLastInput({ draft: { kind: "paste", text: EXAMPLE_DRAFT }, references: EXAMPLE_REFERENCES });
+      setSeedKey((key) => key + 1);
+    } catch {
+      setExampleNote("Could not load the example. Check your connection and try again.");
+    }
+  };
+
   const start = (input: VerifyInput) => {
     if (starting.current) return;
     starting.current = true;
     setLastInput(input);
     setCopied("idle");
     setAnswered(false);
+    setConfirmingDelete(false);
+    setDeleteNote(null);
     verification.start(input);
   };
 
@@ -144,6 +167,12 @@ export function VerifierApp() {
         <p className="lede">Add the PDFs you cite, paste your draft, and see which claims your sources really support.</p>
       </div>
 
+      {deleteNote === "deleted" && idle && (
+        <p role="status" className="notice notice-info" style={{ marginBottom: 20 }}>
+          Your check was deleted from our servers.
+        </p>
+      )}
+
       {waking && (
         <p role="status" className="notice notice-info" style={{ marginBottom: 20 }}>
           The database is waking up. This can take a few seconds the first time. Please wait, nothing is lost.
@@ -158,11 +187,14 @@ export function VerifierApp() {
         <div className="main-col">
           {idle ? (
             <DraftPanel
+              key={seedKey}
               disabled={sources.busy}
               disabledReason={sources.busy ? "Wait for your sources to finish reading." : null}
               noReadySources={sources.loaded && readySources === 0}
               initial={lastInput}
               onStart={start}
+              onTryExample={tryExample}
+              exampleNote={exampleNote}
             />
           ) : (
             <>
@@ -215,6 +247,11 @@ export function VerifierApp() {
                     </button>
                   </>
                 )}
+                {running && (
+                  <button type="button" className="btn" onClick={verification.stop}>
+                    Stop checking
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn-quiet"
@@ -226,6 +263,40 @@ export function VerifierApp() {
                 >
                   Start a new check
                 </button>
+                {state.runId && !running && !confirmingDelete && (
+                  <button type="button" className="btn btn-quiet" onClick={() => setConfirmingDelete(true)}>
+                    Delete this check
+                  </button>
+                )}
+                {confirmingDelete && (
+                  <span className="confirm" role="group" aria-label="Delete this check?">
+                    <span className="hint">This removes your draft and these results from our servers. It cannot be undone.</span>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={async () => {
+                        const gone = await verification.deleteCheck();
+                        setConfirmingDelete(false);
+                        if (gone) {
+                          setLastInput(null);
+                          setDeleteNote("deleted");
+                        } else {
+                          setDeleteNote("failed");
+                        }
+                      }}
+                    >
+                      Yes, delete it
+                    </button>
+                    <button type="button" className="btn btn-quiet" ref={keepButton} onClick={() => setConfirmingDelete(false)}>
+                      Keep it
+                    </button>
+                  </span>
+                )}
+                {deleteNote === "failed" && (
+                  <span role="alert" className="hint hint-bad">
+                    Could not delete the check. Try again in a moment.
+                  </span>
+                )}
                 {state.phase === "done" && !lastInput && (
                   <span className="hint">To check again after reopening, start a new check and paste your draft. Your draft is not kept in this browser.</span>
                 )}
@@ -238,46 +309,27 @@ export function VerifierApp() {
               {state.phase === "done" && (
                 <section className="panel" aria-labelledby="pay-title">
                   <h2 id="pay-title">One question</h2>
-                  {answered ? (
-                    <p>Thank you.</p>
-                  ) : (
+                  {!answered && (
                     <>
                       <p>If a tool like this were not free, would you pay for it?</p>
                       <div className="chips" role="group" aria-label="Would you pay">
                         {(["yes", "maybe", "no"] as const).map((answer) => (
-                          <button key={answer} type="button" className="chip" aria-pressed={paid?.answer === answer} onClick={() => setPaid({ answer, bucket: paid?.bucket ?? "free_only" })}>
+                          <button
+                            key={answer}
+                            type="button"
+                            className="chip"
+                            onClick={() => {
+                              event("would_pay_answered", { answer });
+                              setAnswered(true);
+                            }}
+                          >
                             {answer === "yes" ? "Yes" : answer === "maybe" ? "Maybe" : "No"}
                           </button>
                         ))}
                       </div>
-                      {paid && paid.answer !== "no" && (
-                        <div className="field">
-                          <label htmlFor="price">What would be fair?</label>
-                          <select id="price" value={paid.bucket} onChange={(e) => setPaid({ ...paid, bucket: e.target.value })}>
-                            {PRICE_BUCKETS.map((bucket) => (
-                              <option key={bucket.token} value={bucket.token}>
-                                {bucket.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                      <div className="actions">
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={!paid}
-                          onClick={() => {
-                            if (!paid) return;
-                            event("would_pay_answered", { answer: paid.answer, price_bucket: paid.answer === "no" ? "none" : paid.bucket });
-                            setAnswered(true);
-                          }}
-                        >
-                          Send answer
-                        </button>
-                      </div>
                     </>
                   )}
+                  <p role="status">{answered ? "Thank you." : ""}</p>
                 </section>
               )}
             </>
@@ -286,7 +338,7 @@ export function VerifierApp() {
       </div>
 
       <footer className="hint" style={{ marginTop: 40 }}>
-        Drafts, source text and results are deleted 30 days after upload.
+        Drafts, source text and results are deleted 30 days after upload, or sooner when you delete them.
       </footer>
     </Frame>
   );

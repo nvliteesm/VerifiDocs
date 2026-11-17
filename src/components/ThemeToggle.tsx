@@ -12,6 +12,9 @@ function systemPrefersDark(): boolean {
 export function ThemeToggle() {
   const [dark, setDark] = useState<boolean | null>(null);
 
+  // The theme is only known in the browser (a saved choice, or the system setting), so it is read after mount;
+  // reading it during render would make the server and the first client render disagree.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const saved = document.documentElement.dataset.theme;
     if (saved === "dark" || saved === "light") {
@@ -29,6 +32,7 @@ export function ThemeToggle() {
     query.addEventListener("change", onChange);
     return () => query.removeEventListener("change", onChange);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function toggle() {
     const next = !dark;

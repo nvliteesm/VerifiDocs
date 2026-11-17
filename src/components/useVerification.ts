@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import type { Api } from "@/lib/client/api";
+import { ApiClientError, type Api } from "@/lib/client/api";
 import { resumeVerification, retryClaim, runVerification } from "@/lib/client/run-verification";
 import type { VerifyInput } from "@/lib/client/types";
 import { initialState, reduce, type VerifyEvent } from "@/lib/client/verifier-state";
@@ -61,6 +61,31 @@ export function useVerification(api: Api) {
     dispatch({ type: "reset" });
   }, []);
 
+  /** Stops a running check. Claims already being checked on the server finish; no new ones are started. */
+  const stop = useCallback(() => {
+    controller.current?.abort();
+    dispatch({ type: "stopped" });
+  }, []);
+
+  /**
+   * Deletes the current check on the server now, then clears it from the screen. Returns false, leaving
+   * everything as it was, if the server could not delete it, so the student is never told it is gone when it is not.
+   */
+  const deleteCheck = useCallback(async (): Promise<boolean> => {
+    const runId = state.runId;
+    if (!runId) return true;
+    try {
+      await api.deleteRun(runId);
+    } catch (error) {
+      // Already gone (for example deleted in another tab): the result the student wanted.
+      if (!(error instanceof ApiClientError && error.status === 404)) return false;
+    }
+    controller.current?.abort();
+    writeStored(LAST_RUN_KEY, null);
+    dispatch({ type: "reset" });
+    return true;
+  }, [api, state.runId]);
+
   // Remember the latest check, so a reload can reopen it (a check is kept for 30 days).
   useEffect(() => {
     if (state.runId) writeStored(LAST_RUN_KEY, state.runId);
@@ -68,5 +93,5 @@ export function useVerification(api: Api) {
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  return { state, start, resume, retry, reset, lastRunId: () => readStored(LAST_RUN_KEY) };
+  return { state, start, resume, retry, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
 }

@@ -5,6 +5,7 @@
 //     cannot be logged as a prop.
 import { z } from "zod";
 import type postgres from "postgres";
+import { FLAG_REASONS, type FlagReason } from "./flag-reasons";
 import type { SqlLike } from "./rag/retrieve";
 import { VERDICTS } from "./pipeline/types";
 
@@ -26,6 +27,8 @@ const verdictCounts = z.strictObject({
   no_citation_given: count.optional(),
 });
 
+export { FLAG_REASONS, type FlagReason };
+
 export const EVENT_SCHEMAS = {
   session_started: z.strictObject({ source: z.enum(["direct", "referral"]) }),
   draft_submitted: z.strictObject({
@@ -46,12 +49,14 @@ export const EVENT_SCHEMAS = {
   }),
   run_completed: z.strictObject({ duration_ms: ms, verdict_counts: verdictCounts }),
   evidence_opened: z.strictObject({ verdict }),
-  verdict_flagged_wrong: z.strictObject({ verdict }),
+  // The student picks one reason from a fixed list. There is no free text, so nothing from the draft or the
+  // source can travel in this event (hard rule 11).
+  verdict_flagged_wrong: z.strictObject({ verdict, reason: z.enum(FLAG_REASONS) }),
   fix_suggested: z.strictObject({ verdict: z.enum(["partial", "contradicted"]) }),
   fix_accepted: z.strictObject({}),
   recheck_started: z.strictObject({ claims_rechecked: count }),
   report_exported: z.strictObject({ format: z.enum(["copy", "text", "markdown", "csv"]) }),
-  would_pay_answered: z.strictObject({ answer, price_bucket: token }),
+  would_pay_answered: z.strictObject({ answer }),
   feature_interest_answered: z.strictObject({ feature: token, answer }),
 } as const;
 

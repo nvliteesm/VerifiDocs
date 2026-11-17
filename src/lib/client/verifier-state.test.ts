@@ -130,6 +130,39 @@ describe("reduce: claim errors", () => {
   });
 });
 
+describe("stopping a check", () => {
+  const running = (phase: "starting" | "extracting" | "checking"): VerifierState =>
+    reduce(reduce(initialState, { type: "loaded", run: runResponse([claim("a", 1, "supported"), claim("b", 2)]) }), {
+      type: "phase",
+      phase,
+      message: "working",
+    });
+
+  it("ends a running check as done and stopped, keeping the verdicts it already has", () => {
+    for (const phase of ["starting", "extracting", "checking"] as const) {
+      const state = reduce(running(phase), { type: "stopped" });
+      expect(state.phase).toBe("done");
+      expect(state.stopped).toBe(true);
+      expect(state.message).toBe("");
+      expect(state.claims.map((c) => c.verdict)).toEqual(["supported", null]);
+    }
+  });
+
+  it("ignores a Stop that arrives after the check has already ended, so a finished check never looks stopped", () => {
+    const done = reduce(running("checking"), { type: "phase", phase: "done", message: "Done." });
+    expect(reduce(done, { type: "stopped" })).toBe(done);
+    const failed = reduce(running("checking"), { type: "failed", message: "boom" });
+    expect(reduce(failed, { type: "stopped" })).toBe(failed);
+    expect(reduce(initialState, { type: "stopped" })).toBe(initialState);
+  });
+
+  it("forgets the stop when a new check starts or the screen is reset", () => {
+    const stopped = reduce(running("checking"), { type: "stopped" });
+    expect(reduce(stopped, { type: "reset" }).stopped).toBe(false);
+    expect(reduce(stopped, { type: "run", runId: "run-2", unitCount: 1 }).stopped).toBe(false);
+  });
+});
+
 describe("countVerdicts", () => {
   it("counts only claims that have a verdict", () => {
     expect(countVerdicts([claim("a", 1, "partial"), claim("b", 2, "partial"), claim("c", 3)])).toEqual({ partial: 2 });

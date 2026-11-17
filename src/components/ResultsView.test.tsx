@@ -85,20 +85,79 @@ describe("ResultsView filter", () => {
 });
 
 describe("ResultsView flagging", () => {
+  const flaggable = () => claim("contradicted", { text: "wrong one", quote: "five percent", page: 2, reason: "r" });
+
+  it("asks why first, and sends the verdict and the chosen reason once", async () => {
+    const user = userEvent.setup();
+    const onEvent = vi.fn();
+    view(stateOf([flaggable()]), onEvent);
+
+    await user.click(screen.getByRole("button", { name: "This verdict is wrong" }));
+    expect(onEvent).not.toHaveBeenCalled(); // nothing is sent until a reason is chosen
+    const group = screen.getByRole("group", { name: "What looks wrong with this verdict?" });
+    await user.click(within(group).getByRole("button", { name: "It is on a different page" }));
+
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledWith("verdict_flagged_wrong", { verdict: "contradicted", reason: "wrong_page" });
+    expect(screen.getByText("Thanks, noted.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "This verdict is wrong" })).toBeNull();
+  });
+
+  it("never offers a text box, so nothing typed can leave the page", async () => {
+    const user = userEvent.setup();
+    view(stateOf([flaggable()]));
+    await user.click(screen.getByRole("button", { name: "This verdict is wrong" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("moves focus to the first reason, and then to the thank-you line", async () => {
+    const user = userEvent.setup();
+    view(stateOf([flaggable()]));
+    await user.click(screen.getByRole("button", { name: "This verdict is wrong" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "The quote does not support this" }));
+    await user.click(screen.getByRole("button", { name: "It misread my claim" }));
+    expect(document.activeElement).toBe(screen.getByText("Thanks, noted."));
+  });
+
+  it("lets the student back out without sending anything", async () => {
+    const user = userEvent.setup();
+    const onEvent = vi.fn();
+    view(stateOf([flaggable()]), onEvent);
+    await user.click(screen.getByRole("button", { name: "This verdict is wrong" }));
+    await user.click(screen.getByRole("button", { name: "Never mind" }));
+    expect(screen.getByRole("button", { name: "This verdict is wrong" })).toBeTruthy();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it("only offers reasons that fit: quote reasons need a quote, 'already uploaded' needs a no-match verdict", async () => {
+    const user = userEvent.setup();
+    const { unmount } = view(stateOf([flaggable()]));
+    await user.click(screen.getByRole("button", { name: "This verdict is wrong" }));
+    expect(screen.queryByRole("button", { name: "I already uploaded this source" })).toBeNull();
+    expect(screen.getByRole("button", { name: "The quote does not support this" })).toBeTruthy();
+    unmount();
+
+    view(stateOf([claim("cant_check", { reason: "The reference exists, but no uploaded source matches it." })]));
+    await user.click(screen.getByRole("button", { name: "This verdict is wrong" }));
+    expect(screen.getByRole("button", { name: "I already uploaded this source" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "The quote does not support this" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "It is on a different page" })).toBeNull();
+  });
+
   it("remembers a flagged claim after the filter changes, so it cannot be flagged twice", async () => {
     const user = userEvent.setup();
     const onEvent = vi.fn();
     view(stateOf([claim("contradicted", { text: "wrong one" }), claim("supported", { text: "fine one" })]), onEvent);
 
     await user.click(screen.getByRole("button", { name: "This verdict is wrong" }));
-    expect(screen.getByRole("button", { name: "Thanks, noted" })).toHaveProperty("disabled", true);
+    await user.click(screen.getByRole("button", { name: "It misread my claim" }));
+    expect(screen.getByText("Thanks, noted.")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: /^All/ }));
     await user.click(screen.getByRole("button", { name: /^Needs attention/ }));
 
-    const flagged = screen.getByRole("button", { name: "Thanks, noted" });
-    expect(flagged).toHaveProperty("disabled", true);
-    await user.click(flagged);
+    expect(screen.getByText("Thanks, noted.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "This verdict is wrong" })).toBeNull();
     expect(onEvent.mock.calls.filter(([name]) => name === "verdict_flagged_wrong")).toHaveLength(1);
   });
 
@@ -107,8 +166,43 @@ describe("ResultsView flagging", () => {
     view(stateOf([claim("contradicted", { text: "first" }), claim("not_in_sources", { text: "second" })]));
     const buttons = screen.getAllByRole("button", { name: "This verdict is wrong" });
     await user.click(buttons[0]!);
+    await user.click(screen.getByRole("button", { name: "It misread my claim" }));
     expect(screen.getAllByRole("button", { name: "This verdict is wrong" })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: "Thanks, noted" })).toHaveLength(1);
+    expect(screen.getAllByText("Thanks, noted.")).toHaveLength(1);
+  });
+});
+
+describe("ResultsView when the student stopped the check", () => {
+  const stopped = (claims: ClaimView[]): VerifierState => ({ ...stateOf(claims, "done"), stopped: true });
+
+  it("says how far it got, and counts what needs attention among the checked claims", () => {
+    view(stopped([claim("contradicted"), claim(null), claim(null)]));
+    expect(screen.getAllByText("Stopped after 1 of 3 claims. 1 needs attention.").length).toBeGreaterThan(0);
+    expect(screen.getByText("Check stopped by you")).toBeTruthy();
+  });
+
+  it("never claims everything is supported when claims were left unchecked", () => {
+    view(stopped([claim("supported"), claim(null)]));
+    expect(screen.queryByText("Every checked claim is supported.")).toBeNull();
+    expect(screen.getAllByText("Stopped after 1 of 2 claims.").length).toBeGreaterThan(0);
+  });
+
+  it("labels the unchecked claims 'Not checked', not 'Waiting'", () => {
+    view(stopped([claim("contradicted"), claim(null, { text: "left over" })]));
+    const card = screen.getByText("left over").closest("li")!;
+    expect(within(card).getByText("Not checked")).toBeTruthy();
+    expect(screen.queryByText("Waiting…")).toBeNull();
+  });
+
+  it("explains a stop before any claims were found, instead of 'no checkable claims'", () => {
+    view(stopped([]));
+    expect(screen.getByText("You stopped the check before any claims were found.")).toBeTruthy();
+    expect(screen.queryByText(/No checkable claims were found/)).toBeNull();
+  });
+
+  it("still shows 'Waiting…' for unchecked claims while a check is running", () => {
+    view(stateOf([claim(null, { text: "in the queue" })], "checking"));
+    expect(within(screen.getByText("in the queue").closest("li")!).getByText("Waiting…")).toBeTruthy();
   });
 });
 

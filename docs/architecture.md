@@ -106,6 +106,7 @@ Handlers in `src/lib/api/` (`runs.ts`, `sources.ts`, `claims.ts`), wrapped by `h
 | `POST /api/runs` | Pasted draft (JSON) or .docx (multipart): parse, save the run and its reference list. Returns the unit count. |
 | `POST /api/runs/:id/extract` | `{ "unit": n }`: extract that unit's claims. Idempotent per unit. When the last unit lands the run becomes `checking`. |
 | `GET /api/runs/:id` | Run progress, every claim with its verdict, quote, page and fix, the references and their resolution, verdict counts, and the ranked fix list (ids). |
+| `DELETE /api/runs/:id` | Delete the caller's check now (draft text, claims, verdicts, reference entries; events are kept, they hold only ids, counts and buckets). 204, or 404 for an unknown id or another session's check. Source PDFs have their own delete. |
 | `POST /api/sources` | Multipart PDF. Saves page text, never the file. Returns the page count. |
 | `POST /api/sources/:id/ingest` | Chunk, embed and save the next 10 pages. Call until `done`. |
 | `GET /api/sources`, `DELETE /api/sources/:id` | List, and remove a source with its pages and chunks. |

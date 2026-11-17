@@ -1,0 +1,35 @@
+# CI: typecheck, lint, tests and a production build on every push to main and every pull request.
+#
+# It needs no secrets. The database tests (tests/db) and the live tests (tests/live) skip themselves when
+# NEON_BRANCH and LIVE are not set, so nothing here can touch the Neon database or call a paid service.
+# Hard rule 5: nothing may require a payment method. GitHub Actions on a free plan is enough for this job.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the older run, so the queue never fills with outdated checks.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # the scripts rely on built-in TypeScript type stripping (see CLAUDE.md)
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build

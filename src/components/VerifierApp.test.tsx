@@ -2,13 +2,17 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EXAMPLE_DRAFT, EXAMPLE_REFERENCES, EXAMPLE_SOURCE_FILENAME, EXAMPLE_SOURCE_URL } from "@/lib/client/example";
 import type { ClaimView, RunResponse } from "@/lib/client/types";
 import { CONSENT_KEY, LAST_RUN_KEY } from "./storage";
 import { VerifierApp } from "./VerifierApp";
 
 /** A fake server behind `fetch`: just enough of the API for one claim to go from pasted text to a verdict. */
-function fakeServer(options: { failCreate?: boolean; existingRun?: boolean } = {}) {
+function fakeServer(
+  options: { failCreate?: boolean; existingRun?: boolean; hangChecks?: boolean; deleteStatus?: number; exampleFails?: boolean } = {},
+) {
   const log: string[] = [];
+  const eventBodies: { name: string; props: Record<string, unknown> }[] = [];
   let checked = options.existingRun ?? false;
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -48,6 +52,13 @@ function fakeServer(options: { failCreate?: boolean; existingRun?: boolean } = {
     const method = init?.method ?? "GET";
     log.push(`${method} ${url}`);
     if (method === "GET" && url === "/api/sources") return json(200, { sources: [] });
+    if (method === "GET" && url === EXAMPLE_SOURCE_URL) {
+      return options.exampleFails ? new Response("nope", { status: 500 }) : new Response(new Blob(["%PDF-1.4 example"]), { status: 200 });
+    }
+    if (method === "POST" && url === "/api/sources") return json(201, { documentId: "doc-ex", status: "ingesting", pageCount: 1 });
+    if (method === "POST" && url === "/api/sources/doc-ex/ingest") {
+      return json(200, { documentId: "doc-ex", status: "ready", pagesIngested: 1, pageCount: 1, done: true });
+    }
     if (method === "POST" && url === "/api/runs") {
       if (options.failCreate) return json(500, { error: { code: "internal", message: "Something went wrong on our side." } });
       checked = false;
@@ -57,7 +68,12 @@ function fakeServer(options: { failCreate?: boolean; existingRun?: boolean } = {
       return json(200, { unit: 0, alreadyExtracted: false, claimsAdded: 1, status: "checking", unitCount: 1, unitsExtracted: 1, claimCount: 1 });
     }
     if (method === "GET" && url === "/api/runs/run-1") return json(200, run());
+    if (method === "DELETE" && url === "/api/runs/run-1") {
+      const status = options.deleteStatus ?? 204;
+      return status === 204 ? new Response(null, { status }) : json(status, { error: { code: "internal", message: "Something went wrong on our side." } });
+    }
     if (method === "POST" && url === "/api/claims/c1/check") {
+      if (options.hangChecks) return new Promise<Response>(() => {}); // the model never answers
       checked = true;
       return json(200, {
         outcome: "done",
@@ -65,10 +81,13 @@ function fakeServer(options: { failCreate?: boolean; existingRun?: boolean } = {
         verdict: { claimId: "c1", verdict: "supported", quote: "International trade rose 5 percent.", page: 1, reason: "The passage says so.", exitStage: 7, fixSuggestion: null },
       });
     }
-    if (method === "POST" && url === "/api/events") return new Response(null, { status: 204 });
+    if (method === "POST" && url === "/api/events") {
+      eventBodies.push(JSON.parse(String(init?.body)));
+      return new Response(null, { status: 204 });
+    }
     return json(404, { error: { code: "not_found", message: "Not found." } });
   };
-  return { fetchImpl, log, count: (entry: string) => log.filter((line) => line === entry).length };
+  return { fetchImpl, log, eventBodies, count: (entry: string) => log.filter((line) => line === entry).length };
 }
 
 const DRAFT = "International trade rose 5 percent (Vaswani et al., 2017).";
@@ -201,6 +220,197 @@ describe("a finished check", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("stopping a check", () => {
+  it("offers Stop while claims are being checked, and ends the check as stopped by the student", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer({ hangChecks: true }));
+    fill();
+    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    const stop = await screen.findByRole("button", { name: "Stop checking" });
+    expect(screen.getByRole("button", { name: "Start a new check" })).toHaveProperty("disabled", true);
+
+    await user.click(stop);
+    expect(await screen.findByText("Check stopped by you")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop checking" })).toBeNull();
+    expect(screen.getByText("Not checked")).toBeTruthy(); // the claim that was never judged
+    expect(screen.getAllByText("Stopped before any claim was checked.").length).toBeGreaterThan(0);
+    // The student can move on straight away.
+    expect(screen.getByRole("button", { name: "Start a new check" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Edit draft" })).toBeTruthy();
+  });
+
+  it("puts focus on the Results heading after Stop, because the Stop button has left the page", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer({ hangChecks: true }));
+    fill();
+    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await user.click(await screen.findByRole("button", { name: "Stop checking" }));
+    await screen.findByText("Check stopped by you");
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Results" }));
+  });
+
+  it("does not show Stop once the check has finished", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer());
+    fill();
+    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await screen.findByText("Check complete");
+    expect(screen.queryByRole("button", { name: "Stop checking" })).toBeNull();
+  });
+});
+
+describe("deleting a check", () => {
+  async function finishedCheck(server = fakeServer()) {
+    const user = userEvent.setup();
+    await openApp(server);
+    fill();
+    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await screen.findByText("Check complete");
+    return { user, server };
+  }
+
+  it("takes two steps, and keeping it changes nothing", async () => {
+    const { user, server } = await finishedCheck();
+    await user.click(screen.getByRole("button", { name: "Delete this check" }));
+    const group = screen.getByRole("group", { name: "Delete this check?" });
+    expect(group.textContent).toContain("cannot be undone");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Keep it" })); // the safe choice has focus
+
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(screen.queryByRole("group", { name: "Delete this check?" })).toBeNull();
+    expect(screen.getByText("Check complete")).toBeTruthy();
+    expect(server.log).not.toContain("DELETE /api/runs/run-1");
+  });
+
+  it("deletes on the server, clears the screen and the remembered check, and says so", async () => {
+    const { user, server } = await finishedCheck();
+    expect(window.localStorage.getItem(LAST_RUN_KEY)).toBe("run-1");
+    await user.click(screen.getByRole("button", { name: "Delete this check" }));
+    await user.click(screen.getByRole("button", { name: "Yes, delete it" }));
+
+    expect(await screen.findByText("Your check was deleted from our servers.")).toBeTruthy();
+    expect(server.count("DELETE /api/runs/run-1")).toBe(1);
+    expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(""); // the draft is gone too
+    expect(window.localStorage.getItem(LAST_RUN_KEY)).toBeNull();
+    expect(screen.queryByText("Check complete")).toBeNull();
+  });
+
+  it("does not pretend it worked when the server could not delete it", async () => {
+    const { user } = await finishedCheck(fakeServer({ deleteStatus: 500 }));
+    await user.click(screen.getByRole("button", { name: "Delete this check" }));
+    await user.click(screen.getByRole("button", { name: "Yes, delete it" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not delete the check");
+    expect(screen.getByText("Check complete")).toBeTruthy(); // the results are still there
+    expect(window.localStorage.getItem(LAST_RUN_KEY)).toBe("run-1");
+    expect(screen.queryByText("Your check was deleted from our servers.")).toBeNull();
+  });
+
+  it("treats a check that is already gone (deleted in another tab) as deleted", async () => {
+    const { user } = await finishedCheck(fakeServer({ deleteStatus: 404 }));
+    await user.click(screen.getByRole("button", { name: "Delete this check" }));
+    await user.click(screen.getByRole("button", { name: "Yes, delete it" }));
+    expect(await screen.findByText("Your check was deleted from our servers.")).toBeTruthy();
+  });
+
+  it("is not offered while a check is still running", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer({ hangChecks: true }));
+    fill();
+    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await screen.findByRole("button", { name: "Stop checking" });
+    expect(screen.queryByRole("button", { name: "Delete this check" })).toBeNull();
+  });
+
+  it("can delete a check that was reopened after a reload", async () => {
+    const server = fakeServer({ existingRun: true });
+    await openApp(server, { lastRun: true });
+    await screen.findByText("Check complete");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Delete this check" }));
+    await user.click(screen.getByRole("button", { name: "Yes, delete it" }));
+    await screen.findByText("Your check was deleted from our servers.");
+    expect(server.count("DELETE /api/runs/run-1")).toBe(1);
+  });
+});
+
+describe("the one-question survey", () => {
+  it("sends only the answer when a button is pressed, with no price question", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    fill();
+    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await screen.findByText("Check complete");
+
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByText(/Rp\d|fair/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Maybe" }));
+    await waitFor(() => expect(server.eventBodies.some((e) => e.name === "would_pay_answered")).toBe(true));
+    expect(server.eventBodies.find((e) => e.name === "would_pay_answered")).toEqual({ name: "would_pay_answered", props: { answer: "maybe" } });
+    expect(screen.getByText("Thank you.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Maybe" })).toBeNull(); // answered once
+  });
+});
+
+describe("Try an example", () => {
+  it("is offered while the draft is empty, and fills the draft, the reference list and the source", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    expect(screen.getByText(/made-up report and draft/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Try an example" }));
+
+    await waitFor(() => expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
+    expect((screen.getByLabelText(/Reference list/) as HTMLTextAreaElement).value).toBe(EXAMPLE_REFERENCES);
+    expect(await screen.findByText(EXAMPLE_SOURCE_FILENAME)).toBeTruthy();
+    expect(server.count("POST /api/sources")).toBe(1);
+    // With a draft in the box the button has done its job and goes away.
+    expect(screen.queryByRole("button", { name: "Try an example" })).toBeNull();
+  });
+
+  it("runs like any other check, through the normal upload and check path", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Try an example" }));
+    await screen.findByText("Ready, 1 page");
+    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await screen.findByText("Check complete");
+    expect(server.count("POST /api/runs")).toBe(1);
+  });
+
+  it("is not offered once the student has typed their own draft", async () => {
+    await openApp(fakeServer());
+    fill("My own paragraph (Author, 2020).", "");
+    expect(screen.queryByRole("button", { name: "Try an example" })).toBeNull();
+  });
+
+  it("says so, and changes nothing, when the example cannot be loaded", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer({ exampleFails: true });
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Try an example" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not load the example");
+    expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe("");
+    expect(server.count("POST /api/sources")).toBe(0);
+    expect(screen.getByRole("button", { name: "Try an example" })).toBeTruthy(); // can try again
+  });
+
+  it("does not upload the example source twice if it is used again", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Try an example" }));
+    await screen.findByText("Ready, 1 page");
+    // Clear the draft so the button comes back, then press it again.
+    fireEvent.change(screen.getByLabelText(/Draft text/), { target: { value: "" } });
+    await user.click(await screen.findByRole("button", { name: "Try an example" }));
+    await waitFor(() => expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
+    expect(server.count("POST /api/sources")).toBe(1);
   });
 });
 

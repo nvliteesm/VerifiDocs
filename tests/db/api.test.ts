@@ -7,7 +7,7 @@ import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 import { checkClaimHandler, postEvent } from "../../src/lib/api/claims";
 import { handleWith, type ApiContext, type ApiDeps } from "../../src/lib/api/handler";
-import { MAX_RUNS_PER_SESSION, createRun, extractUnit, getRun } from "../../src/lib/api/runs";
+import { MAX_RUNS_PER_SESSION, createRun, deleteRun, extractUnit, getRun } from "../../src/lib/api/runs";
 import { deleteSource, ingestSource, listSources, uploadSource } from "../../src/lib/api/sources";
 import {
   EMBEDDING_DIMENSIONS,
@@ -117,6 +117,7 @@ function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["res
     extract: (runId: string, unit: number) =>
       client.send("POST", `/api/runs/${runId}/extract`, (c, r) => extractUnit(c, runId, r), { json: { unit }, model: true }),
     getRun: (runId: string) => client.send("GET", `/api/runs/${runId}`, (c) => getRun(c, runId)),
+    deleteRun: (runId: string) => client.send("DELETE", `/api/runs/${runId}`, (c) => deleteRun(c, runId)),
     listSources: () => client.send("GET", "/api/sources", (c) => listSources(c)),
     upload: (form: FormData) => client.send("POST", "/api/sources", (c, r) => uploadSource(c, r), { form }),
     ingest: (id: string) => client.send("POST", `/api/sources/${id}/ingest`, (c) => ingestSource(c, id), { model: true }),
@@ -359,6 +360,57 @@ describe.skipIf(!enabled)("creating a run", () => {
       expect(reply.status).toBe(400);
       expect(reply.body.error.code).toBe("too_many_references");
       expect(reply.body.error.message).toMatch(/501 entries/);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("deleting a check", () => {
+  it("removes the draft, claims and reference entries now, keeps the session, and keeps only id-and-count events", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm({ extract: singleClaim }).llm);
+      const created = await client.createRun({ draft: DRAFT });
+      const runId = created.body.runId;
+      await client.extract(runId, 0);
+      const sessionId = await client.sessionId();
+      const count = async (table: string) =>
+        (await tx.unsafe(`select count(*)::int as n from ${table} where session_id = $1`, [sessionId]))[0]!.n as number;
+      expect(await count("claims")).toBe(1);
+      expect(await count("reference_entries")).toBe(2);
+
+      const reply = await client.deleteRun(runId);
+      expect(reply.status).toBe(204);
+      expect(await count("runs")).toBe(0);
+      expect(await count("claims")).toBe(0);
+      expect(await count("reference_entries")).toBe(0);
+      expect((await client.getRun(runId)).status).toBe(404);
+
+      // The session survives, and its events (ids, counts, buckets) stay.
+      expect((await client.listSources()).status).toBe(200);
+      const logged = (await events(tx, sessionId)).map((e) => e.name);
+      expect(logged).toContain("draft_submitted");
+    });
+  });
+
+  it("never lets one session delete another session's check", async () => {
+    await inTx(async (tx) => {
+      const owner = newClient(tx, fakeLlm().llm);
+      const runId = (await owner.createRun({ draft: DRAFT })).body.runId;
+      const stranger = newClient(tx, fakeLlm().llm);
+      await stranger.listSources();
+      expect((await stranger.deleteRun(runId)).status).toBe(404);
+      expect((await owner.getRun(runId)).status).toBe(200);
+    });
+  });
+
+  it("answers 404 for an unknown or malformed id, and for a check that was already deleted", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      await client.listSources();
+      expect((await client.deleteRun("00000000-0000-0000-0000-000000000000")).status).toBe(404);
+      expect((await client.deleteRun("not-a-uuid")).status).toBe(404);
+      const runId = (await client.createRun({ draft: DRAFT })).body.runId;
+      expect((await client.deleteRun(runId)).status).toBe(204);
+      expect((await client.deleteRun(runId)).status).toBe(404);
     });
   });
 });
