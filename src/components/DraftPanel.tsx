@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { MAX_DOCX_BYTES, MAX_DRAFT_CHARS, megabytes } from "@/lib/client/limits";
 import type { VerifyInput } from "@/lib/client/types";
+import { verdictLabel } from "@/lib/client/verdict-info";
+import { useT } from "./LocaleProvider";
 
 interface Props {
   /** True while sources are still being read or a check is running. */
@@ -22,6 +24,7 @@ interface Props {
 }
 
 export function DraftPanel({ disabled, disabledReason, noReadySources = false, onStart, initial = null, onTryExample, exampleNote = null, locked = false }: Props) {
+  const { t, locale } = useT();
   const [mode, setMode] = useState<"paste" | "docx">(initial?.draft.kind === "docx" ? "docx" : "paste");
   const [text, setText] = useState(initial?.draft.kind === "paste" ? initial.draft.text : "");
   const [file, setFile] = useState<File | null>(initial?.draft.kind === "docx" ? initial.draft.file : null);
@@ -37,11 +40,11 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
     if (!picked) return setFile(null);
     if (!/\.docx$/i.test(picked.name)) {
       setFile(null);
-      return setFileError("Choose a .docx file. Older .doc files are not supported; save as .docx first.");
+      return setFileError(t("docx.errType"));
     }
     if (picked.size > MAX_DOCX_BYTES) {
       setFile(null);
-      return setFileError(`That file is larger than ${megabytes(MAX_DOCX_BYTES)}.`);
+      return setFileError(t("docx.errSize", { size: megabytes(MAX_DOCX_BYTES) }));
     }
     setFile(picked);
   }
@@ -49,16 +52,16 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
   return (
     <section className="panel" aria-labelledby="draft-title">
       <div className="panel-head">
-        <h2 id="draft-title">Your draft</h2>
-        <p className="hint">Paste your paragraphs or upload a Word file. Keep your citations.</p>
+        <h2 id="draft-title">{t("draft.title")}</h2>
+        <p className="hint">{t("draft.hint")}</p>
       </div>
 
       {onTryExample && text.trim() === "" && file === null && (
         <div className="example">
           <button type="button" className="btn btn-quiet" disabled={locked} onClick={onTryExample}>
-            Try an example
+            {t("example.button")}
           </button>
-          <span className="hint">See a check on a made-up report and draft.</span>
+          <span className="hint">{t("example.hint")}</span>
         </div>
       )}
       {exampleNote && (
@@ -67,35 +70,35 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
         </p>
       )}
 
-      <div className="segment" role="group" aria-label="How to add your draft">
+      <div className="segment" role="group" aria-label={t("draft.mode.group")}>
         <button type="button" aria-pressed={mode === "paste"} onClick={() => setMode("paste")}>
-          Paste text
+          {t("draft.mode.paste")}
         </button>
         <button type="button" aria-pressed={mode === "docx"} onClick={() => setMode("docx")}>
-          Upload .docx
+          {t("draft.mode.docx")}
         </button>
       </div>
 
       {mode === "paste" ? (
         <div className="field">
-          <label htmlFor="draft-text">Draft text</label>
+          <label htmlFor="draft-text">{t("draft.label")}</label>
           <textarea
             id="draft-text"
             rows={10}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Paste your draft here."
+            placeholder={t("draft.placeholder")}
           />
           <p className={`hint${tooLong ? " hint-bad" : ""}`} aria-live="polite">
-            {text.length.toLocaleString()} / {MAX_DRAFT_CHARS.toLocaleString()} characters
-            {tooLong ? ". Too long: check one chapter at a time." : ""}
+            {t("draft.count", { n: text.length.toLocaleString(locale), max: MAX_DRAFT_CHARS.toLocaleString(locale) })}
+            {tooLong ? t("draft.tooLong") : ""}
           </p>
         </div>
       ) : (
         <div className="field">
-          <label htmlFor="draft-file">Word document (.docx, up to {megabytes(MAX_DOCX_BYTES)})</label>
+          <label htmlFor="draft-file">{t("docx.label", { size: megabytes(MAX_DOCX_BYTES) })}</label>
           <input id="draft-file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => pickFile(event.target.files?.[0] ?? null)} />
-          {file && <p className="hint">Selected: {file.name}</p>}
+          {file && <p className="hint">{t("docx.selected", { name: file.name })}</p>}
           {fileError && (
             <p role="alert" className="notice notice-warn">
               {fileError}
@@ -106,26 +109,26 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
 
       <div className="field">
         <label htmlFor="draft-refs">
-          Reference list <span className="hint">(to match your citations)</span>
+          {t("refs.label")} <span className="hint">{t("refs.hint")}</span>
         </label>
         <textarea
           id="draft-refs"
           rows={6}
           value={references}
           onChange={(event) => setReferences(event.target.value)}
-          placeholder="One reference per line."
+          placeholder={t("refs.placeholder")}
         />
       </div>
 
       {noReadySources && (
         <p className="notice notice-info">
-          Add your source PDFs, or claims will show as &ldquo;Can&apos;t check yet&rdquo;.
+          {t("nosrc.notice", { label: verdictLabel(t, "cant_check") })}
         </p>
       )}
 
       <div className="actions">
         <button type="button" className="btn btn-primary" disabled={!canStart} aria-describedby={canStart ? undefined : "start-reason"} onClick={() => onStart({ draft: mode === "paste" ? { kind: "paste", text } : { kind: "docx", file: file! }, references })}>
-          Check my claims
+          {t("check.button")}
         </button>
         {disabled && disabledReason && (
           <span id="start-reason" className="hint">
@@ -134,7 +137,7 @@ export function DraftPanel({ disabled, disabledReason, noReadySources = false, o
         )}
         {!disabled && !hasDraft && (
           <span id="start-reason" className="hint">
-            Add your draft to continue.
+            {t("check.needDraft")}
           </span>
         )}
       </div>

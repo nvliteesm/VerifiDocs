@@ -9,6 +9,7 @@
 // into another chunk's id.
 import { z } from "zod";
 import type { Llm } from "../llm/adapter";
+import { explanationLanguage } from "./language";
 
 export const JUDGE_VERDICTS = ["supported", "partial", "contradicted", "not_in_sources", "cant_tell"] as const;
 export type JudgeVerdict = (typeof JUDGE_VERDICTS)[number];
@@ -65,7 +66,8 @@ export function buildJudgePrompt(claimText: string, passages: JudgePassage[]): s
     '  Set "chunk_id" to that passage\'s id (for example "P2") and "page" to its page.',
     '- For not_in_sources and cant_tell, set "quote", "chunk_id" and "page" to null.',
     "- When you are unsure between supported and partial, choose partial.",
-    '- "reason" is one short sentence, in the same language as the claim.',
+    // The language is named, not left to the model: a small model answers an Indonesian claim in English too often.
+    `- "reason" is one short sentence, ${explanationLanguage(claimText)}.`,
     "",
     'Return JSON only: {"verdict":"...","quote":"..." or null,"page":number or null,"chunk_id":"..." or null,"reason":"..."}',
     "",

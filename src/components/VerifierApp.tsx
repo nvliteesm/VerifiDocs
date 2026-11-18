@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createApi } from "@/lib/client/api";
-import { EXAMPLE_DRAFT, EXAMPLE_REFERENCES, EXAMPLE_SOURCE_FILENAME, EXAMPLE_SOURCE_URL } from "@/lib/client/example";
+import { exampleFor } from "@/lib/client/example";
 import { buildReport } from "@/lib/client/report";
 import type { ClientEventName, VerifyInput } from "@/lib/client/types";
 import { DraftPanel } from "./DraftPanel";
+import { LanguageToggle } from "./LanguageToggle";
+import { useT } from "./LocaleProvider";
 import { ResultsView } from "./ResultsView";
 import { SourcesPanel } from "./SourcesPanel";
 import { CONSENT_KEY, readStored, writeStored } from "./storage";
@@ -14,16 +16,20 @@ import { useSources } from "./useSources";
 import { useVerification } from "./useVerification";
 
 function Frame({ children, busy }: { children?: React.ReactNode; busy?: boolean }) {
+  const { t } = useT();
   return (
     <div className="shell">
       <a className="skip" href="#main">
-        Skip to content
+        {t("skip")}
       </a>
       <header className="top">
         <span className="wordmark">
           Verifi<span>Docs</span>
         </span>
-        <ThemeToggle />
+        <div className="tools">
+          <LanguageToggle />
+          <ThemeToggle />
+        </div>
       </header>
       <main id="main" aria-busy={busy}>
         {children}
@@ -33,6 +39,7 @@ function Frame({ children, busy }: { children?: React.ReactNode; busy?: boolean 
 }
 
 export function VerifierApp() {
+  const { t, locale, ready } = useT();
   const [waking, setWaking] = useState(false);
   const [api] = useState(() => createApi({ onWaking: setWaking }));
   const [consent, setConsent] = useState<boolean | null>(null);
@@ -132,15 +139,17 @@ export function VerifierApp() {
   const tryExample = async () => {
     setExampleNote(null);
     try {
-      const response = await fetch(EXAMPLE_SOURCE_URL);
+      // The example matches the screen's language: an Indonesian screen gets the Indonesian report and draft.
+      const example = exampleFor(locale);
+      const response = await fetch(example.sourceUrl);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const file = new File([await response.blob()], EXAMPLE_SOURCE_FILENAME, { type: "application/pdf" });
+      const file = new File([await response.blob()], example.sourceFilename, { type: "application/pdf" });
       // A second press must not upload it again (the server would refuse the duplicate).
-      if (!sources.rows.some((row) => row.filename === EXAMPLE_SOURCE_FILENAME)) sources.addFiles([file]);
-      setLastInput({ draft: { kind: "paste", text: EXAMPLE_DRAFT }, references: EXAMPLE_REFERENCES });
+      if (!sources.rows.some((row) => row.filename === example.sourceFilename)) sources.addFiles([file]);
+      setLastInput({ draft: { kind: "paste", text: example.draft }, references: example.references });
       setSeedKey((key) => key + 1);
     } catch {
-      setExampleNote("Could not load the example. Check your connection and try again.");
+      setExampleNote(t("example.fail"));
     }
   };
 
@@ -155,7 +164,8 @@ export function VerifierApp() {
     verification.start(input);
   };
 
-  if (consent === null) return <Frame busy />;
+  // Both the privacy choice and the language live in the browser, so nothing is shown until both are known.
+  if (consent === null || !ready) return <Frame busy />;
 
   const readySources = sources.rows.filter((row) => row.phase === "ready").length;
 
@@ -164,30 +174,30 @@ export function VerifierApp() {
       {/* Once a check exists the results come first; the heading stays for screen readers (one h1 per page). */}
       {idle ? (
         <div className="intro">
-          <h1>Check every claim against your sources</h1>
-          <p className="lede">Paste your draft and see which claims your sources really support.</p>
+          <h1>{t("app.title")}</h1>
+          <p className="lede">{t("app.lede")}</p>
         </div>
       ) : (
-        <h1 className="sr-only">Check every claim against your sources</h1>
+        <h1 className="sr-only">{t("app.title")}</h1>
       )}
 
       {/* The product is visible at once. Until the student presses "Got it", checking and uploading stay locked,
           because both send text to other services. */}
       {!consent && (
         <section className="panel note" aria-labelledby="notice-title">
-          <h2 id="notice-title">Before you start</h2>
+          <h2 id="notice-title">{t("note.title")}</h2>
           <ul className="promise">
             <li>
-              <strong>Kept for 30 days</strong>
-              <span>Your draft, source text and results, unless you delete them sooner. PDFs are deleted once read.</span>
+              <strong>{t("note.kept.title")}</strong>
+              <span>{t("note.kept.body")}</span>
             </li>
             <li>
-              <strong>Sent to other services</strong>
-              <span>Text goes to Google Gemini. Reference titles go to Crossref and OpenAlex.</span>
+              <strong>{t("note.sent.title")}</strong>
+              <span>{t("note.sent.body")}</span>
             </li>
             <li>
-              <strong>No account</strong>
-              <span>This browser holds the key to your checks. Clear its data and they are gone.</span>
+              <strong>{t("note.account.title")}</strong>
+              <span>{t("note.account.body")}</span>
             </li>
           </ul>
           <div className="actions">
@@ -199,7 +209,7 @@ export function VerifierApp() {
                 setConsent(true);
               }}
             >
-              Got it
+              {t("note.ok")}
             </button>
           </div>
         </section>
@@ -207,13 +217,13 @@ export function VerifierApp() {
 
       {deleteNote === "deleted" && idle && (
         <p role="status" className="notice notice-info" style={{ marginBottom: 20 }} ref={deletedNote} tabIndex={-1}>
-          Your check was deleted from our servers.
+          {t("deleted")}
         </p>
       )}
 
       {waking && (
         <p role="status" className="notice notice-info" style={{ marginBottom: 20 }}>
-          Waking up the database. This takes a few seconds.
+          {t("waking")}
         </p>
       )}
 
@@ -224,7 +234,7 @@ export function VerifierApp() {
               key={seedKey}
               locked={!consent}
               disabled={sources.busy || !consent}
-              disabledReason={!consent ? "Press “Got it” above first." : sources.busy ? "Wait for your sources to finish reading." : null}
+              disabledReason={!consent ? t("locked", { ok: t("note.ok") }) : sources.busy ? t("wait.sources") : null}
               noReadySources={sources.loaded && readySources === 0}
               initial={lastInput}
               onStart={start}
@@ -242,7 +252,7 @@ export function VerifierApp() {
                       className="btn btn-primary"
                       onClick={async () => {
                         try {
-                          await navigator.clipboard.writeText(buildReport(state.claims, state.fixList));
+                          await navigator.clipboard.writeText(buildReport(state.claims, state.fixList, t, locale));
                           setCopied("copied");
                           event("report_exported", { format: "copy" });
                         } catch {
@@ -250,7 +260,7 @@ export function VerifierApp() {
                         }
                       }}
                     >
-                      {copied === "copied" ? "Report copied" : "Copy report"}
+                      {copied === "copied" ? t("act.copied") : t("act.copy")}
                     </button>
                     {lastInput && (
                       <button
@@ -262,12 +272,12 @@ export function VerifierApp() {
                           start(lastInput);
                         }}
                       >
-                        Check again with my sources
+                        {t("act.recheck")}
                       </button>
                     )}
                     {lastInput && (
                       <button type="button" className="btn" onClick={() => verification.reset()}>
-                        Edit draft
+                        {t("act.edit")}
                       </button>
                     )}
                   </>
@@ -275,16 +285,16 @@ export function VerifierApp() {
                 {state.phase === "error" && lastInput && (
                   <>
                     <button type="button" className="btn btn-primary" onClick={() => start(lastInput)}>
-                      Try again
+                      {t("retry")}
                     </button>
                     <button type="button" className="btn" onClick={() => verification.reset()}>
-                      Edit draft
+                      {t("act.edit")}
                     </button>
                   </>
                 )}
                 {running && (
                   <button type="button" className="btn" onClick={verification.stop}>
-                    Stop checking
+                    {t("act.stop")}
                   </button>
                 )}
                 <button
@@ -296,16 +306,16 @@ export function VerifierApp() {
                     verification.reset();
                   }}
                 >
-                  Start a new check
+                  {t("act.new")}
                 </button>
                 {state.runId && !running && !confirmingDelete && (
                   <button type="button" className="btn btn-quiet" ref={deleteButton} onClick={() => setConfirmingDelete(true)}>
-                    Delete this check
+                    {t("act.delete")}
                   </button>
                 )}
                 {confirmingDelete && (
-                  <span className="confirm" role="group" aria-label="Delete this check?">
-                    <span className="hint">Delete your draft and results? This can&apos;t be undone.</span>
+                  <span className="confirm" role="group" aria-label={t("delete.group")}>
+                    <span className="hint">{t("delete.hint")}</span>
                     <button
                       type="button"
                       className="btn"
@@ -320,25 +330,23 @@ export function VerifierApp() {
                         }
                       }}
                     >
-                      Yes, delete it
+                      {t("delete.yes")}
                     </button>
                     <button type="button" className="btn btn-quiet" ref={keepButton} onClick={cancelDelete}>
-                      Keep it
+                      {t("delete.keep")}
                     </button>
                   </span>
                 )}
                 {deleteNote === "failed" && (
                   <span role="alert" className="hint hint-bad">
-                    Could not delete the check. Try again in a moment.
+                    {t("delete.failed")}
                   </span>
                 )}
-                {state.phase === "done" && !lastInput && (
-                  <span className="hint">To recheck, start a new check and paste your draft again.</span>
-                )}
+                {state.phase === "done" && !lastInput && <span className="hint">{t("recheck.hint")}</span>}
                 <span className="sr-only" role="status">
-                  {copied === "copied" ? "Report copied to clipboard." : copied === "failed" ? "Could not copy. Your browser blocked clipboard access." : ""}
+                  {copied === "copied" ? t("act.copiedSr") : copied === "failed" ? t("act.copyFailSr") : ""}
                 </span>
-                {copied === "failed" && <span className="hint hint-bad">Could not copy the report. Your browser blocked clipboard access.</span>}
+                {copied === "failed" && <span className="hint hint-bad">{t("act.copyFail")}</span>}
               </div>
 
               {state.phase === "done" && (
@@ -346,7 +354,7 @@ export function VerifierApp() {
                   {!answered && (
                     <>
                       <span className="hint" id="pay-title">
-                        Would you pay for this if it were not free?
+                        {t("survey.question")}
                       </span>
                       <div className="chips" role="group" aria-labelledby="pay-title">
                         {(["yes", "maybe", "no"] as const).map((answer) => (
@@ -359,14 +367,14 @@ export function VerifierApp() {
                               setAnswered(true);
                             }}
                           >
-                            {answer === "yes" ? "Yes" : answer === "maybe" ? "Maybe" : "No"}
+                            {answer === "yes" ? t("survey.yes") : answer === "maybe" ? t("survey.maybe") : t("survey.no")}
                           </button>
                         ))}
                       </div>
                     </>
                   )}
                   <span className="hint" role="status">
-                    {answered ? "Thank you." : ""}
+                    {answered ? t("survey.thanks") : ""}
                   </span>
                 </div>
               )}
@@ -389,7 +397,7 @@ export function VerifierApp() {
       </div>
 
       <footer className="hint" style={{ marginTop: 40 }}>
-        Deleted 30 days after upload, or sooner if you delete them.
+        {t("footer")}
       </footer>
     </Frame>
   );

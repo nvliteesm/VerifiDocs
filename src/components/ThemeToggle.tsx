@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "./LocaleProvider";
 import { THEME_KEY, writeStored } from "./storage";
 
 // The page starts in whatever the system prefers (see the inline script in layout.tsx, which applies a saved choice
@@ -10,6 +11,7 @@ function systemPrefersDark(): boolean {
 }
 
 export function ThemeToggle() {
+  const { t } = useT();
   const [dark, setDark] = useState<boolean | null>(null);
 
   // The theme is only known in the browser (a saved choice, or the system setting), so it is read after mount;
@@ -43,7 +45,7 @@ export function ThemeToggle() {
 
   return (
     <button type="button" role="switch" aria-checked={dark === true} className="theme" onClick={toggle} disabled={dark === null}>
-      <span>Dark mode</span>
+      <span>{t("theme.dark")}</span>
       <span className="theme-track" aria-hidden="true" />
     </button>
   );

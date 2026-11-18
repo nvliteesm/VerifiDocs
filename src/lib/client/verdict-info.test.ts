@@ -1,30 +1,41 @@
 import { describe, expect, it } from "vitest";
 import { VERDICTS } from "../pipeline/types";
 import { FIX_LIST_ORDER } from "../fix-list";
-import { SUMMARY_ORDER, VERDICT_INFO, attentionCount, needsAttention } from "./verdict-info";
+import { translatorFor } from "../i18n";
+import { SUMMARY_ORDER, VERDICT_INFO, attentionCount, needsAttention, verdictAdvice, verdictLabel } from "./verdict-info";
+
+const LANGUAGES = [
+  ["English", translatorFor("en")],
+  ["Bahasa Indonesia", translatorFor("id")],
+] as const;
 
 describe("VERDICT_INFO", () => {
   it("describes every one of the eight verdicts, with a label and a symbol", () => {
     expect(Object.keys(VERDICT_INFO).sort()).toEqual([...VERDICTS].sort());
     for (const verdict of VERDICTS) {
       const info = VERDICT_INFO[verdict];
-      expect(info.label.length, verdict).toBeGreaterThan(2);
       expect(info.symbol.length, verdict).toBeGreaterThan(0);
+      for (const [language, t] of LANGUAGES) expect(verdictLabel(t, verdict).length, `${language} ${verdict}`).toBeGreaterThan(2);
     }
   });
 
   it("never relies on colour alone: labels and symbols are unique", () => {
-    const labels = Object.values(VERDICT_INFO).map((i) => i.label);
     const symbols = Object.values(VERDICT_INFO).map((i) => i.symbol);
-    expect(new Set(labels).size).toBe(labels.length);
     expect(new Set(symbols).size).toBe(symbols.length);
+    for (const [language, t] of LANGUAGES) {
+      const labels = VERDICTS.map((verdict) => verdictLabel(t, verdict));
+      expect(new Set(labels).size, language).toBe(labels.length);
+    }
   });
 
   it("gives advice for everything that needs attention, and none for Supported", () => {
     for (const verdict of VERDICTS) {
-      if (verdict === "supported") expect(VERDICT_INFO[verdict].advice).toBe("");
-      else expect(VERDICT_INFO[verdict].advice.length, verdict).toBeGreaterThan(10);
-      expect(VERDICT_INFO[verdict].advice.length, verdict).toBeLessThanOrEqual(90); // short on purpose
+      for (const [language, t] of LANGUAGES) {
+        const advice = verdictAdvice(t, verdict);
+        if (verdict === "supported") expect(advice, language).toBe("");
+        else expect(advice.length, `${language} ${verdict}`).toBeGreaterThan(10);
+        expect(advice.length, `${language} ${verdict}`).toBeLessThanOrEqual(90); // short on purpose
+      }
     }
   });
 

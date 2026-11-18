@@ -2,8 +2,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EXAMPLE_DRAFT, EXAMPLE_REFERENCES, EXAMPLE_SOURCE_FILENAME, EXAMPLE_SOURCE_URL } from "@/lib/client/example";
+import { EXAMPLE_DRAFT, EXAMPLE_REFERENCES, EXAMPLE_SOURCE_FILENAME, EXAMPLE_SOURCE_URL, exampleFor } from "@/lib/client/example";
 import type { ClaimView, RunResponse } from "@/lib/client/types";
+import { LocaleProvider } from "./LocaleProvider";
 import { CONSENT_KEY, LAST_RUN_KEY } from "./storage";
 import { VerifierApp } from "./VerifierApp";
 
@@ -52,7 +53,7 @@ function fakeServer(
     const method = init?.method ?? "GET";
     log.push(`${method} ${url}`);
     if (method === "GET" && url === "/api/sources") return json(200, { sources: [] });
-    if (method === "GET" && url === EXAMPLE_SOURCE_URL) {
+    if (method === "GET" && (url === EXAMPLE_SOURCE_URL || url === exampleFor("id").sourceUrl)) {
       return options.exampleFails ? new Response("nope", { status: 500 }) : new Response(new Blob(["%PDF-1.4 example"]), { status: 200 });
     }
     if (method === "POST" && url === "/api/sources") return json(201, { documentId: "doc-ex", status: "ingesting", pageCount: 1 });
@@ -432,6 +433,58 @@ describe("the one-question survey", () => {
     expect(server.eventBodies.find((e) => e.name === "would_pay_answered")).toEqual({ name: "would_pay_answered", props: { answer: "maybe" } });
     expect(screen.getByText("Thank you.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Maybe" })).toBeNull(); // answered once
+  });
+});
+
+describe("Bahasa Indonesia", () => {
+  function openIndonesian(server = fakeServer()) {
+    vi.spyOn(window.navigator, "languages", "get").mockReturnValue(["id-ID", "en-US"]);
+    window.localStorage.setItem(CONSENT_KEY, "yes");
+    vi.stubGlobal("fetch", server.fetchImpl);
+    render(
+      <LocaleProvider>
+        <VerifierApp />
+      </LocaleProvider>,
+    );
+  }
+
+  it("shows the screen in Indonesian when the browser asks for it, and switches back to English", async () => {
+    const user = userEvent.setup();
+    openIndonesian();
+    expect(await screen.findByLabelText("Teks draf")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Sumber kamu" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cek klaimku" })).toBeTruthy();
+    expect(document.documentElement.lang).toBe("id");
+
+    await user.click(screen.getByRole("button", { name: "EN (English)" }));
+    expect(await screen.findByLabelText("Draft text")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check my claims" })).toBeTruthy();
+    expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("loads the Indonesian example, and runs a check in Indonesian", async () => {
+    const user = userEvent.setup();
+    const example = exampleFor("id");
+    openIndonesian();
+    await user.click(await screen.findByRole("button", { name: "Coba contoh" }));
+    await waitFor(() => expect((screen.getByLabelText("Teks draf") as HTMLTextAreaElement).value).toBe(example.draft));
+    expect((screen.getByLabelText(/Daftar pustaka/) as HTMLTextAreaElement).value).toBe(example.references);
+    expect(await screen.findByText(example.sourceFilename)).toBeTruthy();
+    expect(await screen.findByText("Siap, 1 halaman")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Cek klaimku" }));
+    await screen.findByText("Cek selesai");
+    expect(screen.getAllByText("Semua klaim yang dicek didukung sumber.").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Salin laporan" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Hapus cek ini" })).toBeTruthy();
+  });
+
+  it("loads the English example when the screen is English, even if Indonesian was used before", async () => {
+    const user = userEvent.setup();
+    openIndonesian();
+    await user.click(await screen.findByRole("button", { name: "EN (English)" }));
+    await user.click(await screen.findByRole("button", { name: "Try an example" }));
+    await waitFor(() => expect((screen.getByLabelText("Draft text") as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
   });
 });
 

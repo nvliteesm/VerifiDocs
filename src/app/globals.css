@@ -120,6 +120,17 @@ select:disabled {
   /* Space under the header line for whatever comes first (the intro, a note, or the results). */
   margin-bottom: 28px;
 }
+/* Language and theme switches sit together on the right of the header, and wrap under the wordmark on a narrow phone. */
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 16px;
+}
+.lang button {
+  padding: 6px 12px;
+}
 .wordmark {
   font-family: var(--serif);
   font-size: 1.3rem;

@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { MAX_PDF_BYTES, MAX_SOURCES, megabytes } from "@/lib/client/limits";
+import { pluralKey, type Locale, type Translate } from "@/lib/i18n";
+import { useT } from "./LocaleProvider";
 import type { SourceRow } from "./useSources";
 
 interface Props {
@@ -15,32 +17,31 @@ interface Props {
   locked?: boolean;
 }
 
-function statusText(row: SourceRow): string {
+function statusText(row: SourceRow, t: Translate, locale: Locale): string {
   switch (row.phase) {
     case "uploading":
-      return "Uploading…";
+      return t("src.uploading");
     case "ingesting":
-      return row.pageCount ? `Reading page ${row.pagesIngested} of ${row.pageCount}…` : "Reading…";
+      return row.pageCount ? t("src.readingPages", { done: row.pagesIngested, total: row.pageCount }) : t("src.reading");
     case "ready":
-      return row.pageCount ? `Ready, ${row.pageCount} page${row.pageCount === 1 ? "" : "s"}` : "Ready";
+      return row.pageCount ? t(pluralKey(locale, "src.readyPages", row.pageCount), { n: row.pageCount }) : t("src.ready");
     case "no_text":
-      return "No text found. Upload a text PDF, not a scan.";
+      return t("src.noText");
     case "failed":
-      return row.error ?? "Could not be read.";
+      return row.error ?? t("src.failed");
   }
 }
 
 export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, locked = false }: Props) {
+  const { t, locale } = useT();
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
   return (
     <section className="panel panel-tray" aria-labelledby="sources-title">
       <div className="panel-head">
-        <h2 id="sources-title">Your sources</h2>
-        <p className="hint">
-          PDFs you cite. Up to {MAX_SOURCES} files, {megabytes(MAX_PDF_BYTES)} each. Text PDFs only, no scans.
-        </p>
+        <h2 id="sources-title">{t("src.title")}</h2>
+        <p className="hint">{t("src.hint", { max: MAX_SOURCES, size: megabytes(MAX_PDF_BYTES) })}</p>
       </div>
 
       <div
@@ -57,9 +58,9 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
         }}
       >
         <button type="button" className="btn" disabled={locked} onClick={() => input.current?.click()}>
-          Choose PDFs
+          {t("src.choose")}
         </button>
-        <span className="hint">or drop them here</span>
+        <span className="hint">{t("src.drop")}</span>
         <input
           ref={input}
           type="file"
@@ -80,7 +81,7 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
         </p>
       )}
 
-      {loaded && rows.length === 0 && <p className="empty">No sources yet.</p>}
+      {loaded && rows.length === 0 && <p className="empty">{t("src.empty")}</p>}
 
       {rows.length > 0 && (
         <ul className="source-list">
@@ -89,16 +90,16 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
               <div className="source-main">
                 <span className="source-name">{row.filename}</span>
                 <span className="source-status" aria-live="polite">
-                  {statusText(row)}
+                  {statusText(row, t, locale)}
                 </span>
                 {row.phase === "ingesting" && row.pageCount ? (
-                  <progress max={row.pageCount} value={row.pagesIngested} aria-label={`Reading ${row.filename}`} />
+                  <progress max={row.pageCount} value={row.pagesIngested} aria-label={t("src.progress", { name: row.filename })} />
                 ) : null}
               </div>
               <div className="source-actions">
                 {row.phase === "failed" && row.id && (
                   <button type="button" className="btn btn-small" onClick={() => onRetry(row)}>
-                    Try again
+                    {t("retry")}
                   </button>
                 )}
                 <button
@@ -106,9 +107,9 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
                   className="btn btn-small btn-quiet"
                   onClick={() => onRemove(row)}
                   disabled={row.phase === "uploading"}
-                  aria-label={`Remove ${row.filename}`}
+                  aria-label={t("src.removeLabel", { name: row.filename })}
                 >
-                  Remove
+                  {t("src.remove")}
                 </button>
               </div>
             </li>

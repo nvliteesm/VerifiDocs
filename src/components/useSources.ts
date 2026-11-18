@@ -5,6 +5,7 @@ import type { Api } from "@/lib/client/api";
 import { MAX_PDF_BYTES, MAX_SOURCES, megabytes } from "@/lib/client/limits";
 import { messageOf } from "@/lib/client/run-verification";
 import type { SourceView } from "@/lib/client/types";
+import { useT } from "./LocaleProvider";
 
 export type SourcePhase = "uploading" | "ingesting" | "ready" | "no_text" | "failed";
 
@@ -19,7 +20,7 @@ export interface SourceRow {
   error: string | null;
 }
 
-function rowOf(source: SourceView): SourceRow {
+function rowOf(source: SourceView, failedText: string): SourceRow {
   return {
     key: source.id,
     id: source.id,
@@ -27,7 +28,7 @@ function rowOf(source: SourceView): SourceRow {
     phase: source.status === "failed" ? "failed" : source.status,
     pagesIngested: source.pagesIngested,
     pageCount: source.pageCount,
-    error: source.status === "failed" ? "This source could not be read." : null,
+    error: source.status === "failed" ? failedText : null,
   };
 }
 
@@ -39,6 +40,15 @@ export function useSources(api: Api) {
   const queue = useRef<Promise<void>>(Promise.resolve());
   const rowsRef = useRef<SourceRow[]>([]);
   rowsRef.current = rows;
+
+  const { t, locale } = useT();
+  // The callbacks below must not change when the language does (the list load would run again), so they read the
+  // latest translator from this ref.
+  const latest = useRef({ t, locale });
+  useEffect(() => {
+    latest.current = { t, locale };
+  });
+  const describe = useCallback((error: unknown) => messageOf(error, latest.current.t, latest.current.locale), []);
 
   const update = useCallback((key: string, patch: Partial<SourceRow>) => {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -59,10 +69,10 @@ export function useSources(api: Api) {
           if (progress.done) return;
         }
       } catch (error) {
-        update(key, { phase: "failed", error: messageOf(error) });
+        update(key, { phase: "failed", error: describe(error) });
       }
     },
-    [api, update],
+    [api, update, describe],
   );
 
   useEffect(() => {
@@ -71,7 +81,12 @@ export function useSources(api: Api) {
       .listSources()
       .then((sources) => {
         if (cancelled) return;
-        setRows(sources.map(rowOf));
+        // Merge, do not replace: a student can add a file before this list arrives, and that row must stay.
+        setRows((current) => {
+          const known = new Set(current.map((row) => row.id).filter(Boolean));
+          const fromServer = sources.filter((source) => !known.has(source.id)).map((source) => rowOf(source, latest.current.t("src.failedSource")));
+          return [...fromServer, ...current];
+        });
         setLoaded(true);
         for (const source of sources) if (source.status === "ingesting") void ingestUntilDone(source.id, source.id);
       })
@@ -95,10 +110,10 @@ export function useSources(api: Api) {
         update(key, { id: uploaded.documentId, pageCount: uploaded.pageCount, phase: uploaded.status });
         if (uploaded.status === "ingesting") await ingestUntilDone(key, uploaded.documentId);
       } catch (error) {
-        update(key, { phase: "failed", error: messageOf(error) });
+        update(key, { phase: "failed", error: describe(error) });
       }
     },
-    [api, ingestUntilDone, update],
+    [api, ingestUntilDone, update, describe],
   );
 
   /** Adds PDFs one after another, refusing files the server would refuse, with a plain reason. */
@@ -109,9 +124,10 @@ export function useSources(api: Api) {
       const problems: string[] = [];
       let room = MAX_SOURCES - rowsRef.current.length;
       for (const file of files) {
-        if (!/\.pdf$/i.test(file.name)) problems.push(`${file.name} is not a PDF.`);
-        else if (file.size > MAX_PDF_BYTES) problems.push(`${file.name} is larger than ${megabytes(MAX_PDF_BYTES)}.`);
-        else if (room <= 0) problems.push(`You can add up to ${MAX_SOURCES} sources. ${file.name} was not added.`);
+        const say = latest.current.t;
+        if (!/\.pdf$/i.test(file.name)) problems.push(say("src.problem.notPdf", { name: file.name }));
+        else if (file.size > MAX_PDF_BYTES) problems.push(say("src.problem.size", { name: file.name, size: megabytes(MAX_PDF_BYTES) }));
+        else if (room <= 0) problems.push(say("src.problem.max", { max: MAX_SOURCES, name: file.name }));
         else {
           accepted.push(file);
           room -= 1;
@@ -137,13 +153,13 @@ export function useSources(api: Api) {
       } catch (error) {
         // A source that is already gone (404) is the outcome the student wanted. Anything else is shown.
         if (!(error instanceof Error && "status" in error && (error as { status?: number }).status === 404)) {
-          update(row.key, { error: messageOf(error) });
+          update(row.key, { error: describe(error) });
           return;
         }
       }
       setRows((current) => current.filter((r) => r.key !== row.key));
     },
-    [api, update],
+    [api, update, describe],
   );
 
   const busy = rows.some((row) => row.phase === "uploading" || row.phase === "ingesting");

@@ -8,6 +8,11 @@ import { runPool } from "./pool";
 import type { Api } from "./api";
 import type { ClaimView, VerifyInput } from "./types";
 import type { VerifyEvent } from "./verifier-state";
+import { MESSAGES, translatorFor, type Locale, type MessageKey, type Translate } from "../i18n";
+
+const english = translatorFor("en");
+/** One of the fixed progress lines, in the screen's language (English when none is given). */
+const say = (deps: { t?: Translate }, key: MessageKey) => (deps.t ?? english)(key);
 
 export const CHECK_CONCURRENCY = 5;
 export const EXTRACT_CONCURRENCY = 3;
@@ -17,6 +22,9 @@ const MAX_CHECK_ROUNDS = 6;
 export interface VerifyDeps {
   api: Pick<Api, "createRun" | "extract" | "getRun" | "check">;
   sleep?: (ms: number) => Promise<void>;
+  /** Turns a message key into the screen's language. Without it, messages are English. */
+  t?: Translate;
+  locale?: Locale;
 }
 
 export type Emit = (event: VerifyEvent) => void;
@@ -24,8 +32,17 @@ export type Emit = (event: VerifyEvent) => void;
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** A message that is safe to show: the API client's own, or a generic one. Never raw error text. */
-export function messageOf(error: unknown): string {
-  return error instanceof ApiClientError ? error.message : "Something went wrong. Please try again.";
+export function messageOf(error: unknown, t?: Translate, locale?: Locale): string {
+  const translate = t ?? english;
+  if (error instanceof ApiClientError) {
+    // In English the API client's own message is used as it is: the server words it exactly, for example with the
+    // number of minutes to wait. In another language it is looked up by its code, and the server's message is the
+    // fallback for a code that has no translation.
+    if (!t || locale === "en") return error.message;
+    const key = `err.${error.code}` as MessageKey;
+    return key in MESSAGES.en ? translate(key) : error.message;
+  }
+  return translate("err.generic");
 }
 
 async function checkClaim(deps: VerifyDeps, claimId: string, emit: Emit, signal: AbortSignal): Promise<void> {
@@ -67,13 +84,13 @@ async function checkRemaining(deps: VerifyDeps, runId: string, emit: Emit, signa
 
   const pending = run.claims.filter((claim) => claim.verdict === null);
   if (run.run.status === "completed" || pending.length === 0) {
-    emit({ type: "phase", phase: "done", message: run.claims.length === 0 ? "No checkable claims were found." : "Done." });
+    emit({ type: "phase", phase: "done", message: run.claims.length === 0 ? say(deps, "progress.noClaims") : say(deps, "progress.done") });
     return;
   }
 
-  emit({ type: "phase", phase: "checking", message: "Checking each claim against your sources..." });
+  emit({ type: "phase", phase: "checking", message: say(deps, "progress.checking") });
   const work = (claim: ClaimView) => checkClaim(deps, claim.id, emit, signal);
-  const options = { signal, onError: (error: unknown, claim: ClaimView) => emit({ type: "claimError", id: claim.id, message: messageOf(error) }) };
+  const options = { signal, onError: (error: unknown, claim: ClaimView) => emit({ type: "claimError", id: claim.id, message: messageOf(error, deps.t, deps.locale) }) };
   // The server looks each reference up online once and keeps the answer, but claims checked at the same moment
   // all start with nothing kept and all look the same reference up (slow, and it trips the services' rate limits).
   // So check one claim per distinct citation first, then the rest, which find the answer already kept.
@@ -83,12 +100,12 @@ async function checkRemaining(deps: VerifyDeps, runId: string, emit: Emit, signa
   if (signal.aborted) return;
 
   emit({ type: "loaded", run: await deps.api.getRun(runId) });
-  emit({ type: "phase", phase: "done", message: "Done." });
+  emit({ type: "phase", phase: "done", message: say(deps, "progress.done") });
 }
 
 /** Extracts every unit (the server skips any already done). Returns false, after reporting it, if one failed. */
 async function extractAll(deps: VerifyDeps, runId: string, unitCount: number, emit: Emit, signal: AbortSignal): Promise<boolean> {
-  emit({ type: "phase", phase: "extracting", message: "Finding the claims in your draft..." });
+  emit({ type: "phase", phase: "extracting", message: say(deps, "progress.extracting") });
   let extracted = 0;
   const failures: string[] = [];
   await runPool(
@@ -99,7 +116,7 @@ async function extractAll(deps: VerifyDeps, runId: string, unitCount: number, em
       extracted += 1;
       emit({ type: "extracted", unitsExtracted: extracted });
     },
-    { signal, onError: (error) => failures.push(messageOf(error)) },
+    { signal, onError: (error) => failures.push(messageOf(error, deps.t, deps.locale)) },
   );
   if (signal.aborted) return false;
   if (failures.length > 0) {
@@ -112,14 +129,14 @@ async function extractAll(deps: VerifyDeps, runId: string, unitCount: number, em
 /** A new check: create the run, extract the claims, check them. Failures are reported as a `failed` event. */
 export async function runVerification(deps: VerifyDeps, input: VerifyInput, emit: Emit, signal: AbortSignal): Promise<void> {
   try {
-    emit({ type: "phase", phase: "starting", message: "Reading your draft..." });
+    emit({ type: "phase", phase: "starting", message: say(deps, "progress.starting") });
     const created = await deps.api.createRun(input);
     emit({ type: "run", runId: created.runId, unitCount: created.unitCount });
     if (signal.aborted) return;
     if (!(await extractAll(deps, created.runId, created.unitCount, emit, signal))) return;
     await checkRemaining(deps, created.runId, emit, signal);
   } catch (error) {
-    if (!signal.aborted) emit({ type: "failed", message: messageOf(error) });
+    if (!signal.aborted) emit({ type: "failed", message: messageOf(error, deps.t, deps.locale) });
   }
 }
 
@@ -129,14 +146,14 @@ export async function runVerification(deps: VerifyDeps, input: VerifyInput, emit
  */
 export async function resumeVerification(deps: VerifyDeps, runId: string, emit: Emit, signal: AbortSignal): Promise<void> {
   try {
-    emit({ type: "phase", phase: "starting", message: "Reopening your check..." });
+    emit({ type: "phase", phase: "starting", message: say(deps, "progress.reopening") });
     const run = await deps.api.getRun(runId);
     emit({ type: "loaded", run });
     if (signal.aborted) return;
     if (run.run.status === "extracting" && !(await extractAll(deps, runId, run.run.unitCount, emit, signal))) return;
     await checkRemaining(deps, runId, emit, signal);
   } catch (error) {
-    if (!signal.aborted) emit({ type: "failed", message: messageOf(error) });
+    if (!signal.aborted) emit({ type: "failed", message: messageOf(error, deps.t, deps.locale) });
   }
 }
 
@@ -147,6 +164,6 @@ export async function retryClaim(deps: VerifyDeps, runId: string, claimId: strin
     await checkClaim(deps, claimId, emit, signal);
     emit({ type: "loaded", run: await deps.api.getRun(runId) });
   } catch (error) {
-    if (!signal.aborted) emit({ type: "claimError", id: claimId, message: messageOf(error) });
+    if (!signal.aborted) emit({ type: "claimError", id: claimId, message: messageOf(error, deps.t, deps.locale) });
   }
 }

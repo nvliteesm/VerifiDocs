@@ -5,13 +5,31 @@ import { ApiClientError, type Api } from "@/lib/client/api";
 import { resumeVerification, retryClaim, runVerification } from "@/lib/client/run-verification";
 import type { VerifyInput } from "@/lib/client/types";
 import { initialState, reduce, type VerifyEvent } from "@/lib/client/verifier-state";
+import type { Translate } from "@/lib/i18n";
+import { useT } from "./LocaleProvider";
 import { LAST_RUN_KEY, readStored, writeStored } from "./storage";
 
 /** Wires the tested orchestrator (run-verification.ts) to React state. Only one check runs at a time. */
 export function useVerification(api: Api) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const controller = useRef<AbortController | null>(null);
-  const deps = useMemo(() => ({ api }), [api]);
+  // Messages (progress lines, errors) use the language chosen at the moment each one is produced. The callbacks
+  // below must not change when the language does, so the translator is read from a ref.
+  const { t, locale } = useT();
+  const latest = useRef({ t, locale });
+  useEffect(() => {
+    latest.current = { t, locale };
+  });
+  const deps = useMemo(
+    () => ({
+      api,
+      t: ((key, params) => latest.current.t(key, params)) as Translate,
+      get locale() {
+        return latest.current.locale;
+      },
+    }),
+    [api],
+  );
 
   /** Stops any check in progress and returns the signal for the next one. */
   const nextSignal = useCallback(() => {

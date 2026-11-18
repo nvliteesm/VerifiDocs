@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FLAG_REASON_LABELS, type FlagReason } from "@/lib/flag-reasons";
+import type { FlagReason } from "@/lib/flag-reasons";
+import { pluralKey, type MessageKey } from "@/lib/i18n";
+import { localizeReason } from "@/lib/i18n/reasons";
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
 import type { ClaimView, Verdict } from "@/lib/client/types";
-import { SUMMARY_ORDER, VERDICT_INFO, attentionCount } from "@/lib/client/verdict-info";
+import { SUMMARY_ORDER, VERDICT_INFO, attentionCount, verdictAdvice, verdictLabel } from "@/lib/client/verdict-info";
 import type { VerifierState } from "@/lib/client/verifier-state";
+import { useT } from "./LocaleProvider";
 
 interface Props {
   state: VerifierState;
@@ -28,10 +31,11 @@ async function copy(text: string): Promise<boolean> {
 }
 
 function Badge({ verdict }: { verdict: Verdict }) {
+  const { t } = useT();
   const info = VERDICT_INFO[verdict];
   return (
     <span className={`badge badge-${info.tone}`}>
-      <span aria-hidden="true">{info.symbol}</span> {info.label}
+      <span aria-hidden="true">{info.symbol}</span> {verdictLabel(t, verdict)}
     </span>
   );
 }
@@ -67,7 +71,7 @@ function reasonsFor(claim: ClaimView): FlagReason[] {
 // `flagged` and `copied` live in ResultsView, because a card unmounts whenever the filter changes.
 function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, ended }: CardProps) {
   const verdict = claim.verdict;
-  const info = verdict ? VERDICT_INFO[verdict] : null;
+  const { t } = useT();
   // After "This verdict is wrong", the student picks a reason. The button they pressed has left the page, so focus
   // goes to the first reason, and then to the thank-you line once they choose.
   const [asking, setAsking] = useState(false);
@@ -97,16 +101,16 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
   return (
     <li className="claim" id={`claim-${claim.id}`}>
       <div className="claim-head">
-        {verdict ? <Badge verdict={verdict} /> : <span className="badge badge-muted">{error || ended ? "Not checked" : "Waiting…"}</span>}
+        {verdict ? <Badge verdict={verdict} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : t("claim.waiting")}</span>}
         {claim.citation && <span className="citation">{claim.citation}</span>}
       </div>
       <p className="claim-text">{claim.text}</p>
 
-      {claim.reason && <p className="reason">{claim.reason}</p>}
-      {info && info.advice && !listMissing && (
+      {claim.reason && <p className="reason">{localizeReason(claim.reason, t)}</p>}
+      {verdict && verdict !== "supported" && !listMissing && (
         <p className="next">
-          <strong>What to do:</strong>{" "}
-          {notInList ? "Add it to your reference list, or fix the citation." : info.advice}
+          <strong>{t("claim.todo")}</strong>{" "}
+          {notInList ? t("claim.notInList") : verdictAdvice(t, verdict)}
         </p>
       )}
 
@@ -120,7 +124,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
               if (!details.open && verdict) onEvent("evidence_opened", { verdict });
             }}
           >
-            What your source says{claim.page !== null ? ` (page ${claim.page})` : ""}
+            {claim.page !== null ? t("evidence.page", { n: claim.page }) : t("evidence.summary")}
           </summary>
           <blockquote>{claim.quote}</blockquote>
         </details>
@@ -128,7 +132,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
 
       {claim.fixSuggestion && (
         <div className="fix">
-          <strong>Suggested sentence</strong>
+          <strong>{t("fix.title")}</strong>
           <p>{claim.fixSuggestion}</p>
           <button
             type="button"
@@ -139,9 +143,9 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
               if (ok) onEvent("fix_accepted");
             }}
           >
-            {copied === "copied" ? "Copied" : "Copy sentence"}
+            {copied === "copied" ? t("fix.copied") : t("fix.copy")}
           </button>
-          {copied === "failed" && <span className="hint hint-bad">Could not copy. Select the sentence and copy it by hand.</span>}
+          {copied === "failed" && <span className="hint hint-bad">{t("fix.copyFail")}</span>}
         </div>
       )}
 
@@ -149,7 +153,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
         <p role="alert" className="notice notice-warn">
           {error}{" "}
           <button type="button" className="btn btn-small" onClick={onRetry}>
-            Try again
+            {t("retry")}
           </button>
         </p>
       )}
@@ -157,11 +161,11 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
       {verdict &&
         (flagged ? (
           <p className="hint" role="status" ref={thanks} tabIndex={-1}>
-            Thanks, noted.
+            {t("flag.thanks")}
           </p>
         ) : asking ? (
-          <div className="flag-reasons" role="group" aria-label="What looks wrong with this verdict?">
-            <p className="hint">What looks wrong?</p>
+          <div className="flag-reasons" role="group" aria-label={t("flag.group")}>
+            <p className="hint">{t("flag.ask")}</p>
             <div className="chips">
               {reasonsFor(claim).map((reason, index) => (
                 <button
@@ -175,7 +179,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
                     onFlag(reason);
                   }}
                 >
-                  {FLAG_REASON_LABELS[reason]}
+                  {t(`flag.${reason}` as MessageKey)}
                 </button>
               ))}
               <button
@@ -186,14 +190,14 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
                   setAsking(false);
                 }}
               >
-                Never mind
+                {t("flag.cancel")}
               </button>
             </div>
           </div>
         ) : (
           <div>
             <button type="button" className="link" ref={flagButton} onClick={() => setAsking(true)}>
-              This verdict is wrong
+              {t("flag.button")}
             </button>
           </div>
         ))}
@@ -202,6 +206,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
 }
 
 export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEvent }: Props) {
+  const { t, locale } = useT();
   const [chosen, setFilter] = useState<Verdict | "attention" | "all">("attention");
   const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set());
   const [copiedFix, setCopiedFix] = useState<Record<string, "copied" | "failed">>({});
@@ -214,11 +219,11 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
   const stopped = state.stopped;
   const tally = stopped
     ? checked === 0
-      ? "Stopped before any claim was checked."
-      : `Stopped after ${checked} of ${total} ${total === 1 ? "claim" : "claims"}.${attention > 0 ? ` ${attention} ${attention === 1 ? "needs" : "need"} attention.` : ""}`
+      ? t("tally.stoppedNone")
+      : `${t(pluralKey(locale, "tally.stoppedAfter", total), { checked, total })}${attention > 0 ? ` ${t(pluralKey(locale, "tally.suffix", attention), { n: attention })}` : ""}`
     : attention === 0
-      ? "Every checked claim is supported."
-      : `${attention} of ${total} ${total === 1 ? "claim needs" : "claims need"} attention.`;
+      ? t("tally.allSupported")
+      : t(pluralKey(locale, "tally.attention", total), { n: attention, total });
 
   // A keyboard or screen-reader user who pressed "Check my claims" has lost that button (it left the page), so
   // when the results arrive, move focus to the Results heading instead of leaving it on the page body.
@@ -255,10 +260,16 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
     <section className="panel" aria-labelledby="results-title">
       <div className="panel-head">
         <p className="eyebrow">
-          {finished ? (stopped ? "Check stopped by you" : "Check complete") : state.phase === "error" ? "Check stopped" : "Checking"}
+          {finished
+            ? stopped
+              ? t("results.eyebrow.stopped")
+              : t("results.eyebrow.done")
+            : state.phase === "error"
+              ? t("results.eyebrow.error")
+              : t("results.eyebrow.running")}
         </p>
         <h2 id="results-title" ref={heading} tabIndex={-1}>
-          Results
+          {t("results.title")}
         </h2>
       </div>
 
@@ -267,16 +278,16 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
         {finished
           ? total === 0
             ? stopped
-              ? "Check stopped before any claims were found."
-              : "Check finished. No checkable claims were found."
-            : `${stopped ? "Check stopped" : "Check finished"}. ${tally}`
+              ? t("sr.stoppedNone")
+              : t("sr.noClaims")
+            : t(stopped ? "sr.stopped" : "sr.finished", { tally })
           : ""}
       </p>
 
       {!finished && state.phase !== "error" && (
         <div className="progress" aria-live="polite">
-          <progress max={Math.max(total, 1)} value={checked} aria-label="Claims checked" />
-          <span className="hint">{state.message || (total > 0 ? `${checked} of ${total} claims checked` : "Working…")}</span>
+          <progress max={Math.max(total, 1)} value={checked} aria-label={t("results.progress.aria")} />
+          <span className="hint">{state.message || (total > 0 ? t("results.progress.count", { checked, total }) : t("results.working"))}</span>
         </div>
       )}
 
@@ -287,9 +298,9 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
       )}
 
       {finished && total === 0 && !stopped && (
-        <p className="empty">No checkable claims were found in this draft. Try pasting a section with factual statements and citations.</p>
+        <p className="empty">{t("empty.noClaims")}</p>
       )}
-      {finished && total === 0 && stopped && <p className="empty">You stopped the check before any claims were found.</p>}
+      {finished && total === 0 && stopped && <p className="empty">{t("empty.stoppedNone")}</p>}
 
       {total > 0 && (
         <>
@@ -299,17 +310,17 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
             </div>
           )}
 
-          <div className="chips" role="group" aria-label="Filter claims">
+          <div className="chips" role="group" aria-label={t("filter.group")}>
             <button type="button" className="chip" aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>
-              Needs attention ({attention})
+              {t("filter.attention", { n: attention })}
             </button>
             {SUMMARY_ORDER.filter((verdict) => (state.counts[verdict] ?? 0) > 0).map((verdict) => (
               <button key={verdict} type="button" className="chip" aria-pressed={filter === verdict} onClick={() => setFilter(verdict)}>
-                <span aria-hidden="true">{VERDICT_INFO[verdict].symbol}</span> {VERDICT_INFO[verdict].label} ({state.counts[verdict]})
+                <span aria-hidden="true">{VERDICT_INFO[verdict].symbol}</span> {verdictLabel(t, verdict)} ({state.counts[verdict]})
               </button>
             ))}
             <button type="button" className="chip" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
-              All ({total})
+              {t("filter.all", { n: total })}
             </button>
           </div>
 
@@ -332,7 +343,7 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
               />
             ))}
           </ol>
-          {shown.length === 0 && <p className="empty">Nothing in this filter.</p>}
+          {shown.length === 0 && <p className="empty">{t("filter.nothing")}</p>}
         </>
       )}
     </section>
