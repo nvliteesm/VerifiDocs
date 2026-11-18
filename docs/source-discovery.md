@@ -54,7 +54,11 @@ The PRD says "Gemini suggests candidate sources from a topic prompt". This plan 
    - what share of open-access PDF links really return a PDF
 
    Stop and rethink if fewer than half the claims get one relevant paper in the top 3.
-1. Stage `discover-sources.ts` and its tests.
+1. Stage `discover-sources.ts` and its tests. **Done 18 Nov 2026.** Unit tests: 14. Live check (`tests/live/discover.live.test.ts`, `LIVE=1` with a key): 5 of 5, twice. Two rules came out of the live check:
+   - A "related" paper is shown only next to a "direct" one, never on its own.
+   - A claim about a named product, company or organisation is "direct" only if the abstract names it.
+
+   Together they turned the pricing-plan and Deputy claims into an empty answer. Not solved here: the student's own feature ("Admins can create tasks…") finds task-management papers rated "direct". Keeping such sentences out is the extraction step's `own_work` label.
 2. Migration 0009, the find endpoint, rate limit, events; database tests on the dev branch.
 3. Card UI (load antislop first): loading, empty, error and result states, focus, 375 px, English and Indonesian.
 4. The safe PDF fetcher and its tests (private addresses, redirects, size, type).

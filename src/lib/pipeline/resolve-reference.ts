@@ -16,7 +16,8 @@ export const REQUEST_TIMEOUT_MS = 5_000;
 export const RESOLVE_DEADLINE_MS = 7_000;
 /** Not worth starting a request with less time than this left. */
 const MIN_REQUEST_MS = 300;
-const USER_AGENT = "VerifiDocs-portfolio/0.1";
+/** Generic, with no contact details (docs/decisions.md, 17 Nov). Also used by discover-sources.ts. */
+export const USER_AGENT = "VerifiDocs-portfolio/0.1";
 const TITLE_CONTAINMENT_MIN = 0.8;
 const DOI_TITLE_CONTAINMENT_MIN = 0.6;
 const MAX_TITLE_QUERIES = 3;
@@ -202,7 +203,7 @@ export const defaultFetch: FetchFn = (url, init) =>
  * Stops issuing requests once the overall deadline is spent, and caps each request's timeout at the time left.
  * A request that cannot be made counts as a failed lookup, so the result is "error" (retry), never "not_found".
  */
-function withDeadline(fetchFn: FetchFn, deadlineAt: number, now: () => number): FetchFn {
+export function withDeadline(fetchFn: FetchFn, deadlineAt: number, now: () => number): FetchFn {
   return async (url, init) => {
     const remaining = deadlineAt - now();
     if (remaining < MIN_REQUEST_MS) throw new Error("The lookup deadline was reached.");
