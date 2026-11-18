@@ -4,6 +4,7 @@ import { EVENT_SCHEMAS, FLAG_REASONS, lengthBucket, pageBucket, type EventName }
 const valid: Record<EventName, unknown> = {
   session_started: { source: "direct" },
   draft_submitted: { input_type: "docx", length_bucket: "medium" },
+  draft_imported: { source: "link", length_bucket: "long" },
   references_added: { count: 12 },
   source_uploaded: { page_bucket: "11_to_30", ingest_ms: 4200 },
   run_started: { claim_count: 31 },

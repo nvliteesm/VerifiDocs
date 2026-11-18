@@ -6,7 +6,7 @@
 import { getSql } from "../db";
 import { getLlm, type Llm } from "../llm/adapter";
 import type { ReferenceResolution } from "../pipeline/resolve-reference";
-import { limitModelUse, type Limits } from "../rate-limit";
+import { limitImports, limitModelUse, type Limits } from "../rate-limit";
 import type { SqlLike } from "../rag/retrieve";
 import { purgeIfDue } from "../retention";
 import { resolveSession } from "../session";
@@ -20,6 +20,8 @@ export interface ApiDeps {
   now?: () => number;
   /** Rate limits. Defaults to DEFAULT_LIMITS; tests pass small ones. */
   limits?: Limits;
+  /** Fetches a Google Doc for an import. Defaults to the global fetch; tests pass a fake, so no test reaches Google. */
+  fetch?: typeof fetch;
 }
 
 export interface ApiContext {
@@ -45,6 +47,8 @@ function withCookie(response: Response, cookie: string | null): Response {
 export interface HandleOptions {
   /** True for routes that call the model (extract, check, ingest): they draw on a per-session and per-address budget. */
   model?: boolean;
+  /** True for the import route, which opens a connection to Google: it has its own per-session budget. */
+  imports?: boolean;
 }
 
 export async function handleWith(
@@ -61,6 +65,7 @@ export async function handleWith(
     // Hard rule 4: delete expired data. At most once an hour, and never allowed to fail the request.
     if (session.active) await purgeIfDue(deps.sql);
     if (options.model) await limitModelUse(deps.sql, request, session.sessionId, deps.limits);
+    if (options.imports) await limitImports(deps.sql, session.sessionId, deps.limits);
     return withCookie(await fn({ deps, sessionId: session.sessionId }), cookie);
   } catch (error) {
     return withCookie(errorResponse(error), cookie);

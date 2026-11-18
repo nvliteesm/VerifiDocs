@@ -65,6 +65,15 @@ describe("extractClaims", () => {
     expect(result.dropped.notInDraft).toBe(1);
   });
 
+  it("keeps a claim whose citation the model wrote as the word null, None or N/A, as an uncited claim", async () => {
+    for (const word of ["null", "None", "N/A", "n/a.", "No citation", "tidak ada", "-", "  "]) {
+      const { llm } = fakeLlm({ claims: [{ text: "Households reduced discretionary spending.", citation: word }] });
+      const result = await extractClaims(llm, unit);
+      expect(result.claims, word).toEqual([{ text: "Households reduced discretionary spending.", citation: null }]);
+      expect(result.dropped.citationNotInDraft, word).toBe(0);
+    }
+  });
+
   it("drops a claim whose citation is not in the draft instead of calling it uncited", async () => {
     const { llm } = fakeLlm({
       claims: [{ text: "Households reduced discretionary spending.", citation: "(Jones, 2019)" }],

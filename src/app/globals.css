@@ -245,6 +245,7 @@ label {
 }
 textarea,
 select,
+input[type="url"],
 input[type="file"] {
   width: 100%;
   font: inherit;

@@ -73,6 +73,20 @@ export function buildExtractionPrompt(unitText: string): string {
   ].join("\n");
 }
 
+/**
+ * Words a small model writes where it means "no citation": the text "null" instead of a JSON null (seen on a real
+ * draft, where it made the code look for the word "null" in the draft and drop 24 of 25 claims), "None", "N/A", ...
+ * They say the claim has no citation, so they become null. This is not the same as a real citation that is missing
+ * from the draft: that one is still dropped (docs/decisions.md, 17 Nov), because it names a source that is not there.
+ */
+const NO_CITATION_WORDS = new Set(["null", "none", "n/a", "na", "nil", "undefined", "no citation", "no citations", "tidak ada", "-"]);
+
+function cleanCitation(value: string | null): string | null {
+  const trimmed = value?.trim() ?? "";
+  if (trimmed === "" || NO_CITATION_WORDS.has(trimmed.toLowerCase().replace(/[.\s]+$/, ""))) return null;
+  return trimmed;
+}
+
 function wordCount(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
@@ -91,7 +105,7 @@ export async function extractClaims(llm: Llm, unitText: string): Promise<Extract
 
   for (const item of output.claims) {
     const text = item.text.trim();
-    const citation = item.citation?.trim() ? item.citation.trim() : null;
+    const citation = cleanCitation(item.citation);
 
     if (!containsQuote(text, unitText)) {
       dropped.notInDraft += 1;

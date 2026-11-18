@@ -10,6 +10,7 @@ import type {
   ClientEventName,
   CreateRunResponse,
   ExtractResponse,
+  ImportResponse,
   IngestResponse,
   RunResponse,
   SourceView,
@@ -128,6 +129,14 @@ export function createApi(options: ApiOptions = {}) {
     ingest: (documentId: string) => send<IngestResponse>("POST", `/api/sources/${documentId}/ingest`),
     deleteSource: async (documentId: string): Promise<void> => {
       await send<null>("DELETE", `/api/sources/${documentId}`);
+    },
+    /** Reads a Google Doc shared as "Anyone with the link". The server fetches it; the text is not saved. */
+    importLink: (url: string) => send<ImportResponse>("POST", "/api/import", { json: { url } }),
+    /** Reads the text of a PDF draft. Nothing is saved. */
+    importPdf(file: File): Promise<ImportResponse> {
+      const form = new FormData();
+      form.set("file", file);
+      return send<ImportResponse>("POST", "/api/import", { form });
     },
     /** Fire and forget. A lost analytics event must never get in the student's way. */
     async event(name: ClientEventName, props: Record<string, unknown> = {}): Promise<void> {

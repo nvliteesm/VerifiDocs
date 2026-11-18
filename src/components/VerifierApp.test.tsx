@@ -10,7 +10,7 @@ import { VerifierApp } from "./VerifierApp";
 
 /** A fake server behind `fetch`: just enough of the API for one claim to go from pasted text to a verdict. */
 function fakeServer(
-  options: { failCreate?: boolean; existingRun?: boolean; hangChecks?: boolean; deleteStatus?: number; exampleFails?: boolean } = {},
+  options: { failCreate?: boolean; existingRun?: boolean; hangChecks?: boolean; deleteStatus?: number; exampleFails?: boolean; importFails?: boolean } = {},
 ) {
   const log: string[] = [];
   const eventBodies: { name: string; props: Record<string, unknown> }[] = [];
@@ -57,6 +57,13 @@ function fakeServer(
       return options.exampleFails ? new Response("nope", { status: 500 }) : new Response(new Blob(["%PDF-1.4 example"]), { status: 200 });
     }
     if (method === "POST" && url === "/api/sources") return json(201, { documentId: "doc-ex", status: "ingesting", pageCount: 1 });
+    if (method === "POST" && url === "/api/import") {
+      if (options.importFails) {
+        return json(422, { error: { code: "not_public", message: "The document could not be opened. Make sure Share is set to “Anyone with the link” and the link is right." } });
+      }
+      const isPdf = init?.body instanceof FormData;
+      return json(200, { text: "Imported draft text (Smith, 2021).", source: isPdf ? "pdf" : "link", warnings: isPdf ? [] : ["footnotes"], truncated: false });
+    }
     if (method === "POST" && url === "/api/sources/doc-ex/ingest") {
       return json(200, { documentId: "doc-ex", status: "ready", pagesIngested: 1, pageCount: 1, done: true });
     }
@@ -433,6 +440,114 @@ describe("the one-question survey", () => {
     expect(server.eventBodies.find((e) => e.name === "would_pay_answered")).toEqual({ name: "would_pay_answered", props: { answer: "maybe" } });
     expect(screen.getByText("Thank you.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Maybe" })).toBeNull(); // answered once
+  });
+});
+
+describe("bringing a draft in without pasting it", () => {
+  const LINK = "https://docs.google.com/document/d/1zNfrhNd-YvYB6stWLrujUCABad9c6EQcCdJWlmdfMe8/edit?usp=sharing";
+  const draftBox = () => screen.getByLabelText("Draft text") as HTMLTextAreaElement;
+
+  it("reads a Google Docs link into the draft box, says what it read, warns about footnotes, and moves to the text", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
+    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
+    await user.click(screen.getByRole("button", { name: "Read the document" }));
+
+    await waitFor(() => expect(draftBox().value).toBe("Imported draft text (Smith, 2021)."));
+    expect(server.count("POST /api/import")).toBe(1);
+    expect(screen.getByText(/Read 34 characters from your Google Doc\. Check the text, then press “Check my claims”\./)).toBeTruthy();
+    expect(screen.getByText(/Footnotes were found/)).toBeTruthy();
+    expect(document.activeElement).toBe(draftBox()); // the student can check the text straight away
+    // It is only text in the box: the check still has to be started, and the box can be edited.
+    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", false);
+    await user.type(draftBox(), " More.");
+    expect(screen.queryByText(/Read 34 characters/)).toBeNull(); // editing clears the note
+  });
+
+  it("reads the link when the student presses Enter in the link box", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
+    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), `${LINK}{Enter}`);
+    await waitFor(() => expect(draftBox().value).toContain("Imported draft text"));
+    expect(server.count("POST /api/import")).toBe(1);
+  });
+
+  it("offers to read a link that was pasted into the draft box instead of the draft", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    fireEvent.change(draftBox(), { target: { value: LINK } });
+    expect(screen.getByText("That looks like a Google Docs link.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Read the document" }));
+    await waitFor(() => expect(draftBox().value).toBe("Imported draft text (Smith, 2021)."));
+    // A real draft that merely mentions a link gets no such offer.
+    fireEvent.change(draftBox(), { target: { value: `My draft is at ${LINK}, please read it.` } });
+    expect(screen.queryByText("That looks like a Google Docs link.")).toBeNull();
+  });
+
+  it("says plainly why a document could not be read, and keeps what the student had", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer({ importFails: true });
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
+    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
+    await user.click(screen.getByRole("button", { name: "Read the document" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Make sure Share is set to “Anyone with the link”/);
+    // Still in link mode, link still typed, nothing replaced.
+    expect((screen.getByLabelText("Google Docs link", { selector: "input" }) as HTMLInputElement).value).toBe(LINK);
+  });
+
+  it("keeps the link controls locked until the privacy note has been acknowledged", async () => {
+    vi.stubGlobal("fetch", fakeServer().fetchImpl);
+    const user = userEvent.setup();
+    render(<VerifierApp />);
+    await screen.findByLabelText(/Draft text/);
+    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
+    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
+    expect(screen.getByRole("button", { name: "Read the document" })).toHaveProperty("disabled", true);
+    await user.click(screen.getByRole("button", { name: "Got it" }));
+    expect(screen.getByRole("button", { name: "Read the document" })).toHaveProperty("disabled", false);
+  });
+
+  it("reads a .txt file in the browser, with no request to the server", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Upload file" }));
+    await user.upload(screen.getByLabelText(/Word, PDF or text file/), new File(["﻿First paragraph.\r\n\r\n\r\n\r\nSecond paragraph."], "draft.txt", { type: "text/plain" }));
+    await waitFor(() => expect(draftBox().value).toBe("First paragraph.\n\nSecond paragraph."));
+    expect(screen.getByText(/from your text file/)).toBeTruthy();
+    expect(server.count("POST /api/import")).toBe(0);
+  });
+
+  it("sends a .pdf draft to the server to be read, and fills the draft box with the result", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Upload file" }));
+    await user.upload(screen.getByLabelText(/Word, PDF or text file/), new File(["%PDF-1.4"], "draft.pdf", { type: "application/pdf" }));
+    await waitFor(() => expect(draftBox().value).toBe("Imported draft text (Smith, 2021)."));
+    expect(server.count("POST /api/import")).toBe(1);
+    expect(screen.getByText(/from your PDF/)).toBeTruthy();
+  });
+
+  it("still takes a .docx as before, and refuses a type it cannot read", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer());
+    await user.click(screen.getByRole("button", { name: "Upload file" }));
+    const input = screen.getByLabelText(/Word, PDF or text file/);
+    await user.upload(input, new File(["x"], "thesis.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
+    expect(screen.getByText("Selected: thesis.docx")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", false);
+
+    fireEvent.change(input, { target: { files: [new File(["x"], "old.doc")] } });
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toMatch(/Choose a \.docx, \.pdf or \.txt file/);
+    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", true);
   });
 });
 

@@ -35,6 +35,11 @@ export const EVENT_SCHEMAS = {
     input_type: z.enum(["paste", "docx"]),
     length_bucket: z.enum(["short", "medium", "long"]),
   }),
+  // A draft was brought in from a Google Docs link or a PDF (never the link or the text itself).
+  draft_imported: z.strictObject({
+    source: z.enum(["link", "pdf"]),
+    length_bucket: z.enum(["short", "medium", "long"]),
+  }),
   references_added: z.strictObject({ count }),
   source_uploaded: z.strictObject({
     page_bucket: z.enum(["1_to_10", "11_to_30", "31_to_100", "over_100"]),

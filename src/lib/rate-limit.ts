@@ -16,6 +16,8 @@ export interface Limits {
   modelPerSession: number;
   /** Model-backed requests one address may make per window, across sessions. */
   modelPerAddress: number;
+  /** Imports (a Google Docs link or a PDF draft) one session may make per window. Each opens a connection to Google. */
+  importsPerSession: number;
   windowSeconds: number;
 }
 
@@ -23,6 +25,7 @@ export const DEFAULT_LIMITS: Limits = {
   newSessionsPerAddress: 60,
   modelPerSession: 600,
   modelPerAddress: 3000,
+  importsPerSession: 30,
   windowSeconds: 3600,
 };
 
@@ -79,6 +82,11 @@ export async function consume(db: SqlLike, key: string, limit: number, windowSec
 export async function sweepExpired(db: SqlLike, windowSeconds: number): Promise<void> {
   const sql = db as postgres.Sql;
   await sql`delete from rate_limits where window_start < now() - make_interval(secs => ${windowSeconds * 2})`;
+}
+
+/** Called before an import (a Google Docs link or a PDF draft). */
+export async function limitImports(db: SqlLike, sessionId: string, limits: Limits = DEFAULT_LIMITS): Promise<void> {
+  await consume(db, `import:s:${sessionId}`, limits.importsPerSession, limits.windowSeconds);
 }
 
 /** Called before a new session is created. */

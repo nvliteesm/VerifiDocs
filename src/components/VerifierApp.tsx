@@ -42,6 +42,8 @@ export function VerifierApp() {
   const { t, locale, ready } = useT();
   const [waking, setWaking] = useState(false);
   const [api] = useState(() => createApi({ onWaking: setWaking }));
+  // How the draft panel reads a Google Docs link or a PDF draft.
+  const [importer] = useState(() => ({ link: api.importLink, pdf: api.importPdf }));
   const [consent, setConsent] = useState<boolean | null>(null);
   // Kept in memory only: it lets a failed check be retried or edited without retyping. Never stored (Hard Rules 4 and 11).
   const [lastInput, setLastInput] = useState<VerifyInput | null>(null);
@@ -232,6 +234,7 @@ export function VerifierApp() {
           {idle ? (
             <DraftPanel
               key={seedKey}
+              importer={importer}
               locked={!consent}
               disabled={sources.busy || !consent}
               disabledReason={!consent ? t("locked", { ok: t("note.ok") }) : sources.busy ? t("wait.sources") : null}

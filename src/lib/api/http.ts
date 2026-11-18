@@ -6,6 +6,7 @@ import { ZodError } from "zod";
 import { isWakingError } from "../db";
 import { LlmOutputError, LlmUnavailableError } from "../llm/adapter";
 import { DraftError } from "../pipeline/parse-draft";
+import { ImportError } from "../pipeline/import-draft";
 import { IngestError, type IngestErrorCode } from "../pipeline/ingest";
 import { RateLimitError } from "../rate-limit";
 
@@ -45,6 +46,7 @@ export function errorResponse(error: unknown): Response {
   if (error instanceof ApiError) return failure(error.status, error.code, error.message);
   if (error instanceof DraftError) return failure(400, error.code, error.message);
   if (error instanceof IngestError) return failure(INGEST_STATUS[error.code], error.code, error.message);
+  if (error instanceof ImportError) return failure(error.status, error.code, error.message, error.code === "import_busy");
   if (error instanceof ZodError) return failure(400, "invalid_request", "The request is not in the expected shape.");
   if (error instanceof RateLimitError) {
     return failure(429, "rate_limited", error.message, false, { "retry-after": String(error.retryAfterSeconds) });

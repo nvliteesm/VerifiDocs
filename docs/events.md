@@ -6,6 +6,7 @@ One row per event in the `events` table: `session_id`, `name`, `props` (JSON), `
 | --- | --- | --- |
 | `session_started` | First request of a session | `source` (direct, referral) |
 | `draft_submitted` | Draft accepted | `input_type` (paste, docx), `length_bucket` |
+| `draft_imported` | A draft was read from a Google Docs link or a PDF (never the link or the text) | `source` (link, pdf), `length_bucket` |
 | `references_added` | Reference list accepted | `count` |
 | `source_uploaded` | A PDF is ingested | `page_bucket`, `ingest_ms` |
 | `run_started` | Claims extracted | `claim_count` |

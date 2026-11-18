@@ -74,6 +74,20 @@ export interface SourceView {
   createdAt: string;
 }
 
+/** What reading a Google Docs link or a PDF draft gives back: the text to show in the draft box, never saved. */
+export interface ImportResponse {
+  text: string;
+  source: "link" | "pdf";
+  warnings: ("footnotes" | "tables")[];
+  truncated: boolean;
+}
+
+/** How the draft panel brings a draft in without pasting it. */
+export interface Importer {
+  link(url: string): Promise<ImportResponse>;
+  pdf(file: File): Promise<ImportResponse>;
+}
+
 export interface UploadResponse {
   documentId: string;
   status: "ingesting" | "no_text";

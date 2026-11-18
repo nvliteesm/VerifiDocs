@@ -35,7 +35,7 @@ describe("messages", () => {
 
   it("never leaves English in the Indonesian screen text by copying it across", () => {
     // These are allowed to be the same in both: abbreviations, brand names and words that are the same in both.
-    const same = new Set(["lang.en", "lang.id", "lang.enName", "lang.idName", "verdict.supported.advice"]);
+    const same = new Set(["lang.en", "lang.id", "lang.enName", "lang.idName", "verdict.supported.advice", "link.placeholder"]);
     const copied = keys.filter((key) => !same.has(key) && MESSAGES.id[key] === MESSAGES.en[key]);
     expect(copied).toEqual([]);
   });

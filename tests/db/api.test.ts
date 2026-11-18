@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { checkClaimHandler, postEvent } from "../../src/lib/api/claims";
 import { handleWith, type ApiContext, type ApiDeps } from "../../src/lib/api/handler";
 import { MAX_RUNS_PER_SESSION, createRun, deleteRun, extractUnit, getRun } from "../../src/lib/api/runs";
+import { importDraft } from "../../src/lib/api/imports";
 import { deleteSource, ingestSource, listSources, uploadSource } from "../../src/lib/api/sources";
 import {
   EMBEDDING_DIMENSIONS,
@@ -78,15 +79,21 @@ interface Reply {
 }
 
 /** One simulated browser: it keeps its own cookie, like a real session would. */
-function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["resolve"], limits?: Limits) {
-  const deps: ApiDeps = { sql: tx, llm, ...(resolve ? { resolve } : {}), ...(limits ? { limits } : {}) };
+function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["resolve"], limits?: Limits, fetchImpl?: typeof fetch) {
+  const deps: ApiDeps = {
+    sql: tx,
+    llm,
+    ...(resolve ? { resolve } : {}),
+    ...(limits ? { limits } : {}),
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  };
   const client = {
     cookie: null as string | null,
     async send(
       method: string,
       path: string,
       fn: (context: ApiContext, request: Request) => Promise<Response>,
-      options: { json?: unknown; form?: FormData; headers?: Record<string, string>; rawBody?: string; model?: boolean } = {},
+      options: { json?: unknown; form?: FormData; headers?: Record<string, string>; rawBody?: string; model?: boolean; imports?: boolean } = {},
     ): Promise<Reply> {
       const headers: Record<string, string> = { ...(options.headers ?? {}) };
       if (client.cookie) headers.cookie = client.cookie;
@@ -100,7 +107,10 @@ function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["res
         body = options.form;
       }
       const request = new Request(`http://localhost:3000${path}`, { method, headers, body });
-      const response = await handleWith(deps, request, (context) => fn(context, request), options.model ? { model: true } : {});
+      const response = await handleWith(deps, request, (context) => fn(context, request), {
+        ...(options.model ? { model: true } : {}),
+        ...(options.imports ? { imports: true } : {}),
+      });
       const setCookie = response.headers.get("set-cookie");
       if (setCookie) client.cookie = setCookie.split(";")[0]!;
       const text = await response.text();
@@ -411,6 +421,105 @@ describe.skipIf(!enabled)("deleting a check", () => {
       const runId = (await client.createRun({ draft: DRAFT })).body.runId;
       expect((await client.deleteRun(runId)).status).toBe(204);
       expect((await client.deleteRun(runId)).status).toBe(404);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("importing a draft", () => {
+  const ID = "1zNfrhNd-YvYB6stWLrujUCABad9c6EQcCdJWlmdfMe8";
+  const LINK = `https://docs.google.com/document/d/${ID}/edit?usp=sharing`;
+  const plain = (body: string, status = 200, type = "text/plain; charset=utf-8") =>
+    new Response(body, { status, headers: { "content-type": type } });
+  /** A fetch that answers every request with the next response. It records what it was asked for. */
+  const fetching = (...answers: Response[]) => {
+    const asked: string[] = [];
+    const impl = (async (input: URL | RequestInfo) => {
+      asked.push(String(input));
+      const next = answers.shift();
+      if (!next) throw new Error("no more answers");
+      return next;
+    }) as typeof fetch;
+    return { impl, asked };
+  };
+  const importLink = (client: ReturnType<typeof newClient>, url = LINK) =>
+    client.send("POST", "/api/import", (c, r) => importDraft(c, r), { json: { url }, imports: true });
+  const importFile = (client: ReturnType<typeof newClient>, bytes: Uint8Array, name = "draft.pdf") => {
+    const form = new FormData();
+    form.set("file", new File([bytes as unknown as BlobPart], name, { type: "application/pdf" }));
+    return client.send("POST", "/api/import", (c, r) => importDraft(c, r), { form, imports: true });
+  };
+
+  it("reads a Google Doc and hands back clean text, without saving a draft or logging the link", async () => {
+    await inTx(async (tx) => {
+      const { impl, asked } = fetching(
+        plain("﻿Spending rose by 4.2 percent (Contoh Statistics Office, 2024).[1]\r\n\r\n________________\r\n[1]A footnote.\r\n"),
+      );
+      const client = newClient(tx, fakeLlm().llm, undefined, undefined, impl);
+      const runsBefore = (await tx<{ n: number }[]>`select count(*)::int as n from runs`)[0]!.n;
+      const reply = await importLink(client);
+      expect(reply.status).toBe(200);
+      expect(reply.body).toEqual({
+        text: "Spending rose by 4.2 percent (Contoh Statistics Office, 2024).",
+        source: "link",
+        warnings: ["footnotes"],
+        truncated: false,
+      });
+      expect(asked).toEqual([`https://docs.google.com/document/d/${ID}/export?format=txt`]);
+
+      // Nothing was saved: no run exists, and the event holds only a source and a size bucket.
+      expect((await tx<{ n: number }[]>`select count(*)::int as n from runs`)[0]!.n).toBe(runsBefore);
+      const [event] = await tx<{ props: Record<string, unknown> }[]>`
+        select props from events where name = 'draft_imported' order by created_at desc limit 1`;
+      expect(event!.props).toEqual({ source: "link", length_bucket: "short" });
+      expect(JSON.stringify(event)).not.toContain(ID);
+    });
+  });
+
+  it("reads a PDF draft, and refuses a scan and a file that is not a PDF", async () => {
+    await inTx(async (tx) => {
+      const client = newClient(tx, fakeLlm().llm);
+      const ok = await importFile(client, fixture("sample.pdf"));
+      expect(ok.status).toBe(200);
+      expect(ok.body.source).toBe("pdf");
+      expect(ok.body.text.length).toBeGreaterThan(20);
+      expect((await importFile(client, fixture("scanned.pdf"))).body.error.code).toBe("import_empty");
+      const notPdf = await importFile(client, new TextEncoder().encode("plain text"), "draft.pdf");
+      expect(notPdf.status).toBe(415);
+      expect(notPdf.body.error.code).toBe("not_a_pdf");
+    });
+  });
+
+  it("answers with a specific, safe reason for each thing that can go wrong", async () => {
+    await inTx(async (tx) => {
+      const cases: [Response | null, string, number, string?][] = [
+        [plain("<html>sign in</html>", 404, "text/html"), "not_public", 422],
+        [plain("<html>Sign in</html>", 200, "text/html"), "not_public", 422],
+        [plain("", 429), "import_busy", 503],
+        [plain("", 500), "import_failed", 502],
+        [plain("   \r\n\r\n  "), "import_empty", 422],
+      ];
+      for (const [response, code, status] of cases) {
+        const client = newClient(tx, fakeLlm().llm, undefined, undefined, fetching(response!).impl);
+        const reply = await importLink(client);
+        expect([reply.status, reply.body.error.code], code).toEqual([status, code]);
+      }
+      const client = newClient(tx, fakeLlm().llm, undefined, undefined, fetching().impl);
+      expect((await importLink(client, "https://evil.example/document/d/" + ID)).body.error.code).toBe("bad_link");
+      const published = "https://docs.google.com/document/d/e/2PACX-1vTEhc3TgbsBItovadXChRrcZ5VgxUtruvDC5wnEX5zxxqcFyg96q1YLRa9VdcrLuW44cM0jsbGvSSGb/pub";
+      expect((await importLink(client, published)).body.error.code).toBe("published_link");
+      expect((await client.send("POST", "/api/import", (c, r) => importDraft(c, r), { json: { nope: 1 }, imports: true })).status).toBe(400);
+    });
+  });
+
+  it("limits how many imports one session can make, and answers 429", async () => {
+    await inTx(async (tx) => {
+      const limits: Limits = { ...DEFAULT_LIMITS, importsPerSession: 2 };
+      const client = newClient(tx, fakeLlm().llm, undefined, limits, fetching(plain("one"), plain("two"), plain("three")).impl);
+      expect((await importLink(client)).status).toBe(200);
+      expect((await importLink(client)).status).toBe(200);
+      const blocked = await importLink(client);
+      expect(blocked.status).toBe(429);
+      expect(blocked.body.error.code).toBe("rate_limited");
     });
   });
 });
