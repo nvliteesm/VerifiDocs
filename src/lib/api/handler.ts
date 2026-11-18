@@ -25,6 +25,8 @@ export interface ApiDeps {
   fetch?: typeof fetch;
   /** Find a source for one claim's text. Defaults to OpenAlex with OPENALEX_API_KEY; tests pass a fake. */
   discover?: (claimText: string) => Promise<DiscoverResult>;
+  /** Fetches an open-access PDF under the safe-fetch rules. Tests pass a fake, so no test reaches the network. */
+  fetchPdf?: (link: string) => Promise<Uint8Array>;
 }
 
 export interface ApiContext {

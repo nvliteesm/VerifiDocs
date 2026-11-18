@@ -79,3 +79,10 @@ describe("buildReport", () => {
     expect(buildReport([], [])).toContain("0 claims checked");
   });
 });
+
+describe("found citations in the report", () => {
+  it("says a citation was found here and is not in the draft yet", () => {
+    const found = claim("a", 1, "supported", { citation: "(Lee, 2021)", citationSource: "found" });
+    expect(buildReport([found], [])).toContain("Source found here, not yet in the draft.");
+  });
+});

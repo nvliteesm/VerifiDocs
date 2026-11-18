@@ -622,3 +622,57 @@ describe("shortQuote", () => {
     expect(cut.length).toBeLessThanOrEqual(241);
   });
 });
+
+describe("Check a claim against a found paper", () => {
+  const PAPER = {
+    rank: 1,
+    openalexId: "https://openalex.org/W1",
+    doi: "https://doi.org/10.1/w1",
+    title: "Flexible work in small firms",
+    year: 2021,
+    authors: ["Kim Lee"],
+    venue: null,
+    openAccessPdf: "https://repo.example/w1.pdf",
+    sentence: "Casual employment grew 18% between 2015 and 2020.",
+    relevance: "direct" as const,
+  };
+  const card = (sources = [PAPER, { ...PAPER, rank: 2, openAccessPdf: null, title: "Paywalled study" }]) =>
+    claim("no_citation_given", { citation: null, sourcesSearched: true, sources });
+
+  it("offers a free-PDF check only where there is a free PDF, and an upload everywhere", () => {
+    render(<ResultsView state={stateOf([card()])} onRetryClaim={noop} onEvent={vi.fn()} onFindSources={vi.fn()} onAttachSource={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: "Check my claim against it" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Upload its PDF" })).toHaveLength(2);
+  });
+
+  it("shows each stage while it works, and the message when it fails", async () => {
+    const user = userEvent.setup();
+    let finish: (value: string | null) => void = () => {};
+    const onAttach = vi.fn((_c: string, _r: number, _t: string, _f: File | null, stage: (s: "getting" | "reading" | "checking") => void) => {
+      stage("reading");
+      return new Promise<string | null>((resolve) => (finish = resolve));
+    });
+    render(<ResultsView state={stateOf([card()])} onRetryClaim={noop} onEvent={vi.fn()} onFindSources={vi.fn()} onAttachSource={onAttach} />);
+    await user.click(screen.getByRole("button", { name: "Check my claim against it" }));
+    expect(onAttach.mock.calls[0]!.slice(1, 4)).toEqual([1, "Flexible work in small firms", null]);
+    expect(screen.getByText("Reading the paper…")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Upload its PDF" }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    finish("This paper could not be downloaded. Upload its PDF instead.");
+    expect(await screen.findByText("This paper could not be downloaded. Upload its PDF instead.")).toBeTruthy();
+  });
+
+  it("sends an uploaded PDF for the paper it was chosen for", async () => {
+    const user = userEvent.setup();
+    const onAttach = vi.fn().mockResolvedValue(null);
+    render(<ResultsView state={stateOf([card()])} onRetryClaim={noop} onEvent={vi.fn()} onFindSources={vi.fn()} onAttachSource={onAttach} />);
+    await user.click(screen.getAllByRole("button", { name: "Upload its PDF" })[1]!);
+    const file = new File(["%PDF-1.4"], "paper.pdf", { type: "application/pdf" });
+    await user.upload(document.querySelector('.found input[type="file"]') as HTMLInputElement, file);
+    expect(onAttach.mock.calls[0]!.slice(1, 4)).toEqual([2, "Paywalled study", file]);
+  });
+
+  it("marks a claim checked against a paper found here, so the student knows the draft still lacks it", () => {
+    render(<ResultsView state={stateOf([claim("supported", { citation: "(Lee, 2021)", citationSource: "found", quote: "q", page: 3 })])} onRetryClaim={noop} onEvent={vi.fn()} />);
+    expect(screen.getByText("Found here: not in your draft yet")).toBeTruthy();
+  });
+});

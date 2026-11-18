@@ -12,6 +12,8 @@ import { isOptional } from "@/lib/fix-list";
 import type { VerifierState } from "@/lib/client/verifier-state";
 import { useT } from "./LocaleProvider";
 
+export type AttachStage = "getting" | "reading" | "checking";
+
 /** Cards shown at once in a section; "Show more" adds this many again. */
 export const SECTION_PAGE = 20;
 
@@ -30,6 +32,11 @@ interface Props {
   onEvent: (name: "evidence_opened" | "verdict_flagged_wrong" | "fix_accepted" | "source_copied", props?: Record<string, unknown>) => void;
   /** Find a source for an uncited claim: null when it worked, else a message for the card. */
   onFindSources?: (claimId: string) => Promise<string | null>;
+  /**
+   * Check a claim against found paper `rank`: its free PDF (file null) or the student's upload. Reports each stage,
+   * and resolves with null when the check ran, else a message for the card.
+   */
+  onAttachSource?: (claimId: string, rank: number, title: string, file: File | null, stage: (stage: AttachStage) => void) => Promise<string | null>;
 }
 
 async function copy(text: string): Promise<boolean> {
@@ -63,6 +70,7 @@ interface CardProps {
   onRetry: () => void;
   onEvent: Props["onEvent"];
   onFindSources?: Props["onFindSources"];
+  onAttachSource?: Props["onAttachSource"];
   /** The check has ended, so a claim with no verdict was not checked rather than waiting. */
   ended: boolean;
   /** The scan is over and the check has not started: a claim with no verdict is cited and waiting for it. */
@@ -109,16 +117,33 @@ function paperMeta(source: FoundSourceView): string {
 function FoundSources({
   claim,
   onFind,
+  onAttach,
   onEvent,
 }: {
   claim: ClaimView;
   onFind: (claimId: string) => Promise<string | null>;
+  onAttach?: Props["onAttachSource"];
   onEvent: Props["onEvent"];
 }) {
   const { t } = useT();
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  // Checking the claim against one paper: which one, and how far it has got. One at a time.
+  const [attaching, setAttaching] = useState<{ rank: number; stage: AttachStage } | null>(null);
+  const [attachError, setAttachError] = useState<{ rank: number; message: string } | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const uploadFor = useRef<{ rank: number; title: string } | null>(null);
+
+  const attach = async (rank: number, title: string, file: File | null) => {
+    if (!onAttach) return;
+    setAttachError(null);
+    setAttaching({ rank, stage: "getting" });
+    const failed = await onAttach(claim.id, rank, title, file, (stage) => setAttaching({ rank, stage }));
+    // On success the claim has a new verdict and this block leaves the card; on failure it stays with the message.
+    setAttaching(null);
+    if (failed) setAttachError({ rank, message: failed });
+  };
   const answer = useRef<HTMLParagraphElement>(null);
   const justFound = useRef(false);
   useEffect(() => {
@@ -212,15 +237,56 @@ function FoundSources({
                 {copied === `${source.rank}:in` ? t("found.copied") : t("found.copyInText")}
               </button>
             </div>
+            {onAttach && (
+              <div className="actions">
+                {source.openAccessPdf && (
+                  <button type="button" className="btn btn-small" disabled={attaching !== null} onClick={() => void attach(source.rank, source.title, null)}>
+                    {t("found.check")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={attaching !== null}
+                  onClick={() => {
+                    uploadFor.current = { rank: source.rank, title: source.title };
+                    fileInput.current?.click();
+                  }}
+                >
+                  {t("found.upload")}
+                </button>
+              </div>
+            )}
+            {attaching?.rank === source.rank && (
+              <p role="status" className="hint">
+                {t(`found.${attaching.stage}` as MessageKey)}
+              </p>
+            )}
+            {attachError?.rank === source.rank && (
+              <p role="alert" className="hint hint-bad">
+                {attachError.message}
+              </p>
+            )}
           </li>
         ))}
       </ol>
+      <input
+        ref={fileInput}
+        type="file"
+        hidden
+        accept="application/pdf,.pdf"
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null;
+          event.target.value = "";
+          if (file && uploadFor.current) void attach(uploadFor.current.rank, uploadFor.current.title, file);
+        }}
+      />
     </section>
   );
 }
 
 // `flagged` and `copied` live in ResultsView, because a card unmounts whenever the filter changes.
-function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, onFindSources, ended, scanned }: CardProps) {
+function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, onFindSources, onAttachSource, ended, scanned }: CardProps) {
   const verdict = claim.verdict;
   const { t } = useT();
   // After "This verdict is wrong", the student picks a reason. The button they pressed has left the page, so focus
@@ -262,6 +328,8 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
         )}
       </div>
       <p className="claim-text">{claim.text}</p>
+      {/* The audit trail (PRD guard rule 2): this citation was attached here, after the claim was written. */}
+      {claim.citationSource === "found" && <p className="found-tag">{t("claim.found")}</p>}
 
       {claim.reason && <p className="reason">{localizeReason(claim.reason, t)}</p>}
       {verdict && verdict !== "supported" && !listMissing && (
@@ -271,7 +339,9 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
         </p>
       )}
 
-      {verdict === "no_citation_given" && onFindSources && <FoundSources claim={claim} onFind={onFindSources} onEvent={onEvent} />}
+      {verdict === "no_citation_given" && onFindSources && (
+        <FoundSources claim={claim} onFind={onFindSources} onAttach={onAttachSource} onEvent={onEvent} />
+      )}
 
       {claim.quote && (
         // The quote is the proof, so it starts open for the verdicts that ask the student to change something.
@@ -396,7 +466,7 @@ export function groupBySection(claims: ClaimView[], needsAttention: (claim: Clai
     .map(({ key, heading, claims: list, attention }) => ({ key, heading, claims: list, attention }));
 }
 
-export function ResultsView({ state, draftLabel = null, focusWhenDone = false, onRetryClaim, onReadPart, onEvent, onFindSources }: Props) {
+export function ResultsView({ state, draftLabel = null, focusWhenDone = false, onRetryClaim, onReadPart, onEvent, onFindSources, onAttachSource }: Props) {
   const { t, locale } = useT();
   // The part being read again, if any (one at a time: each is one model request).
   const [readingPart, setReadingPart] = useState<number | null>(null);
@@ -506,6 +576,7 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
       onRetry={() => onRetryClaim(claim.id)}
       onEvent={onEvent}
       onFindSources={onFindSources}
+      onAttachSource={onAttachSource}
     />
   );
 

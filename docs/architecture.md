@@ -148,7 +148,7 @@ Written in `db/migrations/0001_init.sql` and applied to the Neon `dev` branch: `
 
 ## Source discovery (in v1)
 
-Gemini suggests candidate sources from a topic prompt. Follow the guard rules in the PRD's Source discovery section. Minimum: every suggestion passes the same Crossref or OpenAlex existence check before it is shown, and discovery never produces a Supported verdict by itself.
+Built as "Find a source" (18 Nov 2026); the plan, spike results and what was built are in `docs/source-discovery.md`. Search first: the model writes queries and copies a sentence from an abstract, OpenAlex returns works that exist, and code keeps a pick only if its sentence is in the abstract. A found paper is "not read yet" and never counts as support; checking a claim against one runs the normal check on its full text, and the claim is marked "Found here: not in your draft yet". This differs from the PRD's wording ("Gemini suggests candidate sources from a topic prompt"), which needs updating.
 
 ## Out of scope
 

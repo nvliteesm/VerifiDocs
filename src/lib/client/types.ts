@@ -36,6 +36,8 @@ export interface ClaimView {
   section: string | null;
   /** "must": a reader would expect a source. "should": a general statement a source would strengthen. */
   need: "must" | "should";
+  /** "found": the citation was attached here from a found paper, after the claim was written (the audit trail). */
+  citationSource?: "draft" | "found";
   /** True once Find a source has run for this claim (even when it found nothing). */
   sourcesSearched?: boolean;
   /** Papers Find a source kept, best first. Not read yet: they never count as support. */
@@ -62,6 +64,13 @@ export interface FoundSourceView {
   /** One sentence from the abstract, verified to be in it. */
   sentence: string;
   relevance: "direct" | "related";
+}
+
+export interface AttachSourceResponse {
+  claimId: string;
+  documentId: string;
+  status: SourceStatus;
+  pageCount: number;
 }
 
 export interface FindSourcesResponse {

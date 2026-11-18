@@ -215,8 +215,25 @@ function failureOf(error: unknown, signal: AbortSignal): PdfFetchError {
   return new PdfFetchError("unreachable");
 }
 
-/** Fetches one PDF under the rules above. Throws PdfFetchError with a reason; never returns anything but a PDF. */
+/**
+ * Fetches one PDF under the rules above. Throws PdfFetchError with a reason; never returns anything but a PDF.
+ * The deadline also holds where the abort signal cannot reach (a DNS lookup cannot be cancelled once started): a
+ * browser test saw a failed fetch take 37.7 s in all, so the whole fetch races a timer 500 ms past the deadline.
+ */
 export async function fetchPdf(link: string, options: FetchPdfOptions = {}): Promise<Uint8Array> {
+  const deadlineMs = options.deadlineMs ?? PDF_FETCH_DEADLINE_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new PdfFetchError("timeout")), deadlineMs + 500);
+  });
+  try {
+    return await Promise.race([fetchWithin(link, { ...options, deadlineMs }), cap]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchWithin(link: string, options: FetchPdfOptions): Promise<Uint8Array> {
   const transport = options.transport ?? httpsTransport();
   const maxBytes = options.maxBytes ?? MAX_PDF_FETCH_BYTES;
   const signal = AbortSignal.timeout(options.deadlineMs ?? PDF_FETCH_DEADLINE_MS);

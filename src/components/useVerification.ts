@@ -67,8 +67,8 @@ export function useVerification(api: Api) {
 
   const retry = useCallback(
     (claimId: string) => {
-      if (!state.runId) return;
-      void retryClaim(deps, state.runId, claimId, dispatch, nextSignal());
+      if (!state.runId) return Promise.resolve();
+      return retryClaim(deps, state.runId, claimId, dispatch, nextSignal());
     },
     [deps, nextSignal, state.runId],
   );

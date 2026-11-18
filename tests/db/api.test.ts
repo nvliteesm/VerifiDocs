@@ -9,7 +9,8 @@ import { checkClaimHandler, postEvent } from "../../src/lib/api/claims";
 import { handleWith, type ApiContext, type ApiDeps } from "../../src/lib/api/handler";
 import { MAX_RUNS_PER_SESSION, createRun, deleteRun, extractUnit, getRun } from "../../src/lib/api/runs";
 import { importDraft } from "../../src/lib/api/imports";
-import { findSourcesHandler } from "../../src/lib/api/sources-found";
+import { attachSourceHandler, findSourcesHandler } from "../../src/lib/api/sources-found";
+import { PdfFetchError } from "../../src/lib/pipeline/fetch-pdf";
 import type { DiscoverResult } from "../../src/lib/pipeline/discover-sources";
 import { deleteSource, ingestSource, listSources, uploadSource } from "../../src/lib/api/sources";
 import {
@@ -89,6 +90,7 @@ function newClient(
   limits?: Limits,
   fetchImpl?: typeof fetch,
   discover?: ApiDeps["discover"],
+  fetchPdfImpl?: ApiDeps["fetchPdf"],
 ) {
   const deps: ApiDeps = {
     sql: tx,
@@ -97,6 +99,7 @@ function newClient(
     ...(limits ? { limits } : {}),
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
     ...(discover ? { discover } : {}),
+    ...(fetchPdfImpl ? { fetchPdf: fetchPdfImpl } : {}),
   };
   const client = {
     cookie: null as string | null,
@@ -143,6 +146,11 @@ function newClient(
     upload: (form: FormData) => client.send("POST", "/api/sources", (c, r) => uploadSource(c, r), { form }),
     ingest: (id: string) => client.send("POST", `/api/sources/${id}/ingest`, (c) => ingestSource(c, id), { model: true }),
     deleteSource: (id: string) => client.send("DELETE", `/api/sources/${id}`, (c) => deleteSource(c, id)),
+    attach: (claimId: string, rank: number, form?: FormData) =>
+      client.send("POST", `/api/claims/${claimId}/sources/${rank}/attach`, (c, r) => attachSourceHandler(c, claimId, String(rank), r), {
+        ...(form ? { form } : { json: {} }),
+        model: true,
+      }),
     findSources: (claimId: string) =>
       client.send("POST", `/api/claims/${claimId}/sources`, (c) => findSourcesHandler(c, claimId), { model: true }),
     check: (claimId: string) =>
@@ -1226,6 +1234,107 @@ describe.skipIf(!enabled)("Find a source", () => {
       const own = await setup(tx, async () => FOUND);
       expect((await own.client.findSources(own.cited)).body.error.code).toBe("not_uncited");
       expect(uncited).not.toBe(own.uncited);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("Check against a found paper", () => {
+  const UNCITED = "Casual employment in small firms grew sharply between 2015 and 2020.";
+  const OTHER = "Hourly workers in small firms change shifts more often than salaried staff.";
+  const extract = () => ({ claims: [{ text: UNCITED, citation: null }, { text: OTHER, citation: null }] });
+  const paper = (rank: number, pdf: string | null) => ({
+    openalexId: `https://openalex.org/W${rank}`,
+    doi: `https://doi.org/10.1/w${rank}`,
+    title: "Flexible work in small firms",
+    year: 2021,
+    authors: ["Kim Lee", "Mei Tan"],
+    venue: "Journal of Work",
+    openAccessPdf: pdf,
+    sentence: "Casual employment grew 18% between 2015 and 2020.",
+    relevance: "direct" as const,
+  });
+  const FOUND: DiscoverResult = {
+    exit: "found",
+    considered: 4,
+    dropped: { notInAbstract: 0, notRelevant: 0, badPick: 0 },
+    sources: [paper(1, "https://repo.example/w1.pdf"), paper(2, null)],
+  };
+
+  async function setup(tx: postgres.TransactionSql, fetchPdfImpl: ApiDeps["fetchPdf"] = async () => fixture("sample.pdf")) {
+    const client = newClient(tx, fakeLlm({ extract }).llm, undefined, undefined, undefined, async () => FOUND, fetchPdfImpl);
+    const { body: created } = await client.createRun({ draft: `${UNCITED}\n\n${OTHER}` });
+    await client.extract(created.runId, 0);
+    const run = (await client.getRun(created.runId)).body;
+    const id = (text: string) => run.claims.find((c: any) => c.text === text).id as string;
+    await client.findSources(id(UNCITED));
+    await client.findSources(id(OTHER));
+    return { client, runId: created.runId as string, claimId: id(UNCITED), otherId: id(OTHER) };
+  }
+
+  it("fetches the open-access PDF, links it to the claim as a found citation, and reopens the claim for the check", async () => {
+    await inTx(async (tx) => {
+      const { client, runId, claimId } = await setup(tx);
+      expect((await client.getRun(runId)).body.run.status).toBe("completed"); // nothing was cited, so the scan closed it
+
+      const reply = await client.attach(claimId, 1);
+      expect(reply.status).toBe(201);
+      expect(reply.body).toMatchObject({ claimId, status: "ingesting", pageCount: expect.any(Number) });
+
+      const run = (await client.getRun(runId)).body;
+      expect(run.run.status).toBe("checking");
+      expect(run.claims.find((c: any) => c.id === claimId)).toMatchObject({
+        citation: "(Lee & Tan, 2021)",
+        citationSource: "found",
+        verdict: null,
+        status: "pending",
+      });
+      const [entry] = await tx<{ raw_text: string; document_id: string }[]>`
+        select raw_text, document_id from reference_entries where run_id = ${runId}`;
+      expect(entry).toEqual({
+        raw_text: "Lee, K., & Tan, M. (2021). Flexible work in small firms. Journal of Work. https://doi.org/10.1/w1",
+        document_id: reply.body.documentId,
+      });
+      const logged = (await events(tx, await client.sessionId())).filter((e) => e.name === "source_attached");
+      expect(logged.map((e) => e.props)).toEqual([{ how: "open_access" }]);
+    });
+  });
+
+  it("takes an uploaded PDF for a paper with no free copy, and reuses the same PDF for a second claim", async () => {
+    await inTx(async (tx) => {
+      const { client, claimId, otherId } = await setup(tx);
+      const noFree = await client.attach(claimId, 2);
+      expect(noFree.body.error.code).toBe("no_open_access");
+
+      const uploaded = await client.attach(claimId, 2, pdfForm("sample.pdf"));
+      expect(uploaded.status).toBe(201);
+      const again = await client.attach(otherId, 1); // the fake fetch returns the same bytes
+      expect(again.body.documentId).toBe(uploaded.body.documentId);
+      const [count] = await tx<{ n: number }[]>`select count(*)::int as n from documents where session_id = ${await client.sessionId()}`;
+      expect(count?.n).toBe(1);
+    });
+  });
+
+  it("says when the paper could not be downloaded, and changes nothing", async () => {
+    await inTx(async (tx) => {
+      const { client, runId, claimId } = await setup(tx, async () => {
+        throw new PdfFetchError("not_pdf");
+      });
+      const reply = await client.attach(claimId, 1);
+      expect(reply.status).toBe(422);
+      expect(reply.body.error.code).toBe("fetch_failed");
+      const claim = (await client.getRun(runId)).body.claims.find((c: any) => c.id === claimId);
+      expect(claim).toMatchObject({ verdict: "no_citation_given", citationSource: "draft", citation: null });
+    });
+  });
+
+  it("refuses a second attach to the same claim, an unknown rank, and another session's claim", async () => {
+    await inTx(async (tx) => {
+      const { client, claimId } = await setup(tx);
+      expect((await client.attach(claimId, 1)).status).toBe(201);
+      expect((await client.attach(claimId, 1)).body.error.code).toBe("already_cited");
+      expect((await client.attach(claimId, 7)).status).toBe(404);
+      const stranger = await setup(tx);
+      expect((await stranger.client.attach(claimId, 1)).status).toBe(404);
     });
   });
 });

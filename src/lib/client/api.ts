@@ -15,7 +15,7 @@ import type {
   RunResponse,
   SourceView,
   UploadResponse,
-  VerifyInput, FindSourcesResponse } from "./types";
+  VerifyInput, FindSourcesResponse, AttachSourceResponse } from "./types";
 
 export class ApiClientError extends Error {
   override name = "ApiClientError";
@@ -138,6 +138,14 @@ export function createApi(options: ApiOptions = {}) {
     getRun: (runId: string) => send<RunResponse>("GET", `/api/runs/${runId}`),
     /** Find a source for one uncited claim. A repeat returns the saved result; a busy search is retried. */
     findSources: (claimId: string) => send<FindSourcesResponse>("POST", `/api/claims/${claimId}/sources`),
+    /** Check a claim against found paper `rank`: its open-access PDF is fetched, or `file` is the student's upload. */
+    attachSource: (claimId: string, rank: number, file?: File) => {
+      const path = `/api/claims/${claimId}/sources/${rank}/attach`;
+      if (!file) return send<AttachSourceResponse>("POST", path, { json: {} });
+      const form = new FormData();
+      form.set("file", file);
+      return send<AttachSourceResponse>("POST", path, { form });
+    },
     /** Deletes a check now (its draft text, claims and verdicts). */
     deleteRun: async (runId: string): Promise<void> => {
       await send<null>("DELETE", `/api/runs/${runId}`);

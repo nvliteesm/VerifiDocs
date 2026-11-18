@@ -67,6 +67,8 @@ export const EVENT_SCHEMAS = {
   // claim, the search words or a title (hard rule 11).
   // The student copied a found paper's reference or in-text citation. Only which one (hard rule 11).
   source_copied: z.strictObject({ kind: z.enum(["reference", "in_text"]) }),
+  // A found paper was attached to a claim to check it: fetched from its open-access link, or uploaded.
+  source_attached: z.strictObject({ how: z.enum(["open_access", "upload"]) }),
   sources_suggested: z.strictObject({ count: z.number().int().min(0).max(3), latency_ms: ms, outcome: z.enum(["found", "nothing_relevant"]) }),
 } as const;
 

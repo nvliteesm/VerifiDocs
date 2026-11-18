@@ -5,11 +5,12 @@ import { createApi } from "@/lib/client/api";
 import { exampleFor } from "@/lib/client/example";
 import { pluralKey } from "@/lib/i18n";
 import { buildReport } from "@/lib/client/report";
+import { messageOf } from "@/lib/client/run-verification";
 import type { ClientEventName, VerifyInput } from "@/lib/client/types";
 import { DraftPanel } from "./DraftPanel";
 import { LanguageToggle } from "./LanguageToggle";
 import { useT } from "./LocaleProvider";
-import { ResultsView } from "./ResultsView";
+import { ResultsView, type AttachStage } from "./ResultsView";
 import { SourcesPanel } from "./SourcesPanel";
 import { CONSENT_KEY, readStored, writeStored } from "./storage";
 import { ThemeToggle } from "./ThemeToggle";
@@ -178,6 +179,24 @@ export function VerifierApp() {
     verification.start(input);
   };
 
+  /**
+   * "Check my claim against it" on a found paper: the server gets the PDF (or takes the upload) and links it to the
+   * claim; the paper is then read like any source (it appears in "Your sources"), and the claim is checked against
+   * it. A failure before the link is made comes back to the card; after it, the check itself reports on the claim.
+   */
+  const attachSource = async (claimId: string, rank: number, title: string, file: File | null, stage: (stage: AttachStage) => void) => {
+    try {
+      const attached = await api.attachSource(claimId, rank, file ?? undefined);
+      stage("reading");
+      await sources.adopt({ documentId: attached.documentId, filename: `${title}.pdf`, status: attached.status, pageCount: attached.pageCount });
+      stage("checking");
+      await verification.retry(claimId);
+      return null;
+    } catch (error) {
+      return messageOf(error, t, locale);
+    }
+  };
+
   // Both the privacy choice and the language live in the browser, so nothing is shown until both are known.
   if (consent === null || !ready) return <Frame busy />;
 
@@ -265,6 +284,7 @@ export function VerifierApp() {
                 onRetryClaim={verification.retry}
                 onReadPart={verification.readPart}
                 onFindSources={verification.findSources}
+                onAttachSource={attachSource}
                 onEvent={event}
               />
               <div className="actions">

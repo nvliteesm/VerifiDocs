@@ -155,3 +155,12 @@ describe("fetchPdf", () => {
     }
   });
 });
+
+describe("the hard deadline", () => {
+  it("gives up on time even when the transport ignores the abort signal (a DNS lookup cannot be cancelled)", async () => {
+    const stuck: Transport = () => new Promise(() => {});
+    const started = Date.now();
+    expect(await reason(fetchPdf("https://a.org/p", { transport: stuck, deadlineMs: 50 }))).toBe("timeout");
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});

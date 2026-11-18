@@ -165,5 +165,35 @@ export function useSources(api: Api) {
   const busy = rows.some((row) => row.phase === "uploading" || row.phase === "ingesting");
   const readyCount = rows.filter((row) => row.phase === "ready").length;
 
-  return { rows, loaded, busy, readyCount, notice, addFiles, retryRow, remove };
+  /**
+   * Takes over a document the server made from a found paper ("Check my claim against it"): shows it in the list and
+   * reads it until done. Resolves with how it ended, so the claim check runs only after the paper has been read.
+   */
+  const adopt = useCallback(
+    async (doc: { documentId: string; filename: string; status: SourceView["status"]; pageCount: number }): Promise<SourcePhase> => {
+      const known = rowsRef.current.find((row) => row.id === doc.documentId);
+      if (known && known.phase !== "ingesting" && known.phase !== "failed") return known.phase;
+      const key = known?.key ?? doc.documentId;
+      if (!known) {
+        setRows((current) => [
+          ...current,
+          { key, id: doc.documentId, filename: doc.filename, phase: doc.status, pagesIngested: 0, pageCount: doc.pageCount, error: null },
+        ]);
+      }
+      if (doc.status !== "ingesting" && !known) return doc.status;
+      try {
+        for (;;) {
+          const progress = await api.ingest(doc.documentId);
+          update(key, { pagesIngested: progress.pagesIngested, pageCount: progress.pageCount, phase: progress.done ? progress.status : "ingesting" });
+          if (progress.done) return progress.status;
+        }
+      } catch (error) {
+        update(key, { phase: "failed", error: describe(error) });
+        return "failed";
+      }
+    },
+    [api, update, describe],
+  );
+
+  return { rows, loaded, busy, readyCount, notice, addFiles, retryRow, remove, adopt };
 }

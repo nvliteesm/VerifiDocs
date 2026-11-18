@@ -29,6 +29,7 @@ export function buildReport(claims: ClaimView[], fixList: string[], t: Translate
     attention.forEach((claim, index) => {
       lines.push("", `${index + 1}. [${verdictLabel(t, claim.verdict!)}] ${claim.text}`);
       if (claim.citation) lines.push(`   ${t("report.citation", { citation: claim.citation })}`);
+      if (claim.citationSource === "found") lines.push(`   ${t("report.found")}`);
       if (claim.quote) {
         lines.push(`   ${claim.page !== null ? t("report.saysPage", { page: claim.page, quote: claim.quote }) : t("report.says", { quote: claim.quote })}`);
       }
@@ -39,7 +40,10 @@ export function buildReport(claims: ClaimView[], fixList: string[], t: Translate
 
   if (supported.length > 0) {
     lines.push("", t("report.supported"));
-    for (const claim of supported) lines.push(`- ${claim.text}${claim.page !== null ? ` ${t("report.page", { page: claim.page })}` : ""}`);
+    for (const claim of supported) {
+      lines.push(`- ${claim.text}${claim.page !== null ? ` ${t("report.page", { page: claim.page })}` : ""}`);
+      if (claim.citationSource === "found") lines.push(`  ${t("report.found")}`);
+    }
   }
 
   return lines.join("\n");

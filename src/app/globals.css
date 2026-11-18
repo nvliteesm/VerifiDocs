@@ -869,6 +869,12 @@ blockquote {
 .found-list .actions {
   margin-top: 4px;
 }
+/* The audit trail: a citation attached here, not in the draft. Warning colour, because the draft still lacks it. */
+.found-tag {
+  color: var(--warn);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
 
 /* The pay question: a small optional line under the results, not a panel of its own. */
 .survey {

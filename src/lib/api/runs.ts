@@ -245,6 +245,7 @@ interface ClaimRow {
   section: string | null;
   need: "must" | "should";
   sources_searched: boolean;
+  citation_source: "draft" | "found";
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
   quote: string | null;
@@ -293,7 +294,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     }));
   }
   const claimRows = await sql<ClaimRow[]>`
-    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.need, c.sources_searched_at is not null as sources_searched, c.status,
+    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.need, c.citation_source, c.sources_searched_at is not null as sources_searched, c.status,
            v.verdict, v.quote, v.page, v.reason, v.exit_stage, v.fix_suggestion
     from claims c left join verdicts v on v.claim_id = c.id
     where c.run_id = ${run.id} order by c.position`;
@@ -313,6 +314,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     section: row.section,
     need: row.need,
     sourcesSearched: row.sources_searched,
+    citationSource: row.citation_source,
     sources: found.get(row.id) ?? [],
     status: row.status,
     verdict: row.verdict,

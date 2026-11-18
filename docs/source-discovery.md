@@ -87,7 +87,21 @@ The PRD says "Gemini suggests candidate sources from a topic prompt". This plan 
    - `text/html` is refused at the headers, and the first bytes must be `%PDF-`; 10 MB counted while reading; 8 s for the whole fetch.
    - Errors carry a reason, never the link. No new dependency.
    - Tests: 41 unit tests. A live test (`tests/live/fetch-pdf.live.test.ts`) fetched a real arXiv PDF, refused `example.com`, and refused `localtest.me` and `127.0.0.1.nip.io` (public names that resolve to 127.0.0.1) at connect time.
-5. Attach and re-check, the "Source added after writing" tag on screen and in the report; database tests.
+5. Attach and re-check, the "Source added after writing" tag on screen and in the report; database tests. **Done 18 Nov 2026.**
+   - **Endpoint:** `POST /api/claims/:id/sources/:rank/attach` (`attachSourceHandler`). It takes either no body (the server fetches the free PDF with `fetch-pdf.ts`) or a multipart upload.
+   - **What attaching does:**
+     - The same PDF in the session is reused.
+     - In one transaction: a reference entry for the run is linked to the document, the claim gets the in-text citation with `citation_source = 'found'` (migration 0010), its No citation verdict is removed, and a completed run reopens.
+     - The browser then reads the paper through the usual ingest, so it appears in "Your sources", and runs the normal claim check.
+   - **On screen and in the report:**
+     - The card says "Getting the paper…", "Reading the paper…", "Checking your claim…".
+     - A checked claim shows "Found here: not in your draft yet" (the audit trail; wording changed from the planned "Source added after writing" to say what to do), and the copied report says "Source found here, not yet in the draft."
+     - Errors: `fetch_failed` and `no_open_access` ("Upload its PDF instead"), `already_cited`.
+   - **New event:** `source_attached` (`how`).
+   - **Tests:** 4 database tests, 5 component tests, a report test.
+   - **Real browser, real services:** a claim went from No citation to Supported against Walters & Wilder (2023, Scientific Reports, open access), in 44.6 s from the press, through all three stages, and the tag survived a reload.
+   - **Over real HTTP:** a failed download took 7.2 s, a paper with no free PDF was refused in 0.3 s, and an attach took 3.3 s. A first browser run saw a failed download take 37.7 s, probably the dev server compiling the new route on first use (not proven). `fetchPdf` now also races a hard timer 500 ms past its 8 s deadline.
+   - **Not done:** the upload path was not tried in a real browser (component and database tests only). The 44.6 s from press to verdict is mostly reading the paper and the check; it is spread over many short requests, as hard rule 6 asks.
 6. Live test and a real-browser run on the FYP draft, timing every request.
 7. `docs/decisions.md`, `docs/architecture.md`, the privacy note (search words built from the student's sentence go to OpenAlex), and the PRD wording.
 
