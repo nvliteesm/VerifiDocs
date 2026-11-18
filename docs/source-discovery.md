@@ -102,8 +102,21 @@ The PRD says "Gemini suggests candidate sources from a topic prompt". This plan 
    - **Real browser, real services:** a claim went from No citation to Supported against Walters & Wilder (2023, Scientific Reports, open access), in 44.6 s from the press, through all three stages, and the tag survived a reload.
    - **Over real HTTP:** a failed download took 7.2 s, a paper with no free PDF was refused in 0.3 s, and an attach took 3.3 s. A first browser run saw a failed download take 37.7 s, probably the dev server compiling the new route on first use (not proven). `fetchPdf` now also races a hard timer 500 ms past its 8 s deadline.
    - **Not done:** the upload path was not tried in a real browser (component and database tests only). The 44.6 s from press to verdict is mostly reading the paper and the check; it is spread over many short requests, as hard rule 6 asks.
-6. Live test and a real-browser run on the FYP draft, timing every request.
-7. `docs/decisions.md`, `docs/architecture.md`, the privacy note (search words built from the student's sentence go to OpenAlex), and the PRD wording.
+6. Live test and a real-browser run on the FYP draft, timing every request. **Done 18 Nov 2026** (real Chrome, Gemini, OpenAlex; all test data deleted afterwards).
+   - **FYP draft (176,748 characters):**
+     - The scan took 39 s: "57 sentences need a source, 51 more could use one".
+     - Find a source on 6 claims from the market and competitor chapters, 3.8 to 5.4 s each.
+     - 4 ended "No paper found": the pricing-plan sentence and statements about the reviewed products. That is the right answer for product facts.
+     - 2 got loosely related academic papers: workforce-management papers for "the market includes several established products", and scheduling-heuristic papers for "the reviewed products mainly focus on workforce scheduling". The model rated at least one "direct", so the related-never-alone rule did not stop them. A student can see they do not state the claim, but this is the weakest result, and only the eval set can tune it.
+   - **Upload path** (phone width, dark mode): a found paper's PDF (600 KB) uploaded with "Upload its PDF" gave Supported in 7.7 s from the upload, with "Found here: not in your draft yet" and "(Maes, 2024)", and no horizontal overflow.
+   - **Every API request was under 10 s.** The slowest were: one extract slice 6.6 s, a find 5.0 s, a check 3.4 s, an ingest batch 1.7 s, an attach 1.1 s. No page errors.
+7. `docs/decisions.md`, `docs/architecture.md`, the privacy note (search words built from the student's sentence go to OpenAlex), and the PRD wording. **Done 18 Nov 2026.**
+   - The "Before you start" note now says "Find a source sends search words from your sentence to OpenAlex", in English and Bahasa Indonesia; the browser run checked the English one.
+   - The decisions row, the architecture note and `docs/events.md` are updated.
+   - The PRD got 3 suggestions for Steven to accept:
+     - the decision table: "for an uncited claim, search first"
+     - a sentence on what was built
+     - guard rule 1: full text means the fetched open-access PDF or the upload
 
 ## Spike results (18 Nov 2026, first pass)
 
