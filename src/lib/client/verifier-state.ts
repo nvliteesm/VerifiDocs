@@ -3,7 +3,7 @@
 // Verdict counts and the ranked fix list are DERIVED from the claims, never stored separately, so they cannot
 // disagree with the claim list on screen.
 import { rankFixList } from "../fix-list";
-import type { CheckedVerdict, ClaimView, FailedPart, ReferenceView, RunResponse, RunStatus, Verdict } from "./types";
+import type { CheckedVerdict, ClaimView, FailedPart, FoundSourceView, ReferenceView, RunResponse, RunStatus, Verdict } from "./types";
 
 /**
  * "extracting" is the scan (reading the draft for claims). "scanned" is where it stops: the claims that need no
@@ -58,6 +58,7 @@ export type VerifyEvent =
   | { type: "claim"; verdict: CheckedVerdict }
   | { type: "claimError"; id: string; message: string }
   | { type: "claimRetry"; id: string }
+  | { type: "sources"; claimId: string; sources: FoundSourceView[] }
   | { type: "failed"; message: string }
   | { type: "stopped" };
 
@@ -130,6 +131,14 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
 
     case "claimError":
       return { ...state, claimErrors: { ...state.claimErrors, [event.id]: event.message } };
+
+    case "sources":
+      return {
+        ...state,
+        claims: state.claims.map((claim) =>
+          claim.id === event.claimId ? { ...claim, sourcesSearched: true, sources: event.sources } : claim,
+        ),
+      };
 
     case "claimRetry":
       return { ...state, claimErrors: withoutError(state.claimErrors, event.id) };

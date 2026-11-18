@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { rankFixList } from "@/lib/fix-list";
 import type { ClaimView, Verdict } from "@/lib/client/types";
 import { countVerdicts, initialState, type Phase, type VerifierState } from "@/lib/client/verifier-state";
-import { ResultsView } from "./ResultsView";
+import { ResultsView, shortQuote } from "./ResultsView";
 
 afterEach(() => {
   cleanup();
@@ -540,5 +540,85 @@ describe("ResultsView claims with no known heading", () => {
     view(stateOf([claim("supported", { section: null }), claim("supported", { section: "1. Introduction" }), claim("contradicted", { section: "2. Background" })]));
     await user.click(screen.getByRole("button", { name: /^All \(3\)$/ }));
     expect([...document.querySelectorAll(".section-name")].map((el) => el.textContent)).toEqual(["1. Introduction", "2. Background", "Other claims"]);
+  });
+});
+
+describe("Find a source on a claim card", () => {
+  const PAPER = {
+    rank: 1,
+    openalexId: "https://openalex.org/W1",
+    doi: "https://doi.org/10.1/w1",
+    title: "Flexible work in small firms",
+    year: 2021,
+    authors: ["Kim Lee", "Mei Tan"],
+    venue: "Journal of Work",
+    openAccessPdf: null,
+    sentence: "Casual employment grew 18% between 2015 and 2020.",
+    relevance: "direct" as const,
+  };
+  const uncited = (extra: Partial<ClaimView> = {}) => claim("no_citation_given", { citation: null, ...extra });
+  const show = (claims: ClaimView[], onFindSources = vi.fn(), onEvent = vi.fn()) =>
+    render(<ResultsView state={stateOf(claims)} onRetryClaim={noop} onEvent={onEvent} onFindSources={onFindSources} />);
+
+  it("offers Find a source only on a No citation card", () => {
+    show([uncited(), claim("contradicted", { quote: "q", page: 1 })]);
+    expect(screen.getAllByRole("button", { name: "Find a source" })).toHaveLength(1);
+  });
+
+  it("says it is searching while it waits, then shows what the server found", async () => {
+    const user = userEvent.setup();
+    let finish: (value: string | null) => void = () => {};
+    const onFind = vi.fn(() => new Promise<string | null>((resolve) => (finish = resolve)));
+    show([uncited()], onFind);
+    await user.click(screen.getByRole("button", { name: "Find a source" }));
+    expect(onFind).toHaveBeenCalledWith("c" + n);
+    expect(screen.getByRole("button", { name: "Searching for papers…" })).toHaveProperty("disabled", true);
+    finish("The paper search is busy. Try again in a moment.");
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The paper search is busy. Try again in a moment.");
+    expect(screen.getByRole("button", { name: "Find a source" })).toHaveProperty("disabled", false);
+  });
+
+  it("shows found papers as unread leads, with a link out and copyable citations", async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    const onEvent = vi.fn();
+    show([uncited({ sourcesSearched: true, sources: [PAPER] })], vi.fn(), onEvent);
+
+    expect(screen.getByText("Not read yet: open one and check it before you cite it.")).toBeTruthy();
+    const link = screen.getByRole("link", { name: /Flexible work in small firms/ });
+    expect(link.getAttribute("href")).toBe("https://doi.org/10.1/w1");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.textContent).toContain("(opens in a new tab)");
+    expect(screen.getByText("Lee & Tan · 2021 · Journal of Work")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Find a source" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Copy in-text" }));
+    expect(write).toHaveBeenLastCalledWith("(Lee & Tan, 2021)");
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Copy reference" }));
+    expect(write).toHaveBeenLastCalledWith("Lee, K., & Tan, M. (2021). Flexible work in small firms. Journal of Work. https://doi.org/10.1/w1");
+    expect(onEvent).toHaveBeenCalledWith("source_copied", { kind: "in_text" });
+    expect(onEvent).toHaveBeenCalledWith("source_copied", { kind: "reference" });
+  });
+
+  it("says plainly when no paper was found", () => {
+    show([uncited({ sourcesSearched: true, sources: [] })]);
+    expect(screen.getByText("No paper found. A product or company fact is best cited from its official page.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Find a source" })).toBeNull();
+  });
+
+  it("marks a paper that is only on the same topic", () => {
+    show([uncited({ sourcesSearched: true, sources: [PAPER, { ...PAPER, rank: 2, relevance: "related", title: "Rostering in retail" }] })]);
+    expect(screen.getAllByText("Same topic, not your exact claim")).toHaveLength(1);
+  });
+});
+
+describe("shortQuote", () => {
+  it("keeps a short sentence whole, and cuts a long one at a word with an ellipsis", () => {
+    expect(shortQuote("Casual employment grew 18%.")).toBe("Casual employment grew 18%.");
+    const long = `${"word ".repeat(80)}end.`;
+    const cut = shortQuote(long);
+    expect(cut.endsWith("word…")).toBe(true);
+    expect(cut.length).toBeLessThanOrEqual(241);
   });
 });

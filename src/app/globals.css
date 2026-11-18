@@ -819,6 +819,57 @@ blockquote {
   font-size: 1.05rem;
 }
 
+/*
+  Find a source. The found papers sit on the sunken tray colour, not the green of "Fix this claim": they are
+  unread leads, not a fix. The "not read yet" line is full-strength text so it is read, not skimmed.
+*/
+.find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.found {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--sunken);
+  border-radius: 8px;
+}
+.found-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.found-note {
+  font-size: 0.92rem;
+}
+.found-list {
+  margin: 4px 0 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 16px;
+}
+.found-list li {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.found-paper {
+  font-family: var(--serif);
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.found-quote {
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+.found-list .actions {
+  margin-top: 4px;
+}
+
 /* The pay question: a small optional line under the results, not a panel of its own. */
 .survey {
   display: flex;

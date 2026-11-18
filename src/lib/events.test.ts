@@ -19,6 +19,7 @@ const valid: Record<EventName, unknown> = {
   would_pay_answered: { answer: "maybe" },
   feature_interest_answered: { feature: "humanizer", answer: "no" },
   sources_suggested: { count: 2, latency_ms: 4200, outcome: "found" },
+  source_copied: { kind: "in_text" },
 };
 
 describe("event schemas", () => {

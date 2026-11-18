@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { ApiClientError, type Api } from "@/lib/client/api";
-import { checkCited, resumeVerification, retryClaim, retryPart, runVerification } from "@/lib/client/run-verification";
+import { checkCited, messageOf, resumeVerification, retryClaim, retryPart, runVerification } from "@/lib/client/run-verification";
 import type { VerifyInput } from "@/lib/client/types";
 import { initialState, reduce, type VerifyEvent } from "@/lib/client/verifier-state";
 import type { Translate } from "@/lib/i18n";
@@ -79,6 +79,23 @@ export function useVerification(api: Api) {
     [deps, nextSignal, state.runId],
   );
 
+  /**
+   * Find a source for one uncited claim. Resolves with null when it worked (the papers, or "none found", are now on
+   * the claim), or with a message to show on the card when it failed.
+   */
+  const findSources = useCallback(
+    async (claimId: string): Promise<string | null> => {
+      try {
+        const found = await api.findSources(claimId);
+        dispatch({ type: "sources", claimId, sources: found.sources });
+        return null;
+      } catch (error) {
+        return messageOf(error, latest.current.t, latest.current.locale);
+      }
+    },
+    [api],
+  );
+
   const reset = useCallback(() => {
     controller.current?.abort();
     writeStored(LAST_RUN_KEY, null);
@@ -123,5 +140,5 @@ export function useVerification(api: Api) {
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  return { state, start, check, resume, retry, readPart, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
+  return { state, start, check, resume, retry, readPart, findSources, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
 }

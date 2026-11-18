@@ -173,3 +173,14 @@ describe("countVerdicts", () => {
     expect(countVerdicts([])).toEqual({});
   });
 });
+
+describe("found sources", () => {
+  it("puts the papers on the claim and marks it searched", () => {
+    const state = reduce({ ...initialState, claims: [claim("a", 1), claim("b", 2)] }, {
+      type: "sources",
+      claimId: "b",
+      sources: [],
+    });
+    expect(state.claims.map((c) => c.sourcesSearched)).toEqual([undefined, true]);
+  });
+});

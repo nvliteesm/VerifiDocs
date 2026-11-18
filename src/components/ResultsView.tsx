@@ -5,7 +5,8 @@ import type { FlagReason } from "@/lib/flag-reasons";
 import { pluralKey, type MessageKey } from "@/lib/i18n";
 import { localizeReason } from "@/lib/i18n/reasons";
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
-import type { ClaimView, Verdict } from "@/lib/client/types";
+import { inTextCitation, referenceEntry } from "@/lib/client/cite";
+import type { ClaimView, FoundSourceView, Verdict } from "@/lib/client/types";
 import { SUMMARY_ORDER, VERDICT_INFO, verdictAdvice, verdictLabel } from "@/lib/client/verdict-info";
 import { isOptional } from "@/lib/fix-list";
 import type { VerifierState } from "@/lib/client/verifier-state";
@@ -26,7 +27,9 @@ interface Props {
   onRetryClaim: (claimId: string) => void;
   /** Reads a part of the draft the AI could not read before. */
   onReadPart?: (unit: number) => Promise<void>;
-  onEvent: (name: "evidence_opened" | "verdict_flagged_wrong" | "fix_accepted", props?: Record<string, unknown>) => void;
+  onEvent: (name: "evidence_opened" | "verdict_flagged_wrong" | "fix_accepted" | "source_copied", props?: Record<string, unknown>) => void;
+  /** Find a source for an uncited claim: null when it worked, else a message for the card. */
+  onFindSources?: (claimId: string) => Promise<string | null>;
 }
 
 async function copy(text: string): Promise<boolean> {
@@ -59,6 +62,7 @@ interface CardProps {
   onCopied: (result: "copied" | "failed") => void;
   onRetry: () => void;
   onEvent: Props["onEvent"];
+  onFindSources?: Props["onFindSources"];
   /** The check has ended, so a claim with no verdict was not checked rather than waiting. */
   ended: boolean;
   /** The scan is over and the check has not started: a claim with no verdict is cited and waiting for it. */
@@ -79,8 +83,144 @@ function reasonsFor(claim: ClaimView): FlagReason[] {
   ];
 }
 
+/**
+ * An abstract sentence can run to 60 words (seen on a real search), which buries the paper under it on a phone. The
+ * card shows about 240 characters, cut at a word with "…"; the whole sentence is what was verified and stored.
+ */
+const QUOTE_CHARS = 240;
+export function shortQuote(sentence: string): string {
+  if (sentence.length <= QUOTE_CHARS) return sentence;
+  const cut = sentence.slice(0, QUOTE_CHARS);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), QUOTE_CHARS / 2)).replace(/[\s,;:]+$/, "")}…`;
+}
+
+/** "Lee & Tan · 2024 · Journal" (the first two surnames, or the first and "et al."). */
+function paperMeta(source: FoundSourceView): string {
+  const names = source.authors.map((name) => name.trim().split(/\s+/).pop() ?? name);
+  const who = names.length === 0 ? "" : names.length <= 2 ? names.join(" & ") : `${names[0]} et al.`;
+  return [who, source.year ? String(source.year) : "n.d.", source.venue ?? ""].filter(Boolean).join(" · ");
+}
+
+/**
+ * Find a source, on a No citation card. The papers are "not read yet" (PRD guard rule 1): the note sits right above
+ * them, and nothing here changes the verdict. The button leaves the page when the answer arrives, so focus moves to
+ * the answer.
+ */
+function FoundSources({
+  claim,
+  onFind,
+  onEvent,
+}: {
+  claim: ClaimView;
+  onFind: (claimId: string) => Promise<string | null>;
+  onEvent: Props["onEvent"];
+}) {
+  const { t } = useT();
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const answer = useRef<HTMLParagraphElement>(null);
+  const justFound = useRef(false);
+  useEffect(() => {
+    if (claim.sourcesSearched && justFound.current) {
+      justFound.current = false;
+      answer.current?.focus();
+    }
+  }, [claim.sourcesSearched]);
+
+  if (!claim.sourcesSearched) {
+    return (
+      <div className="find">
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={searching}
+          onClick={async () => {
+            setSearching(true);
+            setError(null);
+            justFound.current = true;
+            const failed = await onFind(claim.id);
+            setSearching(false);
+            if (failed) {
+              justFound.current = false;
+              setError(failed);
+            }
+          }}
+        >
+          {searching ? t("found.searching") : t("found.button")}
+        </button>
+        <span className="sr-only" role="status">
+          {searching ? t("found.searching") : ""}
+        </span>
+        {error && (
+          <p role="alert" className="hint hint-bad">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const sources = claim.sources ?? [];
+  if (sources.length === 0) {
+    return (
+      <p className="hint found-none" ref={answer} tabIndex={-1}>
+        {t("found.none")}
+      </p>
+    );
+  }
+
+  const copyText = async (key: string, text: string, kind: "reference" | "in_text") => {
+    const ok = await copy(text);
+    setCopied(ok ? key : null);
+    if (ok) onEvent("source_copied", { kind });
+  };
+
+  return (
+    <section className="found" aria-labelledby={`found-${claim.id}`}>
+      <p className="found-title" id={`found-${claim.id}`} ref={answer} tabIndex={-1}>
+        {t("found.title")}
+      </p>
+      <p className="found-note">{t("found.unread")}</p>
+      <ol className="found-list">
+        {sources.map((source) => (
+          <li key={source.rank}>
+            {/* The arrow marks a link that leaves the app; the hidden words say so to a screen reader. */}
+            <a className="found-paper" href={source.doi ?? source.openalexId} target="_blank" rel="noopener noreferrer">
+              {source.title}
+              <span aria-hidden="true"> ↗</span>
+              <span className="sr-only"> {t("found.newTab")}</span>
+            </a>
+            <span className="hint">{paperMeta(source)}</span>
+            {source.relevance === "related" && <span className="hint">{t("found.related")}</span>}
+            <p className="found-quote">
+              <span className="hint">{t("found.abstract")}</span> “{shortQuote(source.sentence)}”
+            </p>
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => void copyText(`${source.rank}:ref`, referenceEntry(source), "reference")}
+              >
+                {copied === `${source.rank}:ref` ? t("found.copied") : t("found.copyRef")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => void copyText(`${source.rank}:in`, inTextCitation(source), "in_text")}
+              >
+                {copied === `${source.rank}:in` ? t("found.copied") : t("found.copyInText")}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 // `flagged` and `copied` live in ResultsView, because a card unmounts whenever the filter changes.
-function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, ended, scanned }: CardProps) {
+function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, onFindSources, ended, scanned }: CardProps) {
   const verdict = claim.verdict;
   const { t } = useT();
   // After "This verdict is wrong", the student picks a reason. The button they pressed has left the page, so focus
@@ -130,6 +270,8 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
           {notInList ? t("claim.notInList") : optional ? t("claim.optionalAdvice") : verdictAdvice(t, verdict)}
         </p>
       )}
+
+      {verdict === "no_citation_given" && onFindSources && <FoundSources claim={claim} onFind={onFindSources} onEvent={onEvent} />}
 
       {claim.quote && (
         // The quote is the proof, so it starts open for the verdicts that ask the student to change something.
@@ -254,7 +396,7 @@ export function groupBySection(claims: ClaimView[], needsAttention: (claim: Clai
     .map(({ key, heading, claims: list, attention }) => ({ key, heading, claims: list, attention }));
 }
 
-export function ResultsView({ state, draftLabel = null, focusWhenDone = false, onRetryClaim, onReadPart, onEvent }: Props) {
+export function ResultsView({ state, draftLabel = null, focusWhenDone = false, onRetryClaim, onReadPart, onEvent, onFindSources }: Props) {
   const { t, locale } = useT();
   // The part being read again, if any (one at a time: each is one model request).
   const [readingPart, setReadingPart] = useState<number | null>(null);
@@ -363,6 +505,7 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
       onCopied={(result) => setCopiedFix((prev) => ({ ...prev, [claim.id]: result }))}
       onRetry={() => onRetryClaim(claim.id)}
       onEvent={onEvent}
+      onFindSources={onFindSources}
     />
   );
 

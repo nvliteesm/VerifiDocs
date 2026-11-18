@@ -68,7 +68,18 @@ The PRD says "Gemini suggests candidate sources from a topic prompt". This plan 
    - `GET /api/runs/:id` returns each claim's `sourcesSearched` and `sources`. The new event is `sources_suggested` (`count`, `latency_ms`, `outcome`).
    - Tests: 4 database tests. One real-HTTP run on the dev server: 3 direct papers in 5.8 s, the repeat in 0.3 s.
    - The `citation_source` column planned for phase 2 moves to a later migration with step 5.
-3. Card UI (load antislop first): loading, empty, error and result states, focus, 375 px, English and Indonesian.
+3. Card UI (load antislop first): loading, empty, error and result states, focus, 375 px, English and Indonesian. **Done 18 Nov 2026.**
+   - A No citation card has **Find a source**. While it searches the button reads "Searching for papers…"; on an error the card shows the message and the button again.
+   - Found papers sit under "Possible sources", with the note "Not read yet: open one and check it before you cite it." just above them.
+   - Each paper shows its title linking to the DOI (new tab, announced to screen readers), authors · year · venue, the abstract sentence (cut at about 240 characters), a "Same topic, not your exact claim" tag for a related paper, Copy reference (APA 7) and Copy in-text.
+   - Nothing found: "No paper found. A product or company fact is best cited from its official page."
+   - Focus moves to the answer when the button leaves.
+   - New client event `source_copied` (`kind` only). APA formatting is in `src/lib/client/cite.ts`, with tests.
+   - Checked in a real browser with real Gemini and OpenAlex:
+     - 3 papers in 3.9 to 5.4 s, and the copied in-text "(Maes, 2024)"
+     - the papers come back after a reload
+     - phone width with no overflow, dark mode (contrast about 14 to 1), and no console errors
+   - Not seen in a browser: the "no paper found" line and the error state (component tests only), and the Indonesian wording (not read by a native speaker).
 4. The safe PDF fetcher and its tests (private addresses, redirects, size, type).
 5. Attach and re-check, the "Source added after writing" tag on screen and in the report; database tests.
 6. Live test and a real-browser run on the FYP draft, timing every request.

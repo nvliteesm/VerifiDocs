@@ -15,8 +15,7 @@ import type {
   RunResponse,
   SourceView,
   UploadResponse,
-  VerifyInput,
-} from "./types";
+  VerifyInput, FindSourcesResponse } from "./types";
 
 export class ApiClientError extends Error {
   override name = "ApiClientError";
@@ -137,6 +136,8 @@ export function createApi(options: ApiOptions = {}) {
     extract: (runId: string, unit: number, mode: "read" | "skip" | "retry" = "read") =>
       send<ExtractResponse>("POST", `/api/runs/${runId}/extract`, { json: mode === "read" ? { unit } : { unit, mode } }),
     getRun: (runId: string) => send<RunResponse>("GET", `/api/runs/${runId}`),
+    /** Find a source for one uncited claim. A repeat returns the saved result; a busy search is retried. */
+    findSources: (claimId: string) => send<FindSourcesResponse>("POST", `/api/claims/${claimId}/sources`),
     /** Deletes a check now (its draft text, claims and verdicts). */
     deleteRun: async (runId: string): Promise<void> => {
       await send<null>("DELETE", `/api/runs/${runId}`);

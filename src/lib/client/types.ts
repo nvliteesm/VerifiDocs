@@ -64,6 +64,11 @@ export interface FoundSourceView {
   relevance: "direct" | "related";
 }
 
+export interface FindSourcesResponse {
+  claimId: string;
+  sources: FoundSourceView[];
+}
+
 export interface FailedPart {
   unit: number;
   section: string | null;
@@ -172,4 +177,5 @@ export type ClientEventName =
   | "recheck_started"
   | "report_exported"
   | "would_pay_answered"
+  | "source_copied"
   | "feature_interest_answered";

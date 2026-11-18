@@ -65,6 +65,8 @@ export const EVENT_SCHEMAS = {
   feature_interest_answered: z.strictObject({ feature: token, answer }),
   // Find a source ran for one uncited claim: how many papers it kept, how long it took, and the outcome. Never the
   // claim, the search words or a title (hard rule 11).
+  // The student copied a found paper's reference or in-text citation. Only which one (hard rule 11).
+  source_copied: z.strictObject({ kind: z.enum(["reference", "in_text"]) }),
   sources_suggested: z.strictObject({ count: z.number().int().min(0).max(3), latency_ms: ms, outcome: z.enum(["found", "nothing_relevant"]) }),
 } as const;
 

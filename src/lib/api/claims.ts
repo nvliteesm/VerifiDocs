@@ -55,6 +55,7 @@ export const CLIENT_EVENTS = [
   "report_exported",
   "would_pay_answered",
   "feature_interest_answered",
+  "source_copied",
 ] as const satisfies readonly EventName[];
 
 const eventBody = z.object({ name: z.enum(CLIENT_EVENTS), props: z.record(z.string(), z.unknown()).default({}) });

@@ -264,6 +264,7 @@ export function VerifierApp() {
                 focusWhenDone={lastInput !== null}
                 onRetryClaim={verification.retry}
                 onReadPart={verification.readPart}
+                onFindSources={verification.findSources}
                 onEvent={event}
               />
               <div className="actions">
