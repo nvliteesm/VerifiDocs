@@ -55,7 +55,7 @@ export function createApi(options: ApiOptions = {}) {
   const sleep = options.sleep ?? defaultSleep;
   const maxAttempts = options.maxAttempts ?? DEFAULT_ATTEMPTS;
 
-  async function send<T>(method: string, path: string, body?: { json?: unknown; form?: FormData }): Promise<T> {
+  async function rawSend<T>(method: string, path: string, body?: { json?: unknown; form?: FormData }): Promise<T> {
     const init: RequestInit = { method, credentials: "same-origin" };
     if (body?.json !== undefined) {
       init.headers = { "content-type": "application/json" };
@@ -100,6 +100,27 @@ export function createApi(options: ApiOptions = {}) {
     }
   }
 
+  // The first request goes alone. A request with no session cookie starts a session and sets the cookie; two such
+  // requests at once start two sessions, and whichever cookie arrives last wins. A check created in the first
+  // session then "does not exist" for the second (every request after it says Not found). Seen on a real run, when
+  // a draft was submitted while the page's second opening request was still on its way. So every other request waits
+  // until the first has finished, after which there is one cookie and nothing left to race.
+  let opening: Promise<unknown> | null = null;
+  let opened = false;
+  async function send<T>(method: string, path: string, body?: { json?: unknown; form?: FormData }): Promise<T> {
+    if (opening && !opened) await opening;
+    const result = rawSend<T>(method, path, body);
+    if (!opening) {
+      opening = result.then(
+        () => undefined,
+        () => undefined,
+      ).finally(() => {
+        opened = true;
+      });
+    }
+    return result;
+  }
+
   return {
     createRun(input: VerifyInput): Promise<CreateRunResponse> {
       if (input.draft.kind === "docx") {
@@ -141,6 +162,7 @@ export function createApi(options: ApiOptions = {}) {
     /** Fire and forget. A lost analytics event must never get in the student's way. */
     async event(name: ClientEventName, props: Record<string, unknown> = {}): Promise<void> {
       try {
+        if (opening && !opened) await opening; // an event with no session cookie would start a second session too
         await fetchImpl("/api/events", {
           method: "POST",
           credentials: "same-origin",

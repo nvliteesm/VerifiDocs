@@ -303,6 +303,74 @@ describe("ResultsView evidence and copying", () => {
   });
 });
 
+describe("ResultsView after the scan", () => {
+  const scanned = () =>
+    stateOf(
+      [
+        claim("no_citation_given", { citation: null, reason: "The claim has no citation." }),
+        claim("no_citation_given", { citation: null, reason: "The claim has no citation." }),
+        claim("reference_not_found", { reason: '"Brown 2017" is not in your reference list.' }),
+        claim(null),
+        claim(null),
+        claim(null),
+      ],
+      "scanned",
+    );
+
+  it("says the scan is complete and sums up what it found: no citation, not in the list, ready to check", () => {
+    view(scanned());
+    expect(screen.getByText("Scan complete")).toBeTruthy();
+    expect(screen.getByText("Found 6 claims.")).toBeTruthy();
+    expect(screen.getByText("2 without a citation")).toBeTruthy();
+    expect(screen.getByText("1 cite something that is not in your reference list")).toBeTruthy();
+    expect(screen.getByText("3 cited and ready to check")).toBeTruthy();
+  });
+
+  it("leaves out a line that has nothing in it, and uses the singular for one claim", () => {
+    view(stateOf([claim(null)], "scanned"));
+    expect(screen.getByText("Found 1 claim.")).toBeTruthy();
+    expect(screen.queryByText(/without a citation/)).toBeNull();
+    expect(screen.queryByText(/not in your reference list/)).toBeNull();
+    expect(screen.getByText("1 cited and ready to check")).toBeTruthy();
+  });
+
+  it("calls a cited claim that has no verdict 'Not checked yet', not 'Waiting', and shows no progress bar", () => {
+    view(scanned());
+    expect(screen.getAllByText("Not checked yet")).toHaveLength(3);
+    expect(screen.queryByText("Waiting…")).toBeNull();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("does not show the 'need attention' tally until the check has finished", () => {
+    view(scanned());
+    expect(screen.queryByText(/need attention|needs attention/)).toBeNull();
+  });
+
+  it("lists the claims that need a citation or a reference first, and the waiting ones too, under 'Needs attention'", () => {
+    view(scanned());
+    expect(screen.getAllByRole("listitem").filter((li) => li.classList.contains("claim"))).toHaveLength(6);
+  });
+
+  it("keeps the old summary once the check is done", () => {
+    view(stateOf([claim("supported", { quote: "q", page: 1 }), claim("no_citation_given", { citation: null })], "done"));
+    expect(screen.queryByText(/^Found \d+ claims?\.$/)).toBeNull();
+    expect(screen.getAllByText("1 of 2 claims need attention.").length).toBeGreaterThan(0);
+  });
+
+  it("moves focus to the Results heading when the scan ends, and again when the check then ends", () => {
+    const { rerender } = render(<ResultsView state={stateOf([claim(null)], "extracting")} focusWhenDone onRetryClaim={noop} onEvent={noop} />);
+    expect(document.activeElement).toBe(document.body);
+    rerender(<ResultsView state={stateOf([claim(null)], "scanned")} focusWhenDone onRetryClaim={noop} onEvent={noop} />);
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Results" }));
+
+    // The student presses "Check 1 cited claim": that button leaves the page and focus falls to the body.
+    (document.activeElement as HTMLElement).blur();
+    rerender(<ResultsView state={stateOf([claim(null)], "checking")} focusWhenDone onRetryClaim={noop} onEvent={noop} />);
+    rerender(<ResultsView state={stateOf([claim("supported", { quote: "q", page: 1 })], "done")} focusWhenDone onRetryClaim={noop} onEvent={noop} />);
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Results" }));
+  });
+});
+
 describe("ResultsView focus", () => {
   it("moves focus to the Results heading when a check the student started finishes and focus was lost", () => {
     const { rerender } = render(<ResultsView state={stateOf([claim(null)], "checking")} focusWhenDone onRetryClaim={noop} onEvent={noop} />);

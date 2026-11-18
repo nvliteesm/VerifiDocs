@@ -12,7 +12,7 @@ import type { SqlLike } from "./rag/retrieve";
 export interface Limits {
   /** New sessions one address may start per window. Generous, because a campus network shares one address. */
   newSessionsPerAddress: number;
-  /** Model-backed requests one session may make per window. A 60,000-character draft alone takes about 11 extracts. */
+  /** Model-backed requests one session may make per window. A 250,000-character draft alone takes about 42 extracts. */
   modelPerSession: number;
   /** Model-backed requests one address may make per window, across sessions. */
   modelPerAddress: number;

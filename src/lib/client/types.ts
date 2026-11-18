@@ -80,6 +80,8 @@ export interface ImportResponse {
   source: "link" | "pdf";
   warnings: ("footnotes" | "tables")[];
   truncated: boolean;
+  /** How many references the document ends with (0 for none), or null when it was too long to tell. */
+  referenceCount: number | null;
 }
 
 /** How the draft panel brings a draft in without pasting it. */

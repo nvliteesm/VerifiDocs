@@ -5,7 +5,11 @@
 import { rankFixList } from "../fix-list";
 import type { CheckedVerdict, ClaimView, ReferenceView, RunResponse, RunStatus, Verdict } from "./types";
 
-export type Phase = "idle" | "starting" | "extracting" | "checking" | "done" | "error";
+/**
+ * "extracting" is the scan (reading the draft for claims). "scanned" is where it stops: the claims that need no
+ * lookup already have a verdict, and the cited ones wait for the student to start the check.
+ */
+export type Phase = "idle" | "starting" | "extracting" | "scanned" | "checking" | "done" | "error";
 
 export interface VerifierState {
   phase: Phase;
@@ -131,7 +135,7 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
 
     case "stopped":
       // Only a check that is still running can be stopped. A late Stop after the end changes nothing.
-      if (state.phase === "idle" || state.phase === "done" || state.phase === "error") return state;
+      if (state.phase === "idle" || state.phase === "scanned" || state.phase === "done" || state.phase === "error") return state;
       return { ...state, phase: "done", stopped: true, message: "", error: null };
   }
 }

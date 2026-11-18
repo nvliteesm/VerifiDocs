@@ -33,6 +33,10 @@ const WAKING_CODES = new Set([
   "ECONNRESET",
   "ETIMEDOUT",
   "EPIPE",
+  // A DNS lookup that failed for a moment (seen on a long scan: a run of requests answered 500 for the same blip).
+  // Nothing is wrong with the query, so the browser should try again, not show an error.
+  "ENOTFOUND",
+  "EAI_AGAIN",
   "57P01", // admin shutdown
   "57P03", // cannot connect now
   "08000",

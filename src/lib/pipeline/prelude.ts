@@ -64,12 +64,16 @@ function snippet(text: string): string {
   return t.length > SNIPPET ? `${t.slice(0, SNIPPET)}...` : t;
 }
 
-export async function runPrelude(
-  claim: { citation: string | null },
+/**
+ * The part of the prelude that needs no network: no citation, a citation that cannot be read, or one that is not in
+ * the reference list each end the claim right here. Otherwise the entries the citation names are returned, for the
+ * lookups that follow. The scan uses this on its own to give those early verdicts to every claim at once.
+ */
+export function matchCitation(
+  rawCitation: string | null,
   entries: PreludeEntry[],
-  deps: PreludeDeps,
-): Promise<PreludeResult> {
-  const citation = claim.citation?.trim() ?? "";
+): { outcome: "exit"; exit: StageExit } | { outcome: "matched"; matched: PreludeEntry[] } {
+  const citation = rawCitation?.trim() ?? "";
   if (citation.length === 0) {
     return { outcome: "exit", exit: { verdict: "no_citation_given", exitStage: 2, reason: "The claim has no citation." } };
   }
@@ -106,6 +110,18 @@ export async function runPrelude(
     const entry = entries[index]!;
     if (!matched.some((m) => m.position === entry.position)) matched.push(entry);
   }
+
+  return { outcome: "matched", matched };
+}
+
+export async function runPrelude(
+  claim: { citation: string | null },
+  entries: PreludeEntry[],
+  deps: PreludeDeps,
+): Promise<PreludeResult> {
+  const early = matchCitation(claim.citation, entries);
+  if (early.outcome === "exit") return early;
+  const matched = early.matched;
 
   const references: { position: number; resolution: Found }[] = [];
   const lookups: SourceLookup[] = [];

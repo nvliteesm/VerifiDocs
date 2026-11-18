@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createApi } from "@/lib/client/api";
 import { exampleFor } from "@/lib/client/example";
+import { pluralKey } from "@/lib/i18n";
 import { buildReport } from "@/lib/client/report";
 import type { ClientEventName, VerifyInput } from "@/lib/client/types";
 import { DraftPanel } from "./DraftPanel";
@@ -105,6 +106,17 @@ export function VerifierApp() {
   const event = useCallback((name: ClientEventName, props?: Record<string, unknown>) => void api.event(name, props), [api]);
 
   const running = state.phase === "starting" || state.phase === "extracting" || state.phase === "checking";
+  // After the scan: the cited claims that still wait for a check.
+  const waitingClaims = state.claims.filter((claim) => claim.verdict === null).length;
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(buildReport(state.claims, state.fixList, t, locale));
+      setCopied("copied");
+      event("report_exported", { format: "copy" });
+    } catch {
+      setCopied("failed");
+    }
+  };
   const idle = state.phase === "idle";
 
   // "Edit draft", "Start a new check" and "Try again" all swap the results for the form, so the button that was
@@ -126,7 +138,7 @@ export function VerifierApp() {
   // The ref flips synchronously and is released when the check reaches an end state.
   const starting = useRef(false);
   useEffect(() => {
-    if (state.phase === "idle" || state.phase === "done" || state.phase === "error") starting.current = false;
+    if (state.phase === "idle" || state.phase === "scanned" || state.phase === "done" || state.phase === "error") starting.current = false;
   }, [state.phase]);
 
   // "Try an example": the made-up report goes through the normal upload path (so the student sees it read like any
@@ -248,21 +260,25 @@ export function VerifierApp() {
             <>
               <ResultsView state={state} focusWhenDone={lastInput !== null} onRetryClaim={verification.retry} onEvent={event} />
               <div className="actions">
+                {state.phase === "scanned" && (
+                  <>
+                    <button type="button" className="btn btn-primary" disabled={sources.busy} onClick={verification.check}>
+                      {t(pluralKey(locale, "act.checkCited", waitingClaims), { n: waitingClaims })}
+                    </button>
+                    <button type="button" className="btn" onClick={copyReport}>
+                      {copied === "copied" ? t("act.copied") : t("act.copy")}
+                    </button>
+                    {lastInput && (
+                      <button type="button" className="btn" onClick={() => verification.reset()}>
+                        {t("act.edit")}
+                      </button>
+                    )}
+                    {readySources === 0 && <span className="hint">{t("scan.addSources")}</span>}
+                  </>
+                )}
                 {state.phase === "done" && (
                   <>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(buildReport(state.claims, state.fixList, t, locale));
-                          setCopied("copied");
-                          event("report_exported", { format: "copy" });
-                        } catch {
-                          setCopied("failed");
-                        }
-                      }}
-                    >
+                    <button type="button" className="btn btn-primary" onClick={copyReport}>
                       {copied === "copied" ? t("act.copied") : t("act.copy")}
                     </button>
                     {lastInput && (

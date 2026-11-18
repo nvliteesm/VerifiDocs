@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { ApiClientError, type Api } from "@/lib/client/api";
-import { resumeVerification, retryClaim, runVerification } from "@/lib/client/run-verification";
+import { checkCited, resumeVerification, retryClaim, runVerification } from "@/lib/client/run-verification";
 import type { VerifyInput } from "@/lib/client/types";
 import { initialState, reduce, type VerifyEvent } from "@/lib/client/verifier-state";
 import type { Translate } from "@/lib/i18n";
@@ -79,6 +79,12 @@ export function useVerification(api: Api) {
     dispatch({ type: "reset" });
   }, []);
 
+  /** Starts the check of the cited claims the scan left waiting. */
+  const check = useCallback(() => {
+    if (!state.runId) return;
+    void checkCited(deps, state.runId, dispatch, nextSignal());
+  }, [deps, nextSignal, state.runId]);
+
   /** Stops a running check. Claims already being checked on the server finish; no new ones are started. */
   const stop = useCallback(() => {
     controller.current?.abort();
@@ -111,5 +117,5 @@ export function useVerification(api: Api) {
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  return { state, start, resume, retry, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
+  return { state, start, check, resume, retry, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
 }

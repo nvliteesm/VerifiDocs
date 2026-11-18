@@ -296,7 +296,7 @@ describe.skipIf(!enabled)("creating a run", () => {
       expect((await client.createRun({ nothing: true })).status).toBe(400);
       const wrongType = await client.send("POST", "/api/runs", (c, r) => createRun(c, r), { rawBody: "x", headers: { "content-type": "text/plain" } });
       expect(wrongType.status).toBe(415);
-      const tooLong = await client.createRun({ draft: "word ".repeat(13_000) });
+      const tooLong = await client.createRun({ draft: "word ".repeat(51_000) }); // 255,000 characters, over the 250,000 limit
       expect(tooLong.body.error.code).toBe("too_long");
     });
   });
@@ -345,7 +345,7 @@ describe.skipIf(!enabled)("creating a run", () => {
   it("says 'too long' for an over-limit draft of 4-byte characters, not 'request too large'", async () => {
     await inTx(async (tx) => {
       const client = newClient(tx, fakeLlm().llm);
-      const over = await client.createRun({ draft: "\u{1F600}".repeat(60_000) });
+      const over = await client.createRun({ draft: "\u{1F600}".repeat(130_000) }); // 260,000 UTF-16 units, 520 KB
       expect(over.status).toBe(400);
       expect(over.body.error.code).toBe("too_long");
     });
@@ -354,7 +354,7 @@ describe.skipIf(!enabled)("creating a run", () => {
   it("accepts a draft at the character limit together with a long reference list", async () => {
     await inTx(async (tx) => {
       const client = newClient(tx, fakeLlm().llm);
-      const draft = "中".repeat(59_000); // 3 bytes each in UTF-8, about 177 KB
+      const draft = "中".repeat(249_000); // 3 bytes each in UTF-8, about 747 KB
       const refs = Array.from({ length: 450 }, (_, i) => `Author${i}, A. (2020). ${"A long title ".repeat(8)}${i}. Journal.`).join("\n");
       const reply = await client.createRun({ draft, references: refs });
       expect(reply.status).toBe(201);
@@ -463,6 +463,7 @@ describe.skipIf(!enabled)("importing a draft", () => {
         source: "link",
         warnings: ["footnotes"],
         truncated: false,
+        referenceCount: 0,
       });
       expect(asked).toEqual([`https://docs.google.com/document/d/${ID}/export?format=txt`]);
 
@@ -651,15 +652,16 @@ describe.skipIf(!enabled)("extracting claims", () => {
 
   it("keeps the run extracting until the last unit of a long draft, with unique ordered positions", async () => {
     await inTx(async (tx) => {
-      const draft = Array.from({ length: 40 }, (_, i) => `Paragraph ${i} states a fact. ` + "Some filler words continue here. ".repeat(9)).join("\n\n");
+      const draft = Array.from({ length: 40 }, (_, i) => `Paragraph ${i} states a fact. (Smith, 2020) ` + "Some filler words continue here. ".repeat(9)).join("\n\n");
       const { llm } = fakeLlm({
         extract: (prompt) => {
           const first = /Paragraph \d+ states a fact\./.exec(prompt);
-          return { claims: first ? [{ text: first[0], citation: null }] : [] };
+          // Cited, and in the reference list below, so the scan leaves them for the check and the run stays open.
+          return { claims: first ? [{ text: first[0], citation: "(Smith, 2020)" }] : [] };
         },
       });
       const client = newClient(tx, llm);
-      const { body: created } = await client.createRun({ draft });
+      const { body: created } = await client.createRun({ draft, references: "Smith, J. (2020). A study of things. Journal of Things." });
       expect(created.unitCount).toBeGreaterThan(1);
 
       for (let unit = 0; unit < created.unitCount; unit += 1) {
@@ -674,6 +676,99 @@ describe.skipIf(!enabled)("extracting claims", () => {
       expect(positions).toEqual([...positions].sort((a: number, b: number) => a - b));
       expect(new Set(positions).size).toBe(positions.length);
       expect(run.body.run).toMatchObject({ status: "checking", unitsExtracted: created.unitCount });
+    });
+  });
+
+  describe("the scan at the end of extraction", () => {
+    const draftOf = (...sentences: string[]) => sentences.join(" ");
+    const UNCITED = "Household spending rose sharply last year across the whole region.";
+    const NOT_LISTED = "Food prices fell during the same year in the capital city (Brown, 2017).";
+    const LISTED = "Rent was the largest expense for the lowest income group (Smith, 2020).";
+    const REFS = "Smith, J. (2020). A study of household budgets. Journal of Things.";
+    const claimsOf = (...entries: [string, string | null][]) => ({
+      extract: () => ({ claims: entries.map(([text, citation]) => ({ text, citation })) }),
+    });
+
+    it("gives the claims that need no lookup their verdict at once, and leaves the cited ones for the check", async () => {
+      await inTx(async (tx) => {
+        const { llm, calls } = fakeLlm(claimsOf([UNCITED, null], [NOT_LISTED, "(Brown, 2017)"], [LISTED, "(Smith, 2020)"]));
+        const client = newClient(tx, llm);
+        const { body: created } = await client.createRun({ draft: draftOf(UNCITED, NOT_LISTED, LISTED), references: REFS });
+        const reply = await client.extract(created.runId, 0);
+        expect(reply.body.status).toBe("checking"); // every part has been read
+
+        const run = (await client.getRun(created.runId)).body;
+        const byText = (text: string) => run.claims.find((c: any) => c.text === text);
+        expect(byText(UNCITED)).toMatchObject({ verdict: "no_citation_given", exitStage: 2, status: "done" });
+        expect(byText(NOT_LISTED)).toMatchObject({ verdict: "reference_not_found", exitStage: 3, status: "done" });
+        expect(byText(NOT_LISTED).reason).toBe('"Brown 2017" is not in your reference list.');
+        expect(byText(LISTED)).toMatchObject({ verdict: null, status: "pending" }); // waits for the check
+        expect(run.run.status).toBe("checking");
+        expect(run.progress).toEqual({ checked: 2, total: 3 });
+        expect(calls.judge).toBe(0); // no model call beyond the extraction
+      });
+    });
+
+    it("logs one claim_checked event per early verdict, and no event holds the claim text", async () => {
+      await inTx(async (tx) => {
+        const before = (await tx<{ n: number }[]>`select count(*)::int as n from events where name = 'claim_checked'`)[0]!.n;
+        const client = newClient(tx, fakeLlm(claimsOf([UNCITED, null], [NOT_LISTED, "(Brown, 2017)"], [LISTED, "(Smith, 2020)"])).llm);
+        const { body: created } = await client.createRun({ draft: draftOf(UNCITED, NOT_LISTED, LISTED), references: REFS });
+        await client.extract(created.runId, 0);
+        const after = (await tx<{ n: number }[]>`select count(*)::int as n from events where name = 'claim_checked'`)[0]!.n;
+        expect(after - before).toBe(2);
+        const latest = await tx<{ props: Record<string, unknown> }[]>`
+          select props from events where name = 'claim_checked' order by created_at desc, id desc limit 2`;
+        for (const row of latest) {
+          expect(Object.keys(row.props).sort()).toEqual(["exit_stage", "latency_ms", "retries", "verdict"]);
+          expect(JSON.stringify(row.props)).not.toContain("Household");
+        }
+      });
+    });
+
+    it("closes the run at the scan when nothing is left to check (a draft with no citations at all)", async () => {
+      await inTx(async (tx) => {
+        const client = newClient(tx, fakeLlm(claimsOf([UNCITED, null])).llm);
+        const { body: created } = await client.createRun({ draft: UNCITED });
+        const reply = await client.extract(created.runId, 0);
+        expect(reply.body.status).toBe("completed");
+        const run = (await client.getRun(created.runId)).body;
+        expect(run.counts).toEqual({ no_citation_given: 1 });
+        expect(run.run.status).toBe("completed");
+      });
+    });
+
+    it("says there is no reference list when none was added, for every cited claim", async () => {
+      await inTx(async (tx) => {
+        const client = newClient(tx, fakeLlm(claimsOf([LISTED, "(Smith, 2020)"])).llm);
+        const { body: created } = await client.createRun({ draft: LISTED });
+        await client.extract(created.runId, 0);
+        const claim = (await client.getRun(created.runId)).body.claims[0];
+        expect(claim.verdict).toBe("reference_not_found");
+        expect(claim.reason).toContain("no reference list was added");
+      });
+    });
+
+    it("scans a long draft in as many parts as it takes, and saves the early verdicts only once, at the end", async () => {
+      await inTx(async (tx) => {
+        const draft = Array.from({ length: 40 }, (_, i) => `Paragraph ${i} states a fact. ` + "Some filler words continue here. ".repeat(9)).join("\n\n");
+        const { llm } = fakeLlm({
+          extract: (prompt) => {
+            const first = /Paragraph \d+ states a fact\./.exec(prompt);
+            return { claims: first ? [{ text: first[0], citation: null }] : [] };
+          },
+        });
+        const client = newClient(tx, llm);
+        const { body: created } = await client.createRun({ draft });
+        for (let unit = 0; unit < created.unitCount - 1; unit += 1) {
+          const reply = await client.extract(created.runId, unit);
+          expect(reply.body.status).toBe("extracting");
+          expect((await client.getRun(created.runId)).body.progress.checked).toBe(0); // nothing is decided before the last part is read
+        }
+        const last = await client.extract(created.runId, created.unitCount - 1);
+        expect(last.body.status).toBe("completed"); // all uncited, so the scan finishes the run
+        expect((await client.getRun(created.runId)).body.progress).toEqual({ checked: created.unitCount, total: created.unitCount });
+      });
     });
   });
 

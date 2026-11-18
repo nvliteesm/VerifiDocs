@@ -98,6 +98,12 @@ function fakeServer(
   return { fetchImpl, log, eventBodies, count: (entry: string) => log.filter((line) => line === entry).length };
 }
 
+/** Scan the draft, then start the check of the cited claims (what the screen asks of the student in two presses). */
+async function checkAll(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+  await user.click(await screen.findByRole("button", { name: /^Check \d+ cited claims?$/ }));
+}
+
 const DRAFT = "International trade rose 5 percent (Vaswani et al., 2017).";
 const REFS = "Vaswani, A., Shazeer, N. (2017). Attention is all you need. NeurIPS.";
 
@@ -133,11 +139,11 @@ describe("privacy note", () => {
     expect(screen.getByRole("button", { name: "Try an example" })).toHaveProperty("disabled", true); // hidden once a draft is typed
     expect(screen.getByRole("button", { name: "Choose PDFs" })).toHaveProperty("disabled", true);
     fill();
-    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", true);
 
     await user.click(screen.getByRole("button", { name: "Got it" }));
     expect(screen.queryByText("Before you start")).toBeNull();
-    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", false);
     expect(screen.getByRole("button", { name: "Choose PDFs" })).toHaveProperty("disabled", false);
     expect(window.localStorage.getItem(CONSENT_KEY)).toBe("yes");
   });
@@ -156,7 +162,7 @@ describe("a check that fails to start", () => {
     const server = fakeServer({ failCreate: true });
     await openApp(server);
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
 
     expect(await screen.findByText("Check stopped")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Something went wrong on our side.");
@@ -165,7 +171,7 @@ describe("a check that fails to start", () => {
     await user.click(screen.getByRole("button", { name: "Edit draft" }));
     expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(DRAFT);
     expect((screen.getByLabelText(/Reference list/) as HTMLTextAreaElement).value).toBe(REFS);
-    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", false);
   });
 
   it("Try again sends the same draft again", async () => {
@@ -173,7 +179,7 @@ describe("a check that fails to start", () => {
     const server = fakeServer({ failCreate: true });
     await openApp(server);
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
     await screen.findByText("Check stopped");
     await user.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(server.count("POST /api/runs")).toBe(2));
@@ -186,7 +192,7 @@ describe("a finished check", () => {
     const server = fakeServer();
     await openApp(server);
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await checkAll(user);
     await screen.findByText("Check complete");
     return { user, server };
   }
@@ -227,6 +233,7 @@ describe("a finished check", () => {
     const { user, server } = await finishedCheck();
     await user.click(screen.getByRole("button", { name: "Check again with my sources" }));
     await waitFor(() => expect(server.count("POST /api/runs")).toBe(2));
+    await user.click(await screen.findByRole("button", { name: /^Check \d+ cited claims?$/ }));
     await screen.findByText("Check complete");
   });
 
@@ -256,7 +263,8 @@ describe("stopping a check", () => {
     const user = userEvent.setup();
     await openApp(fakeServer({ hangChecks: true }));
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+    await user.click(await screen.findByRole("button", { name: /^Check \d+ cited claims?$/ }));
     const stop = await screen.findByRole("button", { name: "Stop checking" });
     expect(screen.getByRole("button", { name: "Start a new check" })).toHaveProperty("disabled", true);
 
@@ -274,7 +282,8 @@ describe("stopping a check", () => {
     const user = userEvent.setup();
     await openApp(fakeServer({ hangChecks: true }));
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+    await user.click(await screen.findByRole("button", { name: /^Check \d+ cited claims?$/ }));
     await user.click(await screen.findByRole("button", { name: "Stop checking" }));
     await screen.findByText("Check stopped by you");
     expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Results" }));
@@ -284,7 +293,7 @@ describe("stopping a check", () => {
     const user = userEvent.setup();
     await openApp(fakeServer());
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await checkAll(user);
     await screen.findByText("Check complete");
     expect(screen.queryByRole("button", { name: "Stop checking" })).toBeNull();
   });
@@ -295,7 +304,7 @@ describe("deleting a check", () => {
     const user = userEvent.setup();
     await openApp(server);
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await checkAll(user);
     await screen.findByText("Check complete");
     return { user, server };
   }
@@ -348,7 +357,8 @@ describe("deleting a check", () => {
     const user = userEvent.setup();
     await openApp(fakeServer({ hangChecks: true }));
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+    await user.click(await screen.findByRole("button", { name: /^Check \d+ cited claims?$/ }));
     await screen.findByRole("button", { name: "Stop checking" });
     expect(screen.queryByRole("button", { name: "Delete this check" })).toBeNull();
   });
@@ -370,7 +380,7 @@ describe("keyboard focus is never dropped to the top of the page", () => {
     const user = userEvent.setup();
     await openApp(fakeServer());
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await checkAll(user);
     await screen.findByText("Check complete");
     return user;
   }
@@ -404,7 +414,8 @@ describe("keyboard focus is never dropped to the top of the page", () => {
     await user.click(screen.getByRole("button", { name: "Edit draft" }));
     expect(document.activeElement).toBe(screen.getByLabelText(/Draft text/));
 
-    fireEvent.click(screen.getByRole("button", { name: "Check my claims" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scan my draft" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Check \d+ cited claims?$/ }));
     await screen.findByText("Check complete");
     await user.click(screen.getByRole("button", { name: "Start a new check" }));
     expect(document.activeElement).toBe(screen.getByLabelText(/Draft text/));
@@ -430,7 +441,7 @@ describe("the one-question survey", () => {
     const server = fakeServer();
     await openApp(server);
     fill();
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await checkAll(user);
     await screen.findByText("Check complete");
 
     expect(screen.queryByRole("combobox")).toBeNull();
@@ -440,6 +451,69 @@ describe("the one-question survey", () => {
     expect(server.eventBodies.find((e) => e.name === "would_pay_answered")).toEqual({ name: "would_pay_answered", props: { answer: "maybe" } });
     expect(screen.getByText("Thank you.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Maybe" })).toBeNull(); // answered once
+  });
+});
+
+describe("the scan, then the check", () => {
+  it("stops after the scan: it shows what it found, and checks nothing until the student asks", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    fill();
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+    expect(await screen.findByText("Scan complete")).toBeTruthy();
+    expect(screen.getByText("Found 1 claim.")).toBeTruthy();
+    expect(screen.getByText("Not checked yet")).toBeTruthy();
+    expect(server.count("POST /api/claims/claim-1/check")).toBe(0);
+    expect(server.log.some((line) => line.includes("/check"))).toBe(false);
+  });
+
+  it("offers one button for the cited claims, with the count, and a Copy report and Edit draft beside it", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer());
+    fill();
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+    expect(await screen.findByRole("button", { name: "Check 1 cited claim" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy report" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit draft" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop checking" })).toBeNull();
+  });
+
+  it("reminds the student to add the PDFs when none is ready, and the reminder goes once one is", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer());
+    fill();
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+    expect(await screen.findByText("Add the PDFs these claims cite, then check them.")).toBeTruthy();
+  });
+
+  it("checks the cited claims when the button is pressed, then shows the finished check", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    fill();
+    await checkAll(user);
+    expect(await screen.findByText("Check complete")).toBeTruthy();
+    expect(server.log.some((line) => line.includes("/check"))).toBe(true);
+    expect(screen.queryByRole("button", { name: /^Check \d+ cited claims?$/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy report" })).toBeTruthy();
+  });
+
+  it("copies a report from the scan, before any check", async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    await openApp(fakeServer());
+    fill();
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+    await user.click(await screen.findByRole("button", { name: "Copy report" }));
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(String(write.mock.calls[0]![0])).toContain("not checked yet");
+  });
+
+  it("keeps the scan result when the screen is reopened later, instead of starting a check by itself", async () => {
+    await openApp(fakeServer({ existingRun: false }), { lastRun: true });
+    expect(await screen.findByText("Scan complete")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check 1 cited claim" })).toBeTruthy();
   });
 });
 
@@ -455,15 +529,37 @@ describe("bringing a draft in without pasting it", () => {
     await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
     await user.click(screen.getByRole("button", { name: "Read the document" }));
 
-    await waitFor(() => expect(draftBox().value).toBe("Imported draft text (Smith, 2021)."));
+    // A short card, not a box holding the whole document: what was read, the references found, a preview.
+    expect(await screen.findByText(/Read 34 characters from your Google Doc\. Press “Scan my draft” to scan it\./)).toBeTruthy();
     expect(server.count("POST /api/import")).toBe(1);
-    expect(screen.getByText(/Read 34 characters from your Google Doc\. Check the text, then press “Check my claims”\./)).toBeTruthy();
+    expect(screen.queryByLabelText("Draft text")).toBeNull();
+    expect(screen.getByText("No reference list found at the end. Add one below if you have it.")).toBeTruthy();
+    expect(screen.getByLabelText("Start of the text").textContent).toContain("Imported draft text (Smith, 2021).");
     expect(screen.getByText(/Footnotes were found/)).toBeTruthy();
-    expect(document.activeElement).toBe(draftBox()); // the student can check the text straight away
-    // It is only text in the box: the check still has to be started, and the box can be edited.
-    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", false);
+    // The cursor is on the button that scans it, which is enabled: one press scans the whole document.
+    const scan = screen.getByRole("button", { name: "Scan my draft" });
+    expect(document.activeElement).toBe(scan);
+    expect(scan).toHaveProperty("disabled", false);
+
+    // "Edit the text" opens the box with the full text, and editing clears the note about the import.
+    await user.click(screen.getByRole("button", { name: "Edit the text" }));
+    await waitFor(() => expect(draftBox().value).toBe("Imported draft text (Smith, 2021)."));
+    expect(document.activeElement).toBe(draftBox());
     await user.type(draftBox(), " More.");
-    expect(screen.queryByText(/Read 34 characters/)).toBeNull(); // editing clears the note
+    expect(screen.queryByText(/Read 34 characters/)).toBeNull();
+  });
+
+  it("scans the imported document with one press and no box in between", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
+    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
+    await user.click(screen.getByRole("button", { name: "Read the document" }));
+    await screen.findByText(/Read 34 characters/);
+    await user.click(screen.getByRole("button", { name: "Scan my draft" }));
+    expect(await screen.findByText("Scan complete")).toBeTruthy();
+    expect(server.count("POST /api/runs")).toBe(1);
   });
 
   it("reads the link when the student presses Enter in the link box", async () => {
@@ -472,7 +568,7 @@ describe("bringing a draft in without pasting it", () => {
     await openApp(server);
     await user.click(screen.getByRole("button", { name: "Google Docs link" }));
     await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), `${LINK}{Enter}`);
-    await waitFor(() => expect(draftBox().value).toContain("Imported draft text"));
+    expect(await screen.findByText(/Read 34 characters/)).toBeTruthy();
     expect(server.count("POST /api/import")).toBe(1);
   });
 
@@ -483,8 +579,9 @@ describe("bringing a draft in without pasting it", () => {
     fireEvent.change(draftBox(), { target: { value: LINK } });
     expect(screen.getByText("That looks like a Google Docs link.")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Read the document" }));
-    await waitFor(() => expect(draftBox().value).toBe("Imported draft text (Smith, 2021)."));
+    expect(await screen.findByText(/Read 34 characters from your Google Doc/)).toBeTruthy();
     // A real draft that merely mentions a link gets no such offer.
+    await user.click(screen.getByRole("button", { name: "Edit the text" }));
     fireEvent.change(draftBox(), { target: { value: `My draft is at ${LINK}, please read it.` } });
     expect(screen.queryByText("That looks like a Google Docs link.")).toBeNull();
   });
@@ -519,9 +616,10 @@ describe("bringing a draft in without pasting it", () => {
     await openApp(server);
     await user.click(screen.getByRole("button", { name: "Upload file" }));
     await user.upload(screen.getByLabelText(/Word, PDF or text file/), new File(["﻿First paragraph.\r\n\r\n\r\n\r\nSecond paragraph."], "draft.txt", { type: "text/plain" }));
-    await waitFor(() => expect(draftBox().value).toBe("First paragraph.\n\nSecond paragraph."));
-    expect(screen.getByText(/from your text file/)).toBeTruthy();
+    expect(await screen.findByText(/from your text file/)).toBeTruthy();
     expect(server.count("POST /api/import")).toBe(0);
+    await user.click(screen.getByRole("button", { name: "Edit the text" }));
+    await waitFor(() => expect(draftBox().value).toBe("First paragraph.\n\nSecond paragraph."));
   });
 
   it("sends a .pdf draft to the server to be read, and fills the draft box with the result", async () => {
@@ -530,9 +628,9 @@ describe("bringing a draft in without pasting it", () => {
     await openApp(server);
     await user.click(screen.getByRole("button", { name: "Upload file" }));
     await user.upload(screen.getByLabelText(/Word, PDF or text file/), new File(["%PDF-1.4"], "draft.pdf", { type: "application/pdf" }));
-    await waitFor(() => expect(draftBox().value).toBe("Imported draft text (Smith, 2021)."));
+    expect(await screen.findByText(/from your PDF/)).toBeTruthy();
     expect(server.count("POST /api/import")).toBe(1);
-    expect(screen.getByText(/from your PDF/)).toBeTruthy();
+    expect(screen.getByLabelText("Start of the text").textContent).toContain("Imported draft text (Smith, 2021).");
   });
 
   it("still takes a .docx as before, and refuses a type it cannot read", async () => {
@@ -542,12 +640,12 @@ describe("bringing a draft in without pasting it", () => {
     const input = screen.getByLabelText(/Word, PDF or text file/);
     await user.upload(input, new File(["x"], "thesis.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
     expect(screen.getByText("Selected: thesis.docx")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", false);
 
     fireEvent.change(input, { target: { files: [new File(["x"], "old.doc")] } });
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toMatch(/Choose a \.docx, \.pdf or \.txt file/);
-    expect(screen.getByRole("button", { name: "Check my claims" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", true);
   });
 });
 
@@ -568,12 +666,12 @@ describe("Bahasa Indonesia", () => {
     openIndonesian();
     expect(await screen.findByLabelText("Teks draf")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Sumber kamu" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Cek klaimku" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Pindai drafku" })).toBeTruthy();
     expect(document.documentElement.lang).toBe("id");
 
     await user.click(screen.getByRole("button", { name: "EN (English)" }));
     expect(await screen.findByLabelText("Draft text")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check my claims" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Scan my draft" })).toBeTruthy();
     expect(document.documentElement.lang).toBe("en");
   });
 
@@ -587,7 +685,9 @@ describe("Bahasa Indonesia", () => {
     expect(await screen.findByText(example.sourceFilename)).toBeTruthy();
     expect(await screen.findByText("Siap, 1 halaman")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: "Cek klaimku" }));
+    await user.click(screen.getByRole("button", { name: "Pindai drafku" }));
+    await screen.findByText("Pindai selesai");
+    await user.click(await screen.findByRole("button", { name: "Cek 1 klaim bersitasi" }));
     await screen.findByText("Cek selesai");
     expect(screen.getAllByText("Semua klaim yang dicek didukung sumber.").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Salin laporan" })).toBeTruthy();
@@ -625,7 +725,7 @@ describe("Try an example", () => {
     await openApp(server);
     await user.click(screen.getByRole("button", { name: "Try an example" }));
     await screen.findByText("Ready, 1 page");
-    await user.click(screen.getByRole("button", { name: "Check my claims" }));
+    await checkAll(user);
     await screen.findByText("Check complete");
     expect(server.count("POST /api/runs")).toBe(1);
   });
@@ -666,19 +766,20 @@ describe("starting a check", () => {
     const server = fakeServer();
     await openApp(server);
     fill();
-    const button = screen.getByRole("button", { name: "Check my claims" });
+    const button = screen.getByRole("button", { name: "Scan my draft" });
     // Three clicks in one tick, before React has re-rendered the button away. Native click() does not flush
     // React between clicks (fireEvent would), which is what makes this the same-instant case.
     button.click();
     button.click();
     button.click();
+    fireEvent.click(await screen.findByRole("button", { name: /^Check \d+ cited claims?$/ }));
     await screen.findByText("Check complete");
     expect(server.count("POST /api/runs")).toBe(1);
   });
 
   it("keeps the start button disabled, and says why, until there is a draft", async () => {
     await openApp(fakeServer());
-    const button = screen.getByRole("button", { name: "Check my claims" });
+    const button = screen.getByRole("button", { name: "Scan my draft" });
     expect(button).toHaveProperty("disabled", true);
     expect(button.getAttribute("aria-describedby")).toBe("start-reason");
     expect(document.getElementById("start-reason")?.textContent).toBe("Add your draft to continue.");

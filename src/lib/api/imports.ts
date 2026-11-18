@@ -9,6 +9,7 @@ import type postgres from "postgres";
 import { lengthBucket, logEvent } from "../events";
 import { MAX_IMPORT_CHARS, ImportError, fetchGoogleDocText, normalizeImportedText, readPdfDraft } from "../pipeline/import-draft";
 import { MAX_PDF_BYTES } from "../pipeline/ingest";
+import { parseDraftText, parseReferenceList } from "../pipeline/parse-draft";
 import type { ApiContext } from "./handler";
 import { jsonResponse, readJson, readUpload } from "./http";
 
@@ -35,5 +36,15 @@ export async function importDraft(context: ApiContext, request: Request): Promis
 
   await logEvent(sql, context.sessionId, "draft_imported", { source, length_bucket: lengthBucket(text.length) });
   const truncated = text.length > MAX_IMPORT_CHARS;
-  return jsonResponse({ text: truncated ? text.slice(0, MAX_IMPORT_CHARS) : text, source, warnings, truncated });
+
+  // For the preview: how many references the document ends with. Null when the draft is too long to parse here.
+  let referenceCount: number | null = null;
+  try {
+    const parsed = parseDraftText(text);
+    referenceCount = parsed.referenceText ? parseReferenceList(parsed.referenceText).length : 0;
+  } catch {
+    referenceCount = null;
+  }
+
+  return jsonResponse({ text: truncated ? text.slice(0, MAX_IMPORT_CHARS) : text, source, warnings, truncated, referenceCount });
 }

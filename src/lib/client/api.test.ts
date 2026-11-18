@@ -34,6 +34,86 @@ function harness(replies: (Response | Error)[], extra: { maxAttempts?: number } 
   return { api, calls, waits, waking };
 }
 
+describe("createApi: one session", () => {
+  /** A fetch whose replies are released by hand, so the test controls when each request finishes. */
+  function manual() {
+    const started: string[] = [];
+    const release: ((reply: Response) => void)[] = [];
+    const fetchImpl = ((url: RequestInfo | URL) => {
+      started.push(String(url));
+      return new Promise<Response>((resolve) => release.push(resolve));
+    }) as typeof fetch;
+    return { api: createApi({ fetchImpl, sleep: async () => {} }), started, release };
+  }
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("sends the first request alone: a second one waits until the first has finished and its cookie is set", async () => {
+    const { api, started, release } = manual();
+    const first = api.listSources();
+    const second = api.listSources();
+    await tick();
+    expect(started).toEqual(["/api/sources"]); // only the first is on its way
+
+    release[0]!(json({ sources: [] }));
+    await first;
+    await tick();
+    expect(started).toHaveLength(2); // now the second goes
+    release[1]!(json({ sources: [] }));
+    await second;
+  });
+
+  it("holds a create-run request, and an event, until the opening request is done", async () => {
+    const { api, started, release } = manual();
+    const opening = api.listSources();
+    const create = api.createRun({ draft: { kind: "paste", text: "A claim." }, references: "" });
+    const event = api.event("fix_accepted");
+    await tick();
+    expect(started).toEqual(["/api/sources"]);
+
+    release[0]!(json({ sources: [] }));
+    await opening;
+    await tick();
+    expect(started.sort()).toEqual(["/api/events", "/api/runs", "/api/sources"]);
+    release[1]!(json({ runId: "r1", status: "extracting", unitCount: 1, referenceCount: 0 }, 201));
+    release[2]!(new Response(null, { status: 204 }));
+    await create;
+    await event;
+  });
+
+  it("does not wait for ever when the opening request fails", async () => {
+    const calls: string[] = [];
+    let first = true;
+    const fetchImpl = (async (url: RequestInfo | URL) => {
+      calls.push(String(url));
+      if (first) {
+        first = false;
+        throw new TypeError("network down");
+      }
+      return json({ sources: [] });
+    }) as typeof fetch;
+    const api = createApi({ fetchImpl, sleep: async () => {}, maxAttempts: 1 });
+    const failing = api.listSources().catch((error) => error);
+    const next = api.listSources();
+    expect(await failing).toBeInstanceOf(ApiClientError);
+    expect(await next).toEqual([]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("adds no delay once the first request has finished", async () => {
+    const { api, started, release } = manual();
+    const first = api.listSources();
+    release[0]!(json({ sources: [] }));
+    await first;
+    const second = api.listSources();
+    const third = api.listSources();
+    await tick();
+    expect(started).toHaveLength(3); // both start at once, nothing is held back any more
+    release[1]!(json({ sources: [] }));
+    release[2]!(json({ sources: [] }));
+    await Promise.all([second, third]);
+  });
+});
+
 describe("createApi: requests", () => {
   it("sends JSON with the same-origin cookie and returns the parsed body", async () => {
     const { api, calls } = harness([json({ runId: "r1", status: "extracting", unitCount: 1, referenceCount: 2 }, 201)]);

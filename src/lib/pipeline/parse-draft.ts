@@ -4,7 +4,11 @@
 import mammoth from "mammoth";
 
 /** Starting values. A longer draft is rejected, not silently cut. */
-export const MAX_DRAFT_CHARS = 60_000;
+/**
+ * About 100 pages. The draft is read in slices of EXTRACTION_UNIT_MAX_CHARS, one short request each, so this is a
+ * limit on the free model quota and on how long the scan takes (about 42 requests at the limit), not on one request.
+ */
+export const MAX_DRAFT_CHARS = 250_000;
 export const MAX_DOCX_BYTES = 5 * 1024 * 1024;
 export const EXTRACTION_UNIT_MAX_CHARS = 6_000;
 /** A longer list is rejected with a message, never cut: a silent cut makes later citations look "not in your list". */

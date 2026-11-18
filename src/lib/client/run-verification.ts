@@ -126,7 +126,33 @@ async function extractAll(deps: VerifyDeps, runId: string, unitCount: number, em
   return true;
 }
 
-/** A new check: create the run, extract the claims, check them. Failures are reported as a `failed` event. */
+/**
+ * The end of the scan: read the run and stop. The claims that need no lookup (no citation, or a citation that is not
+ * in the reference list) already have their verdict from the server. The cited ones wait, in the "scanned" phase,
+ * until the student starts the check; a run with nothing left to check is simply done.
+ */
+async function finishScan(deps: VerifyDeps, runId: string, emit: Emit, signal: AbortSignal): Promise<void> {
+  const run = await deps.api.getRun(runId);
+  emit({ type: "loaded", run });
+  if (signal.aborted) return;
+  const pending = run.claims.filter((claim) => claim.verdict === null);
+  if (run.run.status === "completed" || pending.length === 0) {
+    emit({ type: "phase", phase: "done", message: run.claims.length === 0 ? say(deps, "progress.noClaims") : say(deps, "progress.done") });
+    return;
+  }
+  emit({ type: "phase", phase: "scanned", message: "" });
+}
+
+/** Starts the check of the claims the scan left pending (the cited ones). Safe to start again after a stop. */
+export async function checkCited(deps: VerifyDeps, runId: string, emit: Emit, signal: AbortSignal): Promise<void> {
+  try {
+    await checkRemaining(deps, runId, emit, signal);
+  } catch (error) {
+    if (!signal.aborted) emit({ type: "failed", message: messageOf(error, deps.t, deps.locale) });
+  }
+}
+
+/** A new check: create the run, scan the draft for claims, and stop at the scan. Failures are a `failed` event. */
 export async function runVerification(deps: VerifyDeps, input: VerifyInput, emit: Emit, signal: AbortSignal): Promise<void> {
   try {
     emit({ type: "phase", phase: "starting", message: say(deps, "progress.starting") });
@@ -134,7 +160,7 @@ export async function runVerification(deps: VerifyDeps, input: VerifyInput, emit
     emit({ type: "run", runId: created.runId, unitCount: created.unitCount });
     if (signal.aborted) return;
     if (!(await extractAll(deps, created.runId, created.unitCount, emit, signal))) return;
-    await checkRemaining(deps, created.runId, emit, signal);
+    await finishScan(deps, created.runId, emit, signal);
   } catch (error) {
     if (!signal.aborted) emit({ type: "failed", message: messageOf(error, deps.t, deps.locale) });
   }
@@ -151,7 +177,7 @@ export async function resumeVerification(deps: VerifyDeps, runId: string, emit: 
     emit({ type: "loaded", run });
     if (signal.aborted) return;
     if (run.run.status === "extracting" && !(await extractAll(deps, runId, run.run.unitCount, emit, signal))) return;
-    await checkRemaining(deps, runId, emit, signal);
+    await finishScan(deps, runId, emit, signal);
   } catch (error) {
     if (!signal.aborted) emit({ type: "failed", message: messageOf(error, deps.t, deps.locale) });
   }

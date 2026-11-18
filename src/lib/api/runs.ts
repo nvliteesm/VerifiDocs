@@ -19,6 +19,7 @@ import {
   splitIntoUnits,
   type ParsedDraft,
 } from "../pipeline/parse-draft";
+import { saveEarlyVerdicts } from "../pipeline/scan";
 import { completeRunIfFinished } from "../pipeline/save-verdict";
 import type { Verdict } from "../pipeline/types";
 import type { ApiContext } from "./handler";
@@ -27,11 +28,12 @@ import { ApiError, assertId, jsonResponse, readJson, readUpload } from "./http";
 /** Starting value: how many runs one session keeps. Creating one more drops the oldest. */
 export const MAX_RUNS_PER_SESSION = 20;
 /**
- * The most a create-run request may send: a draft at its character limit (up to about 180 KB in UTF-8) plus a
- * reference list of up to MAX_REFERENCES entries. Larger than the general JSON limit, so the draft and
- * reference limits give the specific error, and a long draft with a long list is not refused as "too large".
+ * The most a create-run request may send: a draft at its character limit (up to about 750 KB in UTF-8, at three
+ * bytes a character) plus a reference list of up to MAX_REFERENCES entries. Larger than the general JSON limit, so
+ * the draft and reference limits give the specific error, and a long draft with a long list is not refused as
+ * "too large".
  */
-export const MAX_CREATE_BODY_BYTES = 700_000;
+export const MAX_CREATE_BODY_BYTES = 1_100_000;
 /** Claims of unit `u` get positions u * 100 + 1, u * 100 + 2, ... (a unit has at most 40 claims). */
 const POSITION_STRIDE = 100;
 
@@ -170,6 +172,9 @@ export async function extractUnit(context: ApiContext, runId: string, request: R
     if (progress.unitsExtracted >= run.unit_count) {
       await tx`update runs set status = 'checking' where id = ${run.id}`;
       await logEvent(tx, sessionId, "run_started", { claim_count: progress.claimCount });
+      // The scan: claims with no citation, an unreadable one, or one that is not in the reference list get their
+      // verdict now, with no network call. The others wait for the check the student starts.
+      await saveEarlyVerdicts(tx, sessionId, run.id);
       // Claims may already have verdicts, and a draft with no claims has none to wait for.
       await completeRunIfFinished(tx, sessionId, run.id);
     }

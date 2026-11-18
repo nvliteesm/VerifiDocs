@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiClientError } from "./api";
 import {
   CHECK_CONCURRENCY,
+  checkCited,
   oneClaimPerCitation,
   retryClaim,
   resumeVerification,
@@ -110,11 +111,81 @@ function collect() {
 
 const signal = () => new AbortController().signal;
 
+/** The scan, then the check the student starts afterwards (on the screen these are two button presses). */
+async function scanAndCheck(deps: VerifyDeps, from: VerifyInput, emit: (event: VerifyEvent) => void, abort: AbortSignal) {
+  let failed = false; // after a failed scan the screen offers no check
+  await runVerification(deps, from, (event) => {
+    if (event.type === "failed") failed = true;
+    emit(event);
+  }, abort);
+  if (!failed) await checkCited(deps, "run-1", emit, abort);
+}
+
+/** Reopening a check, then starting the check of what is still waiting. */
+async function resumeAndCheck(deps: VerifyDeps, runId: string, emit: (event: VerifyEvent) => void, abort: AbortSignal) {
+  await resumeVerification(deps, runId, emit, abort);
+  await checkCited(deps, runId, emit, abort);
+}
+
+describe("the scan stops before the check", () => {
+  it("extracts and reads the claims, then waits: nothing is checked until the student starts it", async () => {
+    const { deps, log } = fakeDeps();
+    const { events, emit, state } = collect();
+    await runVerification(deps, input, emit, signal());
+    expect(log.extracted.sort()).toEqual([0, 1]);
+    expect(log.checked).toEqual([]);
+    expect(state().phase).toBe("scanned");
+    expect(state().claims).toHaveLength(3);
+    expect(events.map((e) => e.type)).not.toContain("failed");
+  });
+
+  it("starting the check then checks the waiting claims and finishes", async () => {
+    const { deps, log } = fakeDeps();
+    const { emit, state } = collect();
+    await runVerification(deps, input, emit, signal());
+    await checkCited(deps, "run-1", emit, signal());
+    expect(log.checked.sort()).toEqual(["a", "b", "c"]);
+    expect(state().phase).toBe("done");
+  });
+
+  it("is simply done when the scan left nothing to check (every claim already has its verdict)", async () => {
+    const { deps, log } = fakeDeps({ claims: [claim("a", 1, "no_citation_given"), claim("b", 2, "reference_not_found")] });
+    const { emit, state } = collect();
+    await runVerification(deps, input, emit, signal());
+    expect(log.checked).toEqual([]);
+    expect(state().phase).toBe("done");
+    expect(state().message).toBe("Done.");
+  });
+
+  it("says so when the draft had no claims at all", async () => {
+    const { deps } = fakeDeps({ claims: [] });
+    const { emit, state } = collect();
+    await runVerification(deps, input, emit, signal());
+    expect(state()).toMatchObject({ phase: "done", message: "No checkable claims were found." });
+  });
+
+  it("a failure in the scan is reported, and the check never starts", async () => {
+    const { deps, log } = fakeDeps({ extractError: new ApiClientError(503, "model_unavailable", "The AI service is busy. Try again in a moment.") });
+    const { emit, state } = collect();
+    await runVerification(deps, input, emit, signal());
+    expect(state()).toMatchObject({ phase: "error", error: "The AI service is busy. Try again in a moment." });
+    expect(log.checked).toEqual([]);
+  });
+
+  it("reopening a check whose cited claims are still waiting lands on the scan, not in the middle of a check", async () => {
+    const { deps, log } = fakeDeps({ claims: [claim("a", 1, "no_citation_given"), claim("b", 2)], statusBefore: "checking" });
+    const { emit, state } = collect();
+    await resumeVerification(deps, "run-1", emit, signal());
+    expect(log.checked).toEqual([]);
+    expect(state().phase).toBe("scanned");
+  });
+});
+
 describe("runVerification", () => {
   it("creates the run, extracts every unit, reads the claims, checks them all, and finishes", async () => {
     const { deps, log } = fakeDeps();
     const { events, emit, state } = collect();
-    await runVerification(deps, input, emit, signal());
+    await scanAndCheck(deps, input, emit, signal());
 
     expect(log.extracted.sort()).toEqual([0, 1]);
     expect(log.checked.sort()).toEqual(["a", "b", "c"]);
@@ -135,7 +206,7 @@ describe("runVerification", () => {
   it("keeps up to 5 claim checks in flight, and no more", async () => {
     const claims = Array.from({ length: 14 }, (_, i) => ({ ...claim(`c${i}`, i + 1), citation: `(Author${i}, 2021)` }));
     const fake = fakeDeps({ claims, checkDelayMs: 5 });
-    await runVerification(fake.deps, input, collect().emit, signal());
+    await scanAndCheck(fake.deps, input, collect().emit, signal());
     expect(fake.peak()).toBe(CHECK_CONCURRENCY);
     expect(fake.log.checked).toHaveLength(14);
   });
@@ -153,7 +224,7 @@ describe("runVerification", () => {
       withCitation("s4", 7, "(Smith, 2021)"),
     ];
     const fake = fakeDeps({ claims, checkDelayMs: 5 });
-    await runVerification(fake.deps, input, collect().emit, signal());
+    await scanAndCheck(fake.deps, input, collect().emit, signal());
     expect(fake.log.checked).toHaveLength(7);
     // The first wave is the first claim of each distinct citation (s1 and l1); everything else waits for it.
     expect(fake.log.checked.slice(0, 2).sort()).toEqual(["l1", "s1"]);
@@ -173,7 +244,7 @@ describe("runVerification", () => {
       checks: { a: [{ outcome: "retry", reason: "busy", attempt: 1 }, { outcome: "retry", reason: "busy", attempt: 2 }, done("a", "partial")] },
     });
     const { events, emit, state } = collect();
-    await runVerification(fake.deps, input, emit, signal());
+    await scanAndCheck(fake.deps, input, emit, signal());
     expect(fake.log.checked).toEqual(["a", "a", "a"]);
     expect(fake.log.sleeps).toEqual([1000, 2000]);
     expect(events.filter((e) => e.type === "claim")).toHaveLength(1);
@@ -183,7 +254,7 @@ describe("runVerification", () => {
   it("marks one claim as failed when its check errors, and still checks and finishes the others", async () => {
     const fake = fakeDeps({ checkError: { b: new ApiClientError(500, "internal", "Something went wrong on our side.") } });
     const collected = collect();
-    await runVerification(fake.deps, input, collected.emit, signal());
+    await scanAndCheck(fake.deps, input, collected.emit, signal());
     const final = collected.state();
     expect(final.claimErrors).toEqual({ b: "Something went wrong on our side." });
     expect(final.claims.find((c) => c.id === "a")!.verdict).toBe("supported");
@@ -194,7 +265,7 @@ describe("runVerification", () => {
   it("never shows a raw error message that is not from the API client", async () => {
     const fake = fakeDeps({ checkError: { a: new Error("secret internal text with the student's sentence") } });
     const collected = collect();
-    await runVerification(fake.deps, input, collected.emit, signal());
+    await scanAndCheck(fake.deps, input, collected.emit, signal());
     expect(JSON.stringify(collected.events)).not.toContain("secret internal text");
     expect(collected.state().claimErrors.a).toBe("Something went wrong. Please try again.");
   });
@@ -202,7 +273,7 @@ describe("runVerification", () => {
   it("stops with a plain error, and checks nothing, if extraction fails", async () => {
     const fake = fakeDeps({ extractError: new ApiClientError(503, "model_unavailable", "The AI service is busy. Try again in a moment.") });
     const collected = collect();
-    await runVerification(fake.deps, input, collected.emit, signal());
+    await scanAndCheck(fake.deps, input, collected.emit, signal());
     expect(collected.state()).toMatchObject({ phase: "error", error: "The AI service is busy. Try again in a moment." });
     expect(fake.log.checked).toEqual([]);
   });
@@ -210,7 +281,7 @@ describe("runVerification", () => {
   it("reports a failure to create the run, with the server's message", async () => {
     const fake = fakeDeps({ createError: new ApiClientError(400, "empty", "The draft is empty.") });
     const collected = collect();
-    await runVerification(fake.deps, input, collected.emit, signal());
+    await scanAndCheck(fake.deps, input, collected.emit, signal());
     expect(collected.state()).toMatchObject({ phase: "error", error: "The draft is empty." });
     expect(fake.log.extracted).toEqual([]);
   });
@@ -218,7 +289,7 @@ describe("runVerification", () => {
   it("finishes straight away, with a message, when no claims were found", async () => {
     const fake = fakeDeps({ claims: [] });
     const collected = collect();
-    await runVerification(fake.deps, input, collected.emit, signal());
+    await scanAndCheck(fake.deps, input, collected.emit, signal());
     expect(collected.state()).toMatchObject({ phase: "done", message: "No checkable claims were found." });
     expect(fake.log.checked).toEqual([]);
   });
@@ -227,7 +298,7 @@ describe("runVerification", () => {
     const forever = Array.from({ length: 20 }, (_, i): CheckResponse => ({ outcome: "retry", reason: "busy", attempt: i + 1 }));
     const fake = fakeDeps({ claims: [claim("a", 1)], checks: { a: forever } });
     const collected = collect();
-    await runVerification(fake.deps, input, collected.emit, signal());
+    await scanAndCheck(fake.deps, input, collected.emit, signal());
     expect(fake.log.checked.length).toBe(6);
     expect(collected.state().claimErrors.a).toBe("This claim could not be checked right now.");
   });
@@ -236,7 +307,7 @@ describe("runVerification", () => {
     const controller = new AbortController();
     const fake = fakeDeps({ claims: Array.from({ length: 30 }, (_, i) => claim(`c${i}`, i + 1)), checkDelayMs: 5 });
     const collected = collect();
-    const running = runVerification(fake.deps, input, collected.emit, controller.signal);
+    const running = scanAndCheck(fake.deps, input, collected.emit, controller.signal);
     setTimeout(() => controller.abort(), 8);
     await running;
     const types = collected.events.map((e) => e.type);
@@ -250,7 +321,7 @@ describe("resumeVerification", () => {
   it("checks only the claims that have no verdict yet, and does not extract again", async () => {
     const fake = fakeDeps({ claims: [claim("a", 1, "supported"), claim("b", 2), claim("c", 3)], statusBefore: "checking" });
     const collected = collect();
-    await resumeVerification(fake.deps, "run-1", collected.emit, signal());
+    await resumeAndCheck(fake.deps, "run-1", collected.emit, signal());
     expect(fake.log.extracted).toEqual([]);
     expect(fake.log.checked.sort()).toEqual(["b", "c"]);
     expect(collected.state().phase).toBe("done");
@@ -259,7 +330,7 @@ describe("resumeVerification", () => {
   it("finishes the extraction first when the run was still extracting", async () => {
     const fake = fakeDeps({ unitCount: 3, statusBefore: "extracting" });
     const collected = collect();
-    await resumeVerification(fake.deps, "run-1", collected.emit, signal());
+    await resumeAndCheck(fake.deps, "run-1", collected.emit, signal());
     expect(fake.log.extracted.sort()).toEqual([0, 1, 2]);
     expect(fake.log.checked.length).toBe(3);
   });
@@ -267,7 +338,7 @@ describe("resumeVerification", () => {
   it("shows a finished run as done without checking anything", async () => {
     const fake = fakeDeps({ claims: [claim("a", 1, "supported"), claim("b", 2, "partial")] });
     const collected = collect();
-    await resumeVerification(fake.deps, "run-1", collected.emit, signal());
+    await resumeAndCheck(fake.deps, "run-1", collected.emit, signal());
     expect(fake.log.checked).toEqual([]);
     expect(collected.state()).toMatchObject({ phase: "done", runStatus: "completed" });
   });
@@ -296,7 +367,7 @@ describe("retryClaim", () => {
   it("clears the claim's error, checks it again, and reloads the run", async () => {
     const failing = fakeDeps({ claims: [claim("a", 1)], checkError: { a: new ApiClientError(500, "internal", "Something went wrong on our side.") } });
     const collected = collect();
-    await runVerification(failing.deps, input, collected.emit, signal());
+    await scanAndCheck(failing.deps, input, collected.emit, signal());
     expect(collected.state().claimErrors.a).toBeDefined();
 
     const working = fakeDeps({ claims: [claim("a", 1)], checks: { a: [done("a", "partial")] } });
@@ -308,7 +379,7 @@ describe("retryClaim", () => {
   it("records a new error if the retry fails too", async () => {
     const failing = fakeDeps({ claims: [claim("a", 1)], checkError: { a: new ApiClientError(500, "internal", "Something went wrong on our side.") } });
     const collected = collect();
-    await runVerification(failing.deps, input, collected.emit, signal());
+    await scanAndCheck(failing.deps, input, collected.emit, signal());
     await retryClaim(failing.deps, "run-1", "a", collected.emit, signal());
     expect(collected.state().claimErrors.a).toBe("Something went wrong on our side.");
   });

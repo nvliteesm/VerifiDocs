@@ -542,6 +542,20 @@ progress {
   padding-bottom: 14px;
   border-bottom: 1px solid var(--line);
 }
+.scan-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+.import-card {
+  display: grid;
+  gap: 12px;
+}
+.import-preview {
+  max-height: 9rem;
+  overflow: hidden;
+  white-space: pre-line;
+}
 .tally-number {
   font-family: var(--serif);
   font-size: clamp(1.5rem, 3.5vw, 2rem);

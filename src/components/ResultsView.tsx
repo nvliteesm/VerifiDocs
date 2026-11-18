@@ -52,6 +52,8 @@ interface CardProps {
   onEvent: Props["onEvent"];
   /** The check has ended, so a claim with no verdict was not checked rather than waiting. */
   ended: boolean;
+  /** The scan is over and the check has not started: a claim with no verdict is cited and waiting for it. */
+  scanned: boolean;
 }
 
 /** The reasons that make sense for this verdict. A quote-based reason is offered only when there is a quote. */
@@ -69,7 +71,7 @@ function reasonsFor(claim: ClaimView): FlagReason[] {
 }
 
 // `flagged` and `copied` live in ResultsView, because a card unmounts whenever the filter changes.
-function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, ended }: CardProps) {
+function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, ended, scanned }: CardProps) {
   const verdict = claim.verdict;
   const { t } = useT();
   // After "This verdict is wrong", the student picks a reason. The button they pressed has left the page, so focus
@@ -101,7 +103,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
   return (
     <li className="claim" id={`claim-${claim.id}`}>
       <div className="claim-head">
-        {verdict ? <Badge verdict={verdict} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : t("claim.waiting")}</span>}
+        {verdict ? <Badge verdict={verdict} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
         {claim.citation && <span className="citation">{claim.citation}</span>}
       </div>
       <p className="claim-text">{claim.text}</p>
@@ -214,6 +216,11 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
   const total = state.claims.length;
   const attention = attentionCount(state.counts);
   const finished = state.phase === "done";
+  // The scan is over and the cited claims wait for the student to start the check.
+  const scanned = state.phase === "scanned";
+  const noCitation = state.counts.no_citation_given ?? 0;
+  const notListed = state.counts.reference_not_found ?? 0;
+  const waiting = state.claims.filter((claim) => claim.verdict === null).length;
   // When nothing needs attention, an empty "Needs attention" list would contradict the tally, so show everything.
   const filter = chosen === "attention" && finished && attention === 0 ? "all" : chosen;
   const stopped = state.stopped;
@@ -228,14 +235,18 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
   // A keyboard or screen-reader user who pressed "Check my claims" has lost that button (it left the page), so
   // when the results arrive, move focus to the Results heading instead of leaving it on the page body.
   const heading = useRef<HTMLHeadingElement>(null);
+  // Two moments hand the student a new set of results: the scan ending, and the check ending after they pressed
+  // "Check N cited claims" (that button has left the page by then, so focus would otherwise fall to the top).
   const wasFinished = useRef(finished);
+  const wasScanned = useRef(scanned);
   useEffect(() => {
-    if (focusWhenDone && finished && !wasFinished.current) {
+    if (focusWhenDone && ((finished && !wasFinished.current) || (scanned && !wasScanned.current))) {
       const active = document.activeElement;
       if (!active || active === document.body) heading.current?.focus();
     }
     wasFinished.current = finished;
-  }, [finished, focusWhenDone]);
+    wasScanned.current = scanned;
+  }, [finished, scanned, focusWhenDone]);
 
   const shown = useMemo(() => {
     const ranked = new Map(state.fixList.map((id, index) => [id, index]));
@@ -264,9 +275,11 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
             ? stopped
               ? t("results.eyebrow.stopped")
               : t("results.eyebrow.done")
-            : state.phase === "error"
-              ? t("results.eyebrow.error")
-              : t("results.eyebrow.running")}
+            : scanned
+              ? t("results.eyebrow.scanned")
+              : state.phase === "error"
+                ? t("results.eyebrow.error")
+                : t("results.eyebrow.running")}
         </p>
         <h2 id="results-title" ref={heading} tabIndex={-1}>
           {t("results.title")}
@@ -284,7 +297,7 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
           : ""}
       </p>
 
-      {!finished && state.phase !== "error" && (
+      {!finished && !scanned && state.phase !== "error" && (
         <div className="progress" aria-live="polite">
           <progress max={Math.max(total, 1)} value={checked} aria-label={t("results.progress.aria")} />
           <span className="hint">{state.message || (total > 0 ? t("results.progress.count", { checked, total }) : t("results.working"))}</span>
@@ -307,6 +320,17 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
           {finished && (
             <div className="tally">
               <p className="tally-number">{tally}</p>
+            </div>
+          )}
+
+          {scanned && (
+            <div className="tally">
+              <p className="tally-number">{t(pluralKey(locale, "scan.summary", total), { n: total })}</p>
+              <ul className="scan-list">
+                {noCitation > 0 && <li>{t("scan.nocite", { n: noCitation })}</li>}
+                {notListed > 0 && <li>{t("scan.missing", { n: notListed })}</li>}
+                <li>{t("scan.ready", { n: waiting })}</li>
+              </ul>
             </div>
           )}
 
@@ -333,6 +357,7 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
                 flagged={flagged.has(claim.id)}
                 copied={copiedFix[claim.id] ?? "idle"}
                 ended={finished}
+                scanned={scanned}
                 onFlag={(reason) => {
                   setFlagged((prev) => new Set(prev).add(claim.id));
                   if (claim.verdict) onEvent("verdict_flagged_wrong", { verdict: claim.verdict, reason });
