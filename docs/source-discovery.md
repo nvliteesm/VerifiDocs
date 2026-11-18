@@ -80,7 +80,13 @@ The PRD says "Gemini suggests candidate sources from a topic prompt". This plan 
      - the papers come back after a reload
      - phone width with no overflow, dark mode (contrast about 14 to 1), and no console errors
    - Not seen in a browser: the "no paper found" line and the error state (component tests only), and the Indonesian wording (not read by a native speaker).
-4. The safe PDF fetcher and its tests (private addresses, redirects, size, type).
+4. The safe PDF fetcher and its tests (private addresses, redirects, size, type). **Done 18 Nov 2026.** `src/lib/pipeline/fetch-pdf.ts`, not yet called by anything.
+   - https on port 443 only, no credentials; an http link is tried as https.
+   - Every address a host resolves to is checked at connect time, through a custom DNS lookup on Node's `https`. Private, loopback, link-local, carrier-grade NAT, documentation, multicast and reserved ranges are refused, in IPv4 and IPv6, including IPv4-mapped, NAT64 and 6to4 forms. A host with any blocked address is refused.
+   - Redirects are followed by hand (at most 3), each one checked again.
+   - `text/html` is refused at the headers, and the first bytes must be `%PDF-`; 10 MB counted while reading; 8 s for the whole fetch.
+   - Errors carry a reason, never the link. No new dependency.
+   - Tests: 41 unit tests. A live test (`tests/live/fetch-pdf.live.test.ts`) fetched a real arXiv PDF, refused `example.com`, and refused `localtest.me` and `127.0.0.1.nip.io` (public names that resolve to 127.0.0.1) at connect time.
 5. Attach and re-check, the "Source added after writing" tag on screen and in the report; database tests.
 6. Live test and a real-browser run on the FYP draft, timing every request.
 7. `docs/decisions.md`, `docs/architecture.md`, the privacy note (search words built from the student's sentence go to OpenAlex), and the PRD wording.
