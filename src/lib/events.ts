@@ -63,6 +63,9 @@ export const EVENT_SCHEMAS = {
   report_exported: z.strictObject({ format: z.enum(["copy", "text", "markdown", "csv"]) }),
   would_pay_answered: z.strictObject({ answer }),
   feature_interest_answered: z.strictObject({ feature: token, answer }),
+  // Find a source ran for one uncited claim: how many papers it kept, how long it took, and the outcome. Never the
+  // claim, the search words or a title (hard rule 11).
+  sources_suggested: z.strictObject({ count: z.number().int().min(0).max(3), latency_ms: ms, outcome: z.enum(["found", "nothing_relevant"]) }),
 } as const;
 
 export type EventName = keyof typeof EVENT_SCHEMAS;

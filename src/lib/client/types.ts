@@ -36,6 +36,10 @@ export interface ClaimView {
   section: string | null;
   /** "must": a reader would expect a source. "should": a general statement a source would strengthen. */
   need: "must" | "should";
+  /** True once Find a source has run for this claim (even when it found nothing). */
+  sourcesSearched?: boolean;
+  /** Papers Find a source kept, best first. Not read yet: they never count as support. */
+  sources?: FoundSourceView[];
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
   quote: string | null;
@@ -43,6 +47,21 @@ export interface ClaimView {
   reason: string | null;
   exitStage: number | null;
   fixSuggestion: string | null;
+}
+
+/** A paper Find a source found for an uncited claim (docs/source-discovery.md). */
+export interface FoundSourceView {
+  rank: number;
+  openalexId: string;
+  doi: string | null;
+  title: string;
+  year: number | null;
+  authors: string[];
+  venue: string | null;
+  openAccessPdf: string | null;
+  /** One sentence from the abstract, verified to be in it. */
+  sentence: string;
+  relevance: "direct" | "related";
 }
 
 export interface FailedPart {

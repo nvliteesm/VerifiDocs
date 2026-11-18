@@ -59,7 +59,15 @@ The PRD says "Gemini suggests candidate sources from a topic prompt". This plan 
    - A claim about a named product, company or organisation is "direct" only if the abstract names it.
 
    Together they turned the pricing-plan and Deputy claims into an empty answer. Not solved here: the student's own feature ("Admins can create tasks…") finds task-management papers rated "direct". Keeping such sentences out is the extraction step's `own_work` label.
-2. Migration 0009, the find endpoint, rate limit, events; database tests on the dev branch.
+2. Migration 0009, the find endpoint, rate limit, events; database tests on the dev branch. **Done 18 Nov 2026.**
+   - `claim_sources` (up to 3 papers per claim, deleted with the claim) and `claims.sources_searched_at` (migration 0009, applied on the dev branch only).
+   - `POST /api/claims/:id/sources` (`src/lib/api/sources-found.ts`):
+     - only for a No citation claim, scoped to the session, counted against the model rate limit
+     - a repeat press returns the saved result with no search
+     - a failed search answers 503 with a retry hint and saves nothing
+   - `GET /api/runs/:id` returns each claim's `sourcesSearched` and `sources`. The new event is `sources_suggested` (`count`, `latency_ms`, `outcome`).
+   - Tests: 4 database tests. One real-HTTP run on the dev server: 3 direct papers in 5.8 s, the repeat in 0.3 s.
+   - The `citation_source` column planned for phase 2 moves to a later migration with step 5.
 3. Card UI (load antislop first): loading, empty, error and result states, focus, 375 px, English and Indonesian.
 4. The safe PDF fetcher and its tests (private addresses, redirects, size, type).
 5. Attach and re-check, the "Source added after writing" tag on screen and in the report; database tests.

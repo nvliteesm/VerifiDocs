@@ -9,6 +9,8 @@ import { checkClaimHandler, postEvent } from "../../src/lib/api/claims";
 import { handleWith, type ApiContext, type ApiDeps } from "../../src/lib/api/handler";
 import { MAX_RUNS_PER_SESSION, createRun, deleteRun, extractUnit, getRun } from "../../src/lib/api/runs";
 import { importDraft } from "../../src/lib/api/imports";
+import { findSourcesHandler } from "../../src/lib/api/sources-found";
+import type { DiscoverResult } from "../../src/lib/pipeline/discover-sources";
 import { deleteSource, ingestSource, listSources, uploadSource } from "../../src/lib/api/sources";
 import {
   EMBEDDING_DIMENSIONS,
@@ -80,13 +82,21 @@ interface Reply {
 }
 
 /** One simulated browser: it keeps its own cookie, like a real session would. */
-function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["resolve"], limits?: Limits, fetchImpl?: typeof fetch) {
+function newClient(
+  tx: postgres.TransactionSql,
+  llm: Llm,
+  resolve?: ApiDeps["resolve"],
+  limits?: Limits,
+  fetchImpl?: typeof fetch,
+  discover?: ApiDeps["discover"],
+) {
   const deps: ApiDeps = {
     sql: tx,
     llm,
     ...(resolve ? { resolve } : {}),
     ...(limits ? { limits } : {}),
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
+    ...(discover ? { discover } : {}),
   };
   const client = {
     cookie: null as string | null,
@@ -133,6 +143,8 @@ function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["res
     upload: (form: FormData) => client.send("POST", "/api/sources", (c, r) => uploadSource(c, r), { form }),
     ingest: (id: string) => client.send("POST", `/api/sources/${id}/ingest`, (c) => ingestSource(c, id), { model: true }),
     deleteSource: (id: string) => client.send("DELETE", `/api/sources/${id}`, (c) => deleteSource(c, id)),
+    findSources: (claimId: string) =>
+      client.send("POST", `/api/claims/${claimId}/sources`, (c) => findSourcesHandler(c, claimId), { model: true }),
     check: (claimId: string) =>
       client.send("POST", `/api/claims/${claimId}/check`, (c) => checkClaimHandler(c, claimId), { model: true }),
     event: (json: unknown) => client.send("POST", "/api/events", (c, r) => postEvent(c, r), { json }),
@@ -1122,6 +1134,98 @@ describe.skipIf(!enabled)("client events", () => {
       const stored = (await events(tx, await client.sessionId())).map((e) => e.name);
       expect(stored).toEqual(["session_started"]);
       expect((await client.send("POST", "/api/events", (c, r) => postEvent(c, r), { rawBody: "x", headers: { "content-type": "text/plain" } })).status).toBe(415);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("Find a source", () => {
+  const UNCITED = "Casual employment in small firms grew sharply between 2015 and 2020.";
+  const CITED = "Rent was the largest expense for the lowest income group (Smith, 2020).";
+  const REFS = "Smith, J. (2020). A study of household budgets. Journal of Things.";
+  const extract = () => ({ claims: [{ text: UNCITED, citation: null }, { text: CITED, citation: "(Smith, 2020)" }] });
+  const FOUND: DiscoverResult = {
+    exit: "found",
+    considered: 6,
+    dropped: { notInAbstract: 0, notRelevant: 1, badPick: 0 },
+    sources: [
+      {
+        openalexId: "https://openalex.org/W1",
+        doi: "https://doi.org/10.1/w1",
+        title: "Flexible work in small firms",
+        year: 2021,
+        authors: ["Kim Lee", "Mei Tan"],
+        venue: "Journal of Work",
+        openAccessPdf: "https://repo.example/w1.pdf",
+        sentence: "Casual employment grew 18% between 2015 and 2020.",
+        relevance: "direct",
+      },
+    ],
+  };
+
+  async function setup(tx: postgres.TransactionSql, discover: ApiDeps["discover"]) {
+    const client = newClient(tx, fakeLlm({ extract }).llm, undefined, undefined, undefined, discover);
+    const { body: created } = await client.createRun({ draft: `${UNCITED}\n\n${CITED}`, references: REFS });
+    await client.extract(created.runId, 0);
+    const run = (await client.getRun(created.runId)).body;
+    const id = (text: string) => run.claims.find((c: any) => c.text === text).id as string;
+    return { client, runId: created.runId as string, uncited: id(UNCITED), cited: id(CITED) };
+  }
+
+  it("finds papers once, saves them for the run, and logs only counts", async () => {
+    await inTx(async (tx) => {
+      const calls: string[] = [];
+      const { client, runId, uncited } = await setup(tx, async (text) => (calls.push(text), FOUND));
+
+      const first = await client.findSources(uncited);
+      expect(first.status).toBe(200);
+      expect(first.body.sources).toEqual([{ rank: 1, ...FOUND.sources[0] }]);
+      expect(calls).toEqual([UNCITED]);
+
+      // A second press returns what was saved, with no new search.
+      expect((await client.findSources(uncited)).body.sources).toHaveLength(1);
+      expect(calls).toHaveLength(1);
+
+      const claim = (await client.getRun(runId)).body.claims.find((c: any) => c.id === uncited);
+      expect(claim).toMatchObject({ sourcesSearched: true, sources: [{ rank: 1, title: "Flexible work in small firms", authors: ["Kim Lee", "Mei Tan"] }] });
+
+      const logged = (await events(tx, await client.sessionId())).filter((e) => e.name === "sources_suggested");
+      expect(logged).toHaveLength(1);
+      expect(logged[0]!.props).toEqual({ count: 1, latency_ms: expect.any(Number), outcome: "found" });
+      expect(JSON.stringify(logged)).not.toMatch(/Flexible|Casual|small firms/);
+    });
+  });
+
+  it("remembers that nothing was found, so a reload says so and a repeat makes no search", async () => {
+    await inTx(async (tx) => {
+      let calls = 0;
+      const nothing: DiscoverResult = { exit: "nothing_relevant", sources: [], considered: 4, dropped: { notInAbstract: 0, notRelevant: 4, badPick: 0 } };
+      const { client, runId, uncited } = await setup(tx, async () => (calls += 1, nothing));
+      expect((await client.findSources(uncited)).body.sources).toEqual([]);
+      await client.findSources(uncited);
+      expect(calls).toBe(1);
+      expect((await client.getRun(runId)).body.claims.find((c: any) => c.id === uncited)).toMatchObject({ sourcesSearched: true, sources: [] });
+    });
+  });
+
+  it("asks the browser to retry when the search fails, and saves nothing", async () => {
+    await inTx(async (tx) => {
+      const failed: DiscoverResult = { exit: "search_failed", sources: [], considered: 0, dropped: { notInAbstract: 0, notRelevant: 0, badPick: 0 } };
+      const { client, runId, uncited } = await setup(tx, async () => failed);
+      const reply = await client.findSources(uncited);
+      expect(reply.status).toBe(503);
+      expect(reply.body.error).toMatchObject({ code: "search_busy", retry: true });
+      expect((await client.getRun(runId)).body.claims.find((c: any) => c.id === uncited)).toMatchObject({ sourcesSearched: false, sources: [] });
+    });
+  });
+
+  it("refuses a cited claim, and another session's claim", async () => {
+    await inTx(async (tx) => {
+      const { cited, uncited } = await setup(tx, async () => FOUND);
+      const { client } = await setup(tx, async () => FOUND);
+      expect((await client.findSources(cited)).status).toBe(404); // another session's
+      const own = await setup(tx, async () => FOUND);
+      expect((await own.client.findSources(own.cited)).body.error.code).toBe("not_uncited");
+      expect(uncited).not.toBe(own.uncited);
     });
   });
 });

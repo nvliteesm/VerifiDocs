@@ -18,6 +18,7 @@ const valid: Record<EventName, unknown> = {
   report_exported: { format: "markdown" },
   would_pay_answered: { answer: "maybe" },
   feature_interest_answered: { feature: "humanizer", answer: "no" },
+  sources_suggested: { count: 2, latency_ms: 4200, outcome: "found" },
 };
 
 describe("event schemas", () => {

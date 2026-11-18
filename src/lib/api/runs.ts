@@ -21,6 +21,7 @@ import {
   type ParsedDraft,
 } from "../pipeline/parse-draft";
 import { containsQuote } from "../rag/normalize";
+import { sourcesForRun } from "./sources-found";
 import { saveEarlyVerdicts } from "../pipeline/scan";
 import { completeRunIfFinished } from "../pipeline/save-verdict";
 import type { Verdict } from "../pipeline/types";
@@ -243,6 +244,7 @@ interface ClaimRow {
   citation_inherited: boolean;
   section: string | null;
   need: "must" | "should";
+  sources_searched: boolean;
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
   quote: string | null;
@@ -291,7 +293,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     }));
   }
   const claimRows = await sql<ClaimRow[]>`
-    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.need, c.status,
+    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.need, c.sources_searched_at is not null as sources_searched, c.status,
            v.verdict, v.quote, v.page, v.reason, v.exit_stage, v.fix_suggestion
     from claims c left join verdicts v on v.claim_id = c.id
     where c.run_id = ${run.id} order by c.position`;
@@ -301,6 +303,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     select position, raw_text, resolution, resolved_title, year_mismatch from reference_entries
     where run_id = ${run.id} order by position`;
 
+  const found = await sourcesForRun(sql, run.id);
   const claims = claimRows.map((row) => ({
     id: row.id,
     position: row.position,
@@ -309,6 +312,8 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     citationInherited: row.citation_inherited,
     section: row.section,
     need: row.need,
+    sourcesSearched: row.sources_searched,
+    sources: found.get(row.id) ?? [],
     status: row.status,
     verdict: row.verdict,
     quote: row.quote,

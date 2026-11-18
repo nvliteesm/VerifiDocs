@@ -20,6 +20,7 @@ One row per event in the `events` table: `session_id`, `name`, `props` (JSON), `
 | `report_exported` | Report downloaded or copied | `format` |
 | `would_pay_answered` | Beta prompt answered | `answer` (yes, maybe, no). No price figures: price is probed in interviews, not in the product. |
 | `feature_interest_answered` | Optional beta question about a feature not built | `feature`, `answer` |
+| `sources_suggested` | Find a source ran for an uncited claim (not on a repeat press) | `count` (0 to 3), `latency_ms`, `outcome` (found, nothing_relevant). Never the claim, the search words or a title. |
 
 ## What each metric needs
 

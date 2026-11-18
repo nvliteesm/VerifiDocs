@@ -5,6 +5,7 @@
 // a fake model client, without a running server.
 import { getSql } from "../db";
 import { getLlm, type Llm } from "../llm/adapter";
+import { discoverSources, type DiscoverResult } from "../pipeline/discover-sources";
 import type { ReferenceResolution } from "../pipeline/resolve-reference";
 import { limitImports, limitModelUse, type Limits } from "../rate-limit";
 import type { SqlLike } from "../rag/retrieve";
@@ -22,6 +23,8 @@ export interface ApiDeps {
   limits?: Limits;
   /** Fetches a Google Doc for an import. Defaults to the global fetch; tests pass a fake, so no test reaches Google. */
   fetch?: typeof fetch;
+  /** Find a source for one claim's text. Defaults to OpenAlex with OPENALEX_API_KEY; tests pass a fake. */
+  discover?: (claimText: string) => Promise<DiscoverResult>;
 }
 
 export interface ApiContext {
@@ -36,6 +39,7 @@ export function defaultDeps(): ApiDeps {
     get llm(): Llm {
       return getLlm();
     },
+    discover: (claimText) => discoverSources(getLlm(), claimText, { apiKey: process.env.OPENALEX_API_KEY || undefined }),
   };
 }
 
