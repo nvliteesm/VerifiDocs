@@ -6,7 +6,8 @@ import { pluralKey, type MessageKey } from "@/lib/i18n";
 import { localizeReason } from "@/lib/i18n/reasons";
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
 import type { ClaimView, Verdict } from "@/lib/client/types";
-import { SUMMARY_ORDER, VERDICT_INFO, attentionCount, verdictAdvice, verdictLabel } from "@/lib/client/verdict-info";
+import { SUMMARY_ORDER, VERDICT_INFO, verdictAdvice, verdictLabel } from "@/lib/client/verdict-info";
+import { isOptional } from "@/lib/fix-list";
 import type { VerifierState } from "@/lib/client/verifier-state";
 import { useT } from "./LocaleProvider";
 
@@ -37,12 +38,13 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
-function Badge({ verdict }: { verdict: Verdict }) {
+/** `optional`: a general statement with no citation, shown as a suggestion rather than a problem. */
+function Badge({ verdict, optional = false }: { verdict: Verdict; optional?: boolean }) {
   const { t } = useT();
   const info = VERDICT_INFO[verdict];
   return (
-    <span className={`badge badge-${info.tone}`}>
-      <span aria-hidden="true">{info.symbol}</span> {verdictLabel(t, verdict)}
+    <span className={`badge badge-${optional ? "muted" : info.tone}`}>
+      <span aria-hidden="true">{info.symbol}</span> {optional ? t("claim.optional") : verdictLabel(t, verdict)}
     </span>
   );
 }
@@ -106,11 +108,12 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
   // For an empty reference list the usual advice would point the wrong way, so it is left out (the reason says what to do).
   const listMissing = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NO_REFERENCE_LIST));
   const notInList = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NOT_IN_REFERENCE_LIST));
+  const optional = isOptional(claim);
 
   return (
     <li className="claim" id={`claim-${claim.id}`}>
       <div className="claim-head">
-        {verdict ? <Badge verdict={verdict} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
+        {verdict ? <Badge verdict={verdict} optional={optional} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
         {claim.citation && (
           <span className="citation">
             {claim.citation}
@@ -124,7 +127,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
       {verdict && verdict !== "supported" && !listMissing && (
         <p className="next">
           <strong>{t("claim.todo")}</strong>{" "}
-          {notInList ? t("claim.notInList") : verdictAdvice(t, verdict)}
+          {notInList ? t("claim.notInList") : optional ? t("claim.optionalAdvice") : verdictAdvice(t, verdict)}
         </p>
       )}
 
@@ -255,7 +258,7 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
   const { t, locale } = useT();
   // The part being read again, if any (one at a time: each is one model request).
   const [readingPart, setReadingPart] = useState<number | null>(null);
-  const [chosen, setFilter] = useState<Verdict | "attention" | "all">("attention");
+  const [chosen, setFilter] = useState<Verdict | "attention" | "optional" | "all">("attention");
   // Which sections the student opened or closed by hand, and how many cards each one shows.
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [pages, setPages] = useState<Readonly<Record<string, number>>>({});
@@ -263,17 +266,30 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
   const [copiedFix, setCopiedFix] = useState<Record<string, "copied" | "failed">>({});
   const checked = state.claims.filter((claim) => claim.verdict !== null).length;
   const total = state.claims.length;
-  const attention = attentionCount(state.counts);
+  // What needs attention is the fix list: a general statement with no citation is a suggestion, not a problem.
+  const attention = state.fixList.length;
   const finished = state.phase === "done";
   // The scan is over and the cited claims wait for the student to start the check.
   const scanned = state.phase === "scanned";
-  const noCitation = state.counts.no_citation_given ?? 0;
+  const uncited = state.claims.filter((claim) => claim.verdict === "no_citation_given");
+  const needSource = uncited.filter((claim) => !isOptional(claim)).length;
+  const couldUseSource = uncited.length - needSource;
   const notListed = state.counts.reference_not_found ?? 0;
+  // "No citation" counts only what needs a source; the suggestions have their own filter.
+  const chipCounts: Partial<Record<Verdict, number>> = { ...state.counts, no_citation_given: needSource };
+  // Only No citation and Reference not found come from the scan; any other verdict means a source was really looked
+  // at. Until then the result is a scan result, never "Check complete" and never "171 of 171 need attention".
+  const sourceChecked = state.claims.some(
+    (claim) => claim.verdict !== null && claim.verdict !== "no_citation_given" && claim.verdict !== "reference_not_found",
+  );
+  const scanView = scanned || (finished && !state.stopped && !sourceChecked);
+  const scanHeadline =
+    needSource > 0 ? t(pluralKey(locale, "scan.need", needSource), { n: needSource }) : t("scan.noneNeeded");
   const waiting = state.claims.filter((claim) => claim.verdict === null).length;
   // When nothing needs attention, an empty "Needs attention" list would contradict the tally, so show everything.
   const filter = chosen === "attention" && finished && attention === 0 ? "all" : chosen;
-  const stopped = state.stopped;
-  const tally = stopped
+  const isStopped = state.stopped;
+  const tally = isStopped
     ? checked === 0
       ? t("tally.stoppedNone")
       : `${t(pluralKey(locale, "tally.stoppedAfter", total), { checked, total })}${attention > 0 ? ` ${t(pluralKey(locale, "tally.suffix", attention), { n: attention })}` : ""}`
@@ -305,7 +321,11 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
         ? state.claims
         : filter === "attention"
           ? state.claims.filter((claim) => ranked.has(claim.id) || claim.verdict === null)
-          : state.claims.filter((claim) => claim.verdict === filter);
+          : filter === "optional"
+            ? state.claims.filter(isOptional)
+            : filter === "no_citation_given"
+              ? state.claims.filter((claim) => claim.verdict === filter && !isOptional(claim))
+              : state.claims.filter((claim) => claim.verdict === filter);
     return [...list].sort((a, b) => {
       const ra = ranked.get(a.id);
       const rb = ranked.get(b.id);
@@ -369,11 +389,11 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
     <section className="panel" aria-labelledby="results-title">
       <div className="panel-head">
         <p className="eyebrow">
-          {finished
-            ? stopped
+          {finished && !scanView
+            ? isStopped
               ? t("results.eyebrow.stopped")
               : t("results.eyebrow.done")
-            : scanned
+            : scanView
               ? t("results.eyebrow.scanned")
               : state.phase === "error"
                 ? t("results.eyebrow.error")
@@ -389,10 +409,10 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
       <p className="sr-only" role="status">
         {finished
           ? total === 0
-            ? stopped
+            ? isStopped
               ? t("sr.stoppedNone")
               : t("sr.noClaims")
-            : t(stopped ? "sr.stopped" : "sr.finished", { tally })
+            : t(isStopped ? "sr.stopped" : "sr.finished", { tally: scanView ? scanHeadline : tally })
           : ""}
       </p>
 
@@ -440,26 +460,26 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
         </div>
       )}
 
-      {finished && total === 0 && !stopped && (
+      {finished && total === 0 && !isStopped && (
         <p className="empty">{t("empty.noClaims")}</p>
       )}
-      {finished && total === 0 && stopped && <p className="empty">{t("empty.stoppedNone")}</p>}
+      {finished && total === 0 && isStopped && <p className="empty">{t("empty.stoppedNone")}</p>}
 
       {total > 0 && (
         <>
-          {finished && (
+          {finished && !scanView && (
             <div className="tally">
               <p className="tally-number">{tally}</p>
             </div>
           )}
 
-          {scanned && (
+          {scanView && (
             <div className="tally">
-              <p className="tally-number">{t(pluralKey(locale, "scan.summary", total), { n: total })}</p>
+              <p className="tally-number">{scanHeadline}</p>
               <ul className="scan-list">
-                {noCitation > 0 && <li>{t("scan.nocite", { n: noCitation })}</li>}
+                {couldUseSource > 0 && <li>{t("scan.optional", { n: couldUseSource })}</li>}
                 {notListed > 0 && <li>{t("scan.missing", { n: notListed })}</li>}
-                <li>{t("scan.ready", { n: waiting })}</li>
+                {waiting > 0 && <li>{t("scan.ready", { n: waiting })}</li>}
               </ul>
             </div>
           )}
@@ -468,11 +488,16 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
             <button type="button" className="chip" aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>
               {t("filter.attention", { n: attention })}
             </button>
-            {SUMMARY_ORDER.filter((verdict) => (state.counts[verdict] ?? 0) > 0).map((verdict) => (
+            {SUMMARY_ORDER.filter((verdict) => (chipCounts[verdict] ?? 0) > 0).map((verdict) => (
               <button key={verdict} type="button" className="chip" aria-pressed={filter === verdict} onClick={() => setFilter(verdict)}>
-                <span aria-hidden="true">{VERDICT_INFO[verdict].symbol}</span> {verdictLabel(t, verdict)} ({state.counts[verdict]})
+                <span aria-hidden="true">{VERDICT_INFO[verdict].symbol}</span> {verdictLabel(t, verdict)} ({chipCounts[verdict]})
               </button>
             ))}
+            {couldUseSource > 0 && (
+              <button type="button" className="chip" aria-pressed={filter === "optional"} onClick={() => setFilter("optional")}>
+                {t("claim.optional")} ({couldUseSource})
+              </button>
+            )}
             <button type="button" className="chip" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
               {t("filter.all", { n: total })}
             </button>

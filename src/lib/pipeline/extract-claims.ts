@@ -22,7 +22,15 @@ export interface ExtractedClaim {
    * (a paragraph that ends with one citation for several sentences). The claim is then checked against that source.
    */
   citationInherited: boolean;
+  /**
+   * How much the claim needs a source. "must": a number, a finding, a claim about a named organisation, product,
+   * person, law or event, a quotation, or a cause-and-effect claim. "should": a general statement a source would
+   * strengthen. (Common knowledge, glossary entries and definitions of terms are not claims at all.)
+   */
+  need: ClaimNeed;
 }
+
+export type ClaimNeed = "must" | "should";
 
 export interface ExtractionDrops {
   /** The model's claim text is not in the draft, so it was paraphrased or invented. */
@@ -34,6 +42,12 @@ export interface ExtractionDrops {
   overCap: number;
   /** The model labelled it as the student's own work (their project, system or method), which needs no source. */
   ownWork: number;
+  /** The model labelled it common knowledge, a glossary entry or a definition of a term, which needs no source. */
+  noSourceNeeded: number;
+}
+
+export function noDrops(): ExtractionDrops {
+  return { notInDraft: 0, citationNotInDraft: 0, tooShort: 0, duplicate: 0, overCap: 0, ownWork: 0, noSourceNeeded: 0 };
 }
 
 export interface ExtractionResult {
@@ -50,6 +64,7 @@ const responseSchema = z.object({
         citation: z.string().nullable(),
         // The model's own label; a missing or unknown one is kept as a claim (the safer side for a self-check).
         about: z.string().optional(),
+        need: z.string().optional(),
       }),
     )
     .max(200),
@@ -62,7 +77,7 @@ export const EXTRACTION_SYSTEM_PROMPT =
 export function buildExtractionPrompt(unitText: string): string {
   return [
     "Read the student's draft below and list the claims about the outside world that need a source:",
-    "statistics, findings, dates, definitions, causal claims, and statements of what a study or author found.",
+    "statistics, findings, dates, causal claims, and statements of what a study, author or organisation found or did.",
     "Do NOT list statements about the student's own work: their project, system, app, design, requirements,",
     "features, method, plan, test results, or what a later chapter will do. Those need no citation.",
     "Do not list opinions, questions, headings, list labels, table cells, or transitions.",
@@ -78,8 +93,12 @@ export function buildExtractionPrompt(unitText: string): string {
     '  published work; "own_work" if it describes the student\'s own project, system, users, roles, features,',
     '  requirements, design, method or plan (for example "The system uses role-based access control" or',
     '  "Admins can create tasks"). When unsure, use "world".',
+    '- "need": "must" if a reader would expect a source for it: a number or statistic, a research finding, a',
+    "  claim about a named organisation, product, person, law or event, a quotation, or a cause-and-effect claim;",
+    '  "should" if it is a general statement about the world that a source would strengthen; "none" if it is',
+    "  common knowledge, a glossary entry, or the definition of a term. When unsure, use \"must\".",
     "",
-    'Return JSON only, in this shape: {"claims":[{"text":"...","citation":"..." or null,"about":"world" or "own_work"}]}',
+    'Return JSON only, in this shape: {"claims":[{"text":"...","citation":"..." or null,"about":"world" or "own_work","need":"must" or "should" or "none"}]}',
     'If there are no claims, return {"claims":[]}.',
     "",
     "<draft>",
@@ -176,7 +195,7 @@ export async function extractClaims(llm: Llm, unitText: string): Promise<Extract
     schema: responseSchema,
   });
 
-  const dropped: ExtractionDrops = { notInDraft: 0, citationNotInDraft: 0, tooShort: 0, duplicate: 0, overCap: 0, ownWork: 0 };
+  const dropped = noDrops();
   const normalizedUnit = normalizeText(unitText);
   const seen = new Set<string>();
   const kept: { claim: ExtractedClaim; position: number }[] = [];
@@ -186,6 +205,12 @@ export async function extractClaims(llm: Llm, unitText: string): Promise<Extract
       dropped.ownWork += 1;
       continue;
     }
+    const needLabel = item.need?.trim().toLowerCase();
+    if (needLabel === "none") {
+      dropped.noSourceNeeded += 1;
+      continue;
+    }
+    const need: ClaimNeed = needLabel === "should" ? "should" : "must";
     const text = item.text.trim();
     let citation = cleanCitation(item.citation);
 
@@ -223,7 +248,7 @@ export async function extractClaims(llm: Llm, unitText: string): Promise<Extract
         citationInherited = found.inherited;
       }
     }
-    kept.push({ claim: { text, citation, citationInherited }, position: normalizedUnit.indexOf(key) });
+    kept.push({ claim: { text, citation, citationInherited, need }, position: normalizedUnit.indexOf(key) });
   }
 
   kept.sort((a, b) => a.position - b.position);
@@ -280,7 +305,7 @@ export async function extractWithFallback(llm: Llm, unitText: string): Promise<F
     const read = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
     if (read.length === 0) throw error;
 
-    const dropped: ExtractionDrops = { notInDraft: 0, citationNotInDraft: 0, tooShort: 0, duplicate: 0, overCap: 0, ownWork: 0 };
+    const dropped = noDrops();
     const seen = new Set<string>();
     const claims: ExtractedClaim[] = [];
     for (const part of read) {

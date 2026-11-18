@@ -22,6 +22,7 @@ function claim(verdict: Verdict | null, extra: Partial<ClaimView> = {}): ClaimVi
     citation: "(Smith, 2021)",
     citationInherited: false,
     section: null,
+    need: "must",
     status: verdict ? "done" : "pending",
     verdict,
     quote: null,
@@ -319,21 +320,46 @@ describe("ResultsView after the scan", () => {
       "scanned",
     );
 
-  it("says the scan is complete and sums up what it found: no citation, not in the list, ready to check", () => {
+  it("says the scan is complete and leads with the sentences that need a source", () => {
     view(scanned());
     expect(screen.getByText("Scan complete")).toBeTruthy();
-    expect(screen.getByText("Found 6 claims.")).toBeTruthy();
-    expect(screen.getByText("2 without a citation")).toBeTruthy();
+    expect(screen.getByText("2 sentences need a source.")).toBeTruthy();
     expect(screen.getByText("1 cite something that is not in your reference list")).toBeTruthy();
     expect(screen.getByText("3 cited and ready to check")).toBeTruthy();
   });
 
-  it("leaves out a line that has nothing in it, and uses the singular for one claim", () => {
-    view(stateOf([claim(null)], "scanned"));
-    expect(screen.getByText("Found 1 claim.")).toBeTruthy();
-    expect(screen.queryByText(/without a citation/)).toBeNull();
+  it("leaves out a line that has nothing in it, and uses the singular for one sentence", () => {
+    view(stateOf([claim("no_citation_given", { citation: null }), claim(null)], "scanned"));
+    expect(screen.getByText("1 sentence needs a source.")).toBeTruthy();
+    expect(screen.queryByText(/could use one/)).toBeNull();
     expect(screen.queryByText(/not in your reference list/)).toBeNull();
     expect(screen.getByText("1 cited and ready to check")).toBeTruthy();
+  });
+
+  it("treats a general statement with no citation as a suggestion, not a problem", () => {
+    view(stateOf([
+      claim("no_citation_given", { citation: null }),
+      claim("no_citation_given", { citation: null, need: "should" }),
+      claim("no_citation_given", { citation: null, need: "should" }),
+    ], "done"));
+    // Nothing was checked against a source, so this is still a scan result, not "Check complete".
+    expect(screen.getByText("Scan complete")).toBeTruthy();
+    expect(screen.getByText("1 sentence needs a source.")).toBeTruthy();
+    expect(screen.getByText("2 more could use one")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Needs attention (1)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /No citation \(1\)/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Could use a source (2)" })).toBeTruthy();
+    expect(document.querySelectorAll(".claims > li")).toHaveLength(1); // the suggestions wait behind their own filter
+  });
+
+  it("shows a suggestion card as 'Could use a source', with softer advice", async () => {
+    const user = userEvent.setup();
+    view(stateOf([claim("no_citation_given", { citation: null, need: "should" }), claim("contradicted")], "done"));
+    await user.click(screen.getByRole("button", { name: /^All \(2\)$/ }));
+    expect(screen.getByText("Could use a source")).toBeTruthy();
+    expect(screen.getByText("A source would make this stronger.")).toBeTruthy();
+    // A source was looked at (Contradicted), so the usual tally is back.
+    expect(screen.getByText("Check complete")).toBeTruthy();
   });
 
   it("calls a cited claim that has no verdict 'Not checked yet', not 'Waiting', and shows no progress bar", () => {

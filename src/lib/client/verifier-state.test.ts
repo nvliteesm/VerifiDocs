@@ -9,6 +9,7 @@ const claim = (id: string, position: number, verdict: Verdict | null = null): Cl
   citation: null,
   citationInherited: false,
   section: null,
+  need: "must",
   status: verdict ? "done" : "pending",
   verdict,
   quote: null,

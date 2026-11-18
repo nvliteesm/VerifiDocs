@@ -15,9 +15,17 @@ export const FIX_LIST_ORDER: readonly Verdict[] = [
 
 const RANK = new Map<Verdict, number>(FIX_LIST_ORDER.map((verdict, index) => [verdict, index]));
 
+/**
+ * A general statement with no citation ("should" need a source) is a suggestion, not something to fix: it is shown as
+ * "Could use a source" and left out of the fix list, so the list holds what a reader would really expect a source for.
+ */
+export function isOptional(claim: { verdict: Verdict | null; need?: "must" | "should" }): boolean {
+  return claim.verdict === "no_citation_given" && claim.need === "should";
+}
+
 /** Claims with a non-Supported verdict, ordered by severity and then by position in the draft. */
-export function rankFixList<T extends { verdict: Verdict | null; position: number }>(claims: T[]): T[] {
+export function rankFixList<T extends { verdict: Verdict | null; position: number; need?: "must" | "should" }>(claims: T[]): T[] {
   return claims
-    .filter((claim): claim is T & { verdict: Verdict } => claim.verdict !== null && RANK.has(claim.verdict))
+    .filter((claim): claim is T & { verdict: Verdict } => claim.verdict !== null && RANK.has(claim.verdict) && !isOptional(claim))
     .sort((a, b) => RANK.get(a.verdict)! - RANK.get(b.verdict)! || a.position - b.position);
 }

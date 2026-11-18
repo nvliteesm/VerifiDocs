@@ -11,7 +11,7 @@ import type postgres from "postgres";
 import { atomically } from "../db-tx";
 import { lengthBucket, logEvent } from "../events";
 import { rankFixList } from "../fix-list";
-import { extractWithFallback, type FallbackResult } from "../pipeline/extract-claims";
+import { extractWithFallback, noDrops, type FallbackResult } from "../pipeline/extract-claims";
 import {
   MAX_DOCX_BYTES,
   parseDraft,
@@ -160,7 +160,7 @@ export async function extractUnit(context: ApiContext, runId: string, request: R
   // The model call is outside the transaction: it is a network call.
   const extraction: FallbackResult =
     mode === "skip"
-      ? { claims: [], dropped: { notInDraft: 0, citationNotInDraft: 0, tooShort: 0, duplicate: 0, overCap: 0, ownWork: 0 }, partial: true }
+      ? { claims: [], dropped: noDrops(), partial: true }
       : await extractWithFallback(context.deps.llm, units[unit]!.text);
   const failed = extraction.partial;
 
@@ -194,15 +194,16 @@ export async function extractUnit(context: ApiContext, runId: string, request: R
       const paragraphs = unitParagraphs(run.draft_text, unit);
       const sections = claims.map((claim) => paragraphs.find((p) => containsQuote(claim.text, p.text))?.heading ?? null);
       await tx`
-        insert into claims (run_id, session_id, position, text, citation_text, citation_inherited, section)
-        select ${run.id}::uuid, ${sessionId}::uuid, c.pos, c.txt, c.cite, c.inh, c.sec
+        insert into claims (run_id, session_id, position, text, citation_text, citation_inherited, section, need)
+        select ${run.id}::uuid, ${sessionId}::uuid, c.pos, c.txt, c.cite, c.inh, c.sec, c.need
         from unnest(
           ${claims.map((_, i) => unit * POSITION_STRIDE + i + 1)}::int[],
           ${claims.map((claim) => claim.text)}::text[],
           ${claims.map((claim) => claim.citation)}::text[],
           ${claims.map((claim) => claim.citationInherited)}::boolean[],
-          ${sections}::text[]
-        ) as c(pos, txt, cite, inh, sec)`;
+          ${sections}::text[],
+          ${claims.map((claim) => claim.need)}::text[]
+        ) as c(pos, txt, cite, inh, sec, need)`;
       await tx`update runs set claim_count = claim_count + ${claims.length} where id = ${run.id}`;
     }
 
@@ -241,6 +242,7 @@ interface ClaimRow {
   citation_text: string | null;
   citation_inherited: boolean;
   section: string | null;
+  need: "must" | "should";
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
   quote: string | null;
@@ -289,7 +291,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     }));
   }
   const claimRows = await sql<ClaimRow[]>`
-    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.status,
+    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.need, c.status,
            v.verdict, v.quote, v.page, v.reason, v.exit_stage, v.fix_suggestion
     from claims c left join verdicts v on v.claim_id = c.id
     where c.run_id = ${run.id} order by c.position`;
@@ -306,6 +308,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     citation: row.citation_text,
     citationInherited: row.citation_inherited,
     section: row.section,
+    need: row.need,
     status: row.status,
     verdict: row.verdict,
     quote: row.quote,

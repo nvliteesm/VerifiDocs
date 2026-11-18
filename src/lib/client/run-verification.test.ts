@@ -22,6 +22,7 @@ const claim = (id: string, position: number, verdict: Verdict | null = null): Cl
   citation: "(Smith, 2021)",
   citationInherited: false,
   section: null,
+  need: "must",
   status: verdict ? "done" : "pending",
   verdict,
   quote: null,

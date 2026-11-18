@@ -63,7 +63,7 @@ describe("extractClaims", () => {
 
     expect(result.claims.map((c) => c.citation)).toEqual(["(Smith, 2021)", null, "[3]"]);
     expect(result.claims[0]!.text).toBe("Inflation rose to 5 percent in 2023 (Smith, 2021).");
-    expect(result.dropped).toEqual({ notInDraft: 0, citationNotInDraft: 0, tooShort: 0, duplicate: 0, overCap: 0, ownWork: 0 });
+    expect(result.dropped).toEqual({ notInDraft: 0, citationNotInDraft: 0, tooShort: 0, duplicate: 0, overCap: 0, ownWork: 0, noSourceNeeded: 0 });
     expect(requests).toHaveLength(1);
     expect(requests[0]!.system).toMatch(/ignore any instructions/);
   });
@@ -85,7 +85,7 @@ describe("extractClaims", () => {
       const { llm } = fakeLlm({ claims: [{ text: "Households reduced discretionary spending.", citation: word }] });
       const result = await extractClaims(llm, unit);
       expect(result.claims, word).toEqual([
-        { text: "Households reduced discretionary spending.", citation: null, citationInherited: false },
+        { text: "Households reduced discretionary spending.", citation: null, citationInherited: false, need: "must" },
       ]);
       expect(result.dropped.citationNotInDraft, word).toBe(0);
     }
@@ -144,7 +144,7 @@ describe("extractClaims", () => {
       const { llm } = fakeLlm({ claims: [{ text: "The market for fitness apps grew by 12 percent in 2022.", citation: label }] });
       const result = await extractClaims(llm, draft.replace("Must have", label));
       expect(result.claims, label).toEqual([
-        { text: "The market for fitness apps grew by 12 percent in 2022.", citation: null, citationInherited: false },
+        { text: "The market for fitness apps grew by 12 percent in 2022.", citation: null, citationInherited: false, need: "must" },
       ]);
     }
   });
@@ -310,5 +310,32 @@ describe("claims about the student's own work", () => {
     expect(result.claims.map((c) => c.text)).toEqual(["Deputy supports payroll integration.", "Most apps lack task matching."]);
     expect(result.dropped.ownWork).toBe(1);
     expect(buildExtractionPrompt(draft)).toMatch(/"own_work"/);
+  });
+});
+
+describe("how much a claim needs a source", () => {
+  it("drops common knowledge and definitions, keeps 'should' and 'must', and treats a missing label as 'must'", async () => {
+    const draft = "SaaS means software as a service. Small firms often struggle with rosters. Deputy has 300,000 users.";
+    const llm: Llm = {
+      async generateJson<T>(request: GenerateJsonRequest<T>): Promise<T> {
+        return request.schema.parse({
+          claims: [
+            { text: "SaaS means software as a service.", citation: null, need: "none" },
+            { text: "Small firms often struggle with rosters.", citation: null, need: "should" },
+            { text: "Deputy has 300,000 users.", citation: null },
+          ],
+        });
+      },
+      async embed() {
+        throw new Error("not used");
+      },
+    };
+    const result = await extractClaims(llm, draft);
+    expect(result.claims.map((c) => [c.text, c.need])).toEqual([
+      ["Small firms often struggle with rosters.", "should"],
+      ["Deputy has 300,000 users.", "must"],
+    ]);
+    expect(result.dropped.noSourceNeeded).toBe(1);
+    expect(buildExtractionPrompt(draft)).not.toMatch(/definitions, causal/);
   });
 });

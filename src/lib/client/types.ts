@@ -34,6 +34,8 @@ export interface ClaimView {
   citationInherited: boolean;
   /** The heading the claim sits under, or null before the first heading. */
   section: string | null;
+  /** "must": a reader would expect a source. "should": a general statement a source would strengthen. */
+  need: "must" | "should";
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
   quote: string | null;

@@ -34,6 +34,7 @@ function fakeServer(
     citation: "(Vaswani et al., 2017)",
     citationInherited: false,
     section: null,
+    need: "must",
     status: checked ? "done" : "pending",
     verdict: checked ? "supported" : null,
     quote: checked ? "International trade rose 5 percent." : null,
@@ -480,7 +481,7 @@ describe("the scan, then the check", () => {
     fill();
     await user.click(screen.getByRole("button", { name: "Scan my draft" }));
     expect(await screen.findByText("Scan complete")).toBeTruthy();
-    expect(screen.getByText("Found 1 claim.")).toBeTruthy();
+    expect(screen.getByText("1 cited and ready to check")).toBeTruthy();
     expect(screen.getByText("Not checked yet")).toBeTruthy();
     expect(server.count("POST /api/claims/claim-1/check")).toBe(0);
     expect(server.log.some((line) => line.includes("/check"))).toBe(false);
