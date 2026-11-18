@@ -3,7 +3,7 @@
 // Verdict counts and the ranked fix list are DERIVED from the claims, never stored separately, so they cannot
 // disagree with the claim list on screen.
 import { rankFixList } from "../fix-list";
-import type { CheckedVerdict, ClaimView, ReferenceView, RunResponse, RunStatus, Verdict } from "./types";
+import type { CheckedVerdict, ClaimView, FailedPart, ReferenceView, RunResponse, RunStatus, Verdict } from "./types";
 
 /**
  * "extracting" is the scan (reading the draft for claims). "scanned" is where it stops: the claims that need no
@@ -25,6 +25,8 @@ export interface VerifierState {
   fixList: string[];
   /** Claims whose check failed in the browser (not a verdict). The student can retry them. */
   claimErrors: Record<string, string>;
+  /** Parts of the draft the AI could not read; the student can read each one again. */
+  failedParts: FailedPart[];
   error: string | null;
   /** True when the student pressed Stop. The check then ends as "done" with some claims left unchecked. */
   stopped: boolean;
@@ -42,6 +44,7 @@ export const initialState: VerifierState = {
   counts: {},
   fixList: [],
   claimErrors: {},
+  failedParts: [],
   error: null,
   stopped: false,
 };
@@ -102,6 +105,7 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
         unitCount: run.run.unitCount,
         unitsExtracted: run.run.unitsExtracted,
         references: run.references,
+        failedParts: run.failedParts ?? [],
       };
     }
 

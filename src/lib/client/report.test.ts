@@ -7,6 +7,8 @@ const claim = (id: string, position: number, verdict: Verdict | null, over: Part
   position,
   text: `Claim number ${position}.`,
   citation: null,
+  citationInherited: false,
+  section: null,
   status: verdict ? "done" : "pending",
   verdict,
   quote: null,

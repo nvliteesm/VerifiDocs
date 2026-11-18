@@ -12,6 +12,7 @@ import { importDraft } from "../../src/lib/api/imports";
 import { deleteSource, ingestSource, listSources, uploadSource } from "../../src/lib/api/sources";
 import {
   EMBEDDING_DIMENSIONS,
+  LlmOutputError,
   LlmUnavailableError,
   type GenerateJsonRequest,
   type Llm,
@@ -51,7 +52,7 @@ function fakeLlm(script: Script = {}) {
   const calls = { extract: 0, judge: 0, fix: 0 };
   const llm: Llm = {
     async generateJson<T>(request: GenerateJsonRequest<T>): Promise<T> {
-      if (request.prompt.includes("list every factual claim")) {
+      if (request.prompt.includes("list the claims about the outside world")) {
         calls.extract += 1;
         if (!script.extract) throw new Error("unexpected extraction call");
         return request.schema.parse(script.extract(request.prompt));
@@ -124,8 +125,8 @@ function newClient(tx: postgres.TransactionSql, llm: Llm, resolve?: ApiDeps["res
     createRun: (json: unknown, headers?: Record<string, string>) =>
       client.send("POST", "/api/runs", (c, r) => createRun(c, r), { json, ...(headers ? { headers } : {}) }),
     createRunForm: (form: FormData) => client.send("POST", "/api/runs", (c, r) => createRun(c, r), { form }),
-    extract: (runId: string, unit: number) =>
-      client.send("POST", `/api/runs/${runId}/extract`, (c, r) => extractUnit(c, runId, r), { json: { unit }, model: true }),
+    extract: (runId: string, unit: number, mode?: "read" | "skip" | "retry") =>
+      client.send("POST", `/api/runs/${runId}/extract`, (c, r) => extractUnit(c, runId, r), { json: mode ? { unit, mode } : { unit }, model: true }),
     getRun: (runId: string) => client.send("GET", `/api/runs/${runId}`, (c) => getRun(c, runId)),
     deleteRun: (runId: string) => client.send("DELETE", `/api/runs/${runId}`, (c) => deleteRun(c, runId)),
     listSources: () => client.send("GET", "/api/sources", (c) => listSources(c)),
@@ -680,7 +681,8 @@ describe.skipIf(!enabled)("extracting claims", () => {
   });
 
   describe("the scan at the end of extraction", () => {
-    const draftOf = (...sentences: string[]) => sentences.join(" ");
+    // One paragraph per sentence: an uncited sentence that shares a paragraph with a citation takes that citation.
+    const draftOf = (...sentences: string[]) => sentences.join("\n\n");
     const UNCITED = "Household spending rose sharply last year across the whole region.";
     const NOT_LISTED = "Food prices fell during the same year in the capital city (Brown, 2017).";
     const LISTED = "Rent was the largest expense for the lowest income group (Smith, 2020).";
@@ -706,6 +708,57 @@ describe.skipIf(!enabled)("extracting claims", () => {
         expect(run.run.status).toBe("checking");
         expect(run.progress).toEqual({ checked: 2, total: 3 });
         expect(calls.judge).toBe(0); // no model call beyond the extraction
+      });
+    });
+
+    it("gives an uncited sentence the citation at the end of its paragraph, and saves its section", async () => {
+      await inTx(async (tx) => {
+        const client = newClient(tx, fakeLlm(claimsOf([UNCITED, null], [LISTED, "(Smith, 2020)"])).llm);
+        const draft = `2. Background\n\n${UNCITED} ${LISTED}`;
+        const { body: created } = await client.createRun({ draft, references: REFS });
+        await client.extract(created.runId, 0);
+        const run = (await client.getRun(created.runId)).body;
+        const uncited = run.claims.find((c: any) => c.text === UNCITED);
+        expect(uncited).toMatchObject({ citation: "(Smith, 2020)", citationInherited: true, section: "2. Background", verdict: null });
+        expect(run.claims.find((c: any) => c.text === LISTED)).toMatchObject({ citationInherited: false, section: "2. Background" });
+      });
+    });
+
+    it("finishes the scan when a part is skipped, names it, and reads it again on request", async () => {
+      await inTx(async (tx) => {
+        let fail = true;
+        const llm: Llm = {
+          ...fakeLlm().llm,
+          async generateJson<T>(request: GenerateJsonRequest<T>): Promise<T> {
+            if (fail) throw new LlmOutputError("not valid JSON");
+            return request.schema.parse({ claims: [{ text: UNCITED, citation: null }, { text: LISTED, citation: "(Smith, 2020)" }] });
+          },
+        };
+        const client = newClient(tx, llm);
+        const draft = `2. Background\n\n${UNCITED}\n\n${LISTED}`;
+        const { body: created } = await client.createRun({ draft, references: REFS });
+
+        // The model fails on the part, and on both halves: the request asks the browser to retry.
+        expect((await client.extract(created.runId, 0)).status).toBe(503);
+        // The browser gives up on it: the scan finishes with the part recorded as not read.
+        const skipped = await client.extract(created.runId, 0, "skip");
+        expect(skipped.body).toMatchObject({ failed: true, claimsAdded: 0, status: "completed" });
+        let run = (await client.getRun(created.runId)).body;
+        expect(run.failedParts).toEqual([{ unit: 0, section: "2. Background" }]);
+        expect(run.claims).toEqual([]);
+
+        // "Read again": the claims arrive, get their early verdicts, and the run opens again for the check.
+        fail = false;
+        const retried = await client.extract(created.runId, 0, "retry");
+        expect(retried.body).toMatchObject({ failed: false, claimsAdded: 2 });
+        run = (await client.getRun(created.runId)).body;
+        expect(run.failedParts).toEqual([]);
+        expect(run.run.status).toBe("checking");
+        expect(run.claims.find((c: any) => c.text === UNCITED)).toMatchObject({ verdict: "no_citation_given" });
+        expect(run.claims.find((c: any) => c.text === LISTED)).toMatchObject({ verdict: null });
+
+        // A second "Read again" of a part that was read changes nothing.
+        expect((await client.extract(created.runId, 0, "retry")).body).toMatchObject({ alreadyExtracted: true });
       });
     });
 

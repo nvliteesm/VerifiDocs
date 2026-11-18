@@ -16,6 +16,7 @@ Every claim ends with exactly one of eight verdicts. The eval labels use these d
 ## Rules
 
 - Reference not found, Can't check and No citation given are produced before the judge runs. They are real verdicts, not errors.
+- No citation given means no citation anywhere after the claim in its own paragraph. A sentence followed later in its paragraph by a citation is checked against that source, and the card says the citation comes "from the end of its paragraph" (18 Nov 2026). Statements about the student's own project or method are not claims and get no verdict.
 - Supported requires a verified quote and page. Without one, the verdict cannot be Supported.
 - When unsure between Supported and Partial, prefer Partial. A missed unsupported claim costs more than an extra flag.
 - A scanned PDF with empty pages is Can't check, never a wrong verdict.

@@ -108,11 +108,19 @@ async function extractAll(deps: VerifyDeps, runId: string, unitCount: number, em
   emit({ type: "phase", phase: "extracting", message: say(deps, "progress.extracting") });
   let extracted = 0;
   const failures: string[] = [];
+  // Parts the AI kept failing on after the usual retries.
+  const unread: number[] = [];
   await runPool(
     Array.from({ length: unitCount }, (_, unit) => unit),
     EXTRACT_CONCURRENCY,
     async (unit) => {
-      await deps.api.extract(runId, unit);
+      try {
+        await deps.api.extract(runId, unit);
+      } catch (error) {
+        if (!(error instanceof ApiClientError && error.code === "model_unavailable")) throw error;
+        unread.push(unit);
+        return;
+      }
       extracted += 1;
       emit({ type: "extracted", unitsExtracted: extracted });
     },
@@ -123,7 +131,40 @@ async function extractAll(deps: VerifyDeps, runId: string, unitCount: number, em
     emit({ type: "failed", message: failures[0]! });
     return false;
   }
+  if (unread.length > 0) {
+    // A few parts the AI could not read do not block the scan: they are recorded as not read, and the results name
+    // them with a "Read again" button. When most of the draft failed, the AI is down, not one hard part: say so, and
+    // leave the parts unrecorded so "Try again" reads them.
+    if (unread.length > Math.max(1, Math.floor(unitCount / 4))) {
+      emit({ type: "failed", message: say(deps, "err.model_unavailable") });
+      return false;
+    }
+    try {
+      for (const unit of unread) {
+        await deps.api.extract(runId, unit, "skip");
+        extracted += 1;
+        emit({ type: "extracted", unitsExtracted: extracted });
+      }
+    } catch (error) {
+      if (!signal.aborted) emit({ type: "failed", message: messageOf(error, deps.t, deps.locale) });
+      return false;
+    }
+  }
   return true;
+}
+
+/** Reads a part of the draft that the AI could not read before, then shows the results again. */
+export async function retryPart(deps: VerifyDeps, runId: string, unit: number, emit: Emit, signal: AbortSignal): Promise<void> {
+  try {
+    await deps.api.extract(runId, unit, "retry");
+  } catch {
+    // Still not readable: the part stays listed, with its button.
+  }
+  if (signal.aborted) return;
+  const run = await deps.api.getRun(runId);
+  emit({ type: "loaded", run });
+  // New cited claims wait for the check, like after any scan.
+  if (run.claims.some((claim) => claim.verdict === null)) emit({ type: "phase", phase: "scanned", message: "" });
 }
 
 /**

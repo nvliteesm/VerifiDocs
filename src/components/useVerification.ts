@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { ApiClientError, type Api } from "@/lib/client/api";
-import { checkCited, resumeVerification, retryClaim, runVerification } from "@/lib/client/run-verification";
+import { checkCited, resumeVerification, retryClaim, retryPart, runVerification } from "@/lib/client/run-verification";
 import type { VerifyInput } from "@/lib/client/types";
 import { initialState, reduce, type VerifyEvent } from "@/lib/client/verifier-state";
 import type { Translate } from "@/lib/i18n";
@@ -73,6 +73,12 @@ export function useVerification(api: Api) {
     [deps, nextSignal, state.runId],
   );
 
+  /** Reads a part of the draft the AI could not read before. Resolves when the results have been read again. */
+  const readPart = useCallback(
+    (unit: number) => (state.runId ? retryPart(deps, state.runId, unit, dispatch, nextSignal()) : Promise.resolve()),
+    [deps, nextSignal, state.runId],
+  );
+
   const reset = useCallback(() => {
     controller.current?.abort();
     writeStored(LAST_RUN_KEY, null);
@@ -117,5 +123,5 @@ export function useVerification(api: Api) {
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  return { state, start, check, resume, retry, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
+  return { state, start, check, resume, retry, readPart, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
 }

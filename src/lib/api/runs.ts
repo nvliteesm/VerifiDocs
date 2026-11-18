@@ -11,14 +11,16 @@ import type postgres from "postgres";
 import { atomically } from "../db-tx";
 import { lengthBucket, logEvent } from "../events";
 import { rankFixList } from "../fix-list";
-import { extractClaims } from "../pipeline/extract-claims";
+import { extractWithFallback, type FallbackResult } from "../pipeline/extract-claims";
 import {
   MAX_DOCX_BYTES,
   parseDraft,
   parseReferenceList,
   splitIntoUnits,
+  unitParagraphs,
   type ParsedDraft,
 } from "../pipeline/parse-draft";
+import { containsQuote } from "../rag/normalize";
 import { saveEarlyVerdicts } from "../pipeline/scan";
 import { completeRunIfFinished } from "../pipeline/save-verdict";
 import type { Verdict } from "../pipeline/types";
@@ -38,7 +40,7 @@ export const MAX_CREATE_BODY_BYTES = 1_100_000;
 const POSITION_STRIDE = 100;
 
 const createBody = z.object({ draft: z.string(), references: z.string().optional() });
-const extractBody = z.object({ unit: z.number().int().min(0) });
+const extractBody = z.object({ unit: z.number().int().min(0), mode: z.enum(["read", "skip", "retry"]).default("read") });
 
 export async function createRun(context: ApiContext, request: Request): Promise<Response> {
   const sql = context.deps.sql as postgres.Sql;
@@ -119,11 +121,20 @@ async function extractionProgress(reader: postgres.Sql, runId: string) {
   };
 }
 
+/**
+ * POST /api/runs/:id/extract { unit, mode }:
+ * - "read" (the default): read the unit for claims. A unit the model fails on is read again as two halves; if one
+ *   half still fails, the claims of the other are kept and the unit is marked failed.
+ * - "skip": the browser has given up on the unit after its retries. It is recorded as failed with no claims and no
+ *   model call, so the scan can finish and the screen can say which part was not read.
+ * - "retry": read a failed unit again (the student pressed "Read again"). Its old claims are replaced.
+ * A repeated "read" or "skip" of a unit that is already recorded changes nothing.
+ */
 export async function extractUnit(context: ApiContext, runId: string, request: Request): Promise<Response> {
   const sql = context.deps.sql as postgres.Sql;
   const { sessionId } = context;
   assertId(runId);
-  const { unit } = extractBody.parse(await readJson(request));
+  const { unit, mode } = extractBody.parse(await readJson(request));
 
   const [run] = await sql<RunRow[]>`
     select id, status, unit_count, claim_count, draft_text from runs
@@ -135,41 +146,74 @@ export async function extractUnit(context: ApiContext, runId: string, request: R
   const alreadyExtracted = async (reader: postgres.Sql) =>
     jsonResponse({ unit, alreadyExtracted: true, claimsAdded: 0, ...(await extractionProgress(reader, run.id)) });
 
-  const [seen] = await sql<{ n: number }[]>`
-    select count(*)::int as n from run_units where run_id = ${run.id} and unit_index = ${unit}`;
-  if (run.status !== "extracting" || (seen?.n ?? 0) > 0) return alreadyExtracted(sql);
+  const [seen] = await sql<{ failed: boolean }[]>`
+    select failed from run_units where run_id = ${run.id} and unit_index = ${unit}`;
+  if (mode === "retry") {
+    if (!seen?.failed) return alreadyExtracted(sql);
+  } else if (run.status !== "extracting" || seen) {
+    return alreadyExtracted(sql);
+  }
 
   const units = splitIntoUnits(run.draft_text);
   if (units.length !== run.unit_count) throw new Error("The stored draft no longer matches its unit count.");
 
   // The model call is outside the transaction: it is a network call.
-  const extraction = await extractClaims(context.deps.llm, units[unit]!.text);
+  const extraction: FallbackResult =
+    mode === "skip"
+      ? { claims: [], dropped: { notInDraft: 0, citationNotInDraft: 0, tooShort: 0, duplicate: 0, overCap: 0, ownWork: 0 }, partial: true }
+      : await extractWithFallback(context.deps.llm, units[unit]!.text);
+  const failed = extraction.partial;
 
   return atomically(sql)(async (tx) => {
-    const [locked] = await tx<{ id: string }[]>`select id from runs where id = ${run.id} for update`;
+    const [locked] = await tx<{ id: string; status: RunRow["status"] }[]>`select id, status from runs where id = ${run.id} for update`;
     if (!locked) throw new ApiError(404, "not_found", "Not found.");
 
-    const recorded = await tx<{ unit_index: number }[]>`
-      insert into run_units (run_id, unit_index, claim_count) values (${run.id}, ${unit}, ${extraction.claims.length})
-      on conflict (run_id, unit_index) do nothing returning unit_index`;
-    // Another request extracted this unit while this one waited on the model: keep its claims.
-    if (recorded.length === 0) return alreadyExtracted(tx);
+    if (mode === "retry") {
+      const replaced = await tx<{ unit_index: number }[]>`
+        update run_units set claim_count = ${extraction.claims.length}, failed = ${failed}
+        where run_id = ${run.id} and unit_index = ${unit} and failed
+        returning unit_index`;
+      // Another request read it again while this one waited on the model: keep its result.
+      if (replaced.length === 0) return alreadyExtracted(tx);
+      const removed = await tx`
+        delete from claims where run_id = ${run.id}
+          and position between ${unit * POSITION_STRIDE + 1} and ${unit * POSITION_STRIDE + POSITION_STRIDE - 1}`;
+      await tx`update runs set claim_count = claim_count - ${removed.count} where id = ${run.id}`;
+    } else {
+      const recorded = await tx<{ unit_index: number }[]>`
+        insert into run_units (run_id, unit_index, claim_count, failed)
+        values (${run.id}, ${unit}, ${extraction.claims.length}, ${failed})
+        on conflict (run_id, unit_index) do nothing returning unit_index`;
+      // Another request extracted this unit while this one waited on the model: keep its claims.
+      if (recorded.length === 0) return alreadyExtracted(tx);
+    }
 
     const claims = extraction.claims;
     if (claims.length > 0) {
+      // The heading each claim sits under, for grouping the results by section.
+      const paragraphs = unitParagraphs(run.draft_text, unit);
+      const sections = claims.map((claim) => paragraphs.find((p) => containsQuote(claim.text, p.text))?.heading ?? null);
       await tx`
-        insert into claims (run_id, session_id, position, text, citation_text)
-        select ${run.id}::uuid, ${sessionId}::uuid, c.pos, c.txt, c.cite
+        insert into claims (run_id, session_id, position, text, citation_text, citation_inherited, section)
+        select ${run.id}::uuid, ${sessionId}::uuid, c.pos, c.txt, c.cite, c.inh, c.sec
         from unnest(
           ${claims.map((_, i) => unit * POSITION_STRIDE + i + 1)}::int[],
           ${claims.map((claim) => claim.text)}::text[],
-          ${claims.map((claim) => claim.citation)}::text[]
-        ) as c(pos, txt, cite)`;
+          ${claims.map((claim) => claim.citation)}::text[],
+          ${claims.map((claim) => claim.citationInherited)}::boolean[],
+          ${sections}::text[]
+        ) as c(pos, txt, cite, inh, sec)`;
       await tx`update runs set claim_count = claim_count + ${claims.length} where id = ${run.id}`;
     }
 
     const progress = await extractionProgress(tx, run.id);
-    if (progress.unitsExtracted >= run.unit_count) {
+    if (mode === "retry" && locked.status !== "extracting") {
+      // The scan had already ended: the new claims get their early verdicts now, and a closed run with new cited
+      // claims opens again for the check.
+      await tx`update runs set status = 'checking', completed_at = null where id = ${run.id}`;
+      await saveEarlyVerdicts(tx, sessionId, run.id);
+      await completeRunIfFinished(tx, sessionId, run.id);
+    } else if (progress.unitsExtracted >= run.unit_count && locked.status === "extracting") {
       await tx`update runs set status = 'checking' where id = ${run.id}`;
       await logEvent(tx, sessionId, "run_started", { claim_count: progress.claimCount });
       // The scan: claims with no citation, an unreadable one, or one that is not in the reference list get their
@@ -183,6 +227,7 @@ export async function extractUnit(context: ApiContext, runId: string, request: R
       unit,
       alreadyExtracted: false,
       claimsAdded: claims.length,
+      failed,
       dropped: extraction.dropped,
       ...(await extractionProgress(tx, run.id)),
     });
@@ -194,6 +239,8 @@ interface ClaimRow {
   position: number;
   text: string;
   citation_text: string | null;
+  citation_inherited: boolean;
+  section: string | null;
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
   quote: string | null;
@@ -230,8 +277,19 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
   if (!run) throw new ApiError(404, "not_found", "Not found.");
 
   const [units] = await sql<{ n: number }[]>`select count(*)::int as n from run_units where run_id = ${run.id}`;
+  // Parts the AI could not read, named by the heading they start under. The draft is read only when there are any.
+  const failedUnits = await sql<{ unit_index: number }[]>`
+    select unit_index from run_units where run_id = ${run.id} and failed order by unit_index`;
+  let failedParts: { unit: number; section: string | null }[] = [];
+  if (failedUnits.length > 0) {
+    const [draft] = await sql<{ draft_text: string }[]>`select draft_text from runs where id = ${run.id}`;
+    failedParts = failedUnits.map((row) => ({
+      unit: row.unit_index,
+      section: unitParagraphs(draft!.draft_text, row.unit_index)[0]?.heading ?? null,
+    }));
+  }
   const claimRows = await sql<ClaimRow[]>`
-    select c.id, c.position, c.text, c.citation_text, c.status,
+    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.status,
            v.verdict, v.quote, v.page, v.reason, v.exit_stage, v.fix_suggestion
     from claims c left join verdicts v on v.claim_id = c.id
     where c.run_id = ${run.id} order by c.position`;
@@ -246,6 +304,8 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     position: row.position,
     text: row.text,
     citation: row.citation_text,
+    citationInherited: row.citation_inherited,
+    section: row.section,
     status: row.status,
     verdict: row.verdict,
     quote: row.quote,
@@ -271,6 +331,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     progress: { checked: claims.filter((c) => c.verdict !== null).length, total: claims.length },
     counts,
     fixList: rankFixList(claims).map((claim) => claim.id),
+    failedParts,
     claims,
     references: references.map((ref) => ({
       position: ref.position,

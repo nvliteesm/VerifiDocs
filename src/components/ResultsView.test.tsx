@@ -20,6 +20,8 @@ function claim(verdict: Verdict | null, extra: Partial<ClaimView> = {}): ClaimVi
     position: n,
     text: `Claim number ${n}`,
     citation: "(Smith, 2021)",
+    citationInherited: false,
+    section: null,
     status: verdict ? "done" : "pending",
     verdict,
     quote: null,
@@ -424,5 +426,93 @@ describe("ResultsView claim errors", () => {
     const card = screen.getByText("unlucky claim").closest("li")!;
     await user.click(within(card).getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalledWith(failed.id);
+  });
+});
+
+describe("ResultsView sections", () => {
+  // A long draft: three sections, problems only in the second, more claims in it than one page holds.
+  function longDraft() {
+    const intro = Array.from({ length: 5 }, () => claim("supported", { section: "1. Introduction" }));
+    const background = Array.from({ length: 25 }, () => claim("no_citation_given", { citation: null, section: "2. Background" }));
+    const results = Array.from({ length: 3 }, () => claim("supported", { section: "4. Results" }));
+    return [...intro, ...background, ...results];
+  }
+
+  it("groups claims under their headings, in the order of the draft, with a count on each", async () => {
+    const user = userEvent.setup();
+    view(stateOf(longDraft()));
+    // "Needs attention" shows only the section with work in it.
+    expect(screen.getAllByRole("button", { expanded: true }).map((b) => b.textContent)).toEqual(["▾2. Background25 need attention"]);
+    await user.click(screen.getByRole("button", { name: /^All \(33\)$/ }));
+    const heads = document.querySelectorAll(".section-head button");
+    expect([...heads].map((b) => b.textContent)).toEqual([
+      "▸1. Introduction5 claims",
+      "▾2. Background25 need attention",
+      "▸4. Results3 claims",
+    ]);
+  });
+
+  it("opens the first section with work in it, and pages long sections 20 at a time", async () => {
+    const user = userEvent.setup();
+    view(stateOf(longDraft(), "done"));
+    await user.click(screen.getByRole("button", { name: /^All \(33\)$/ }));
+    const background = screen.getByRole("button", { name: /2\. Background/ });
+    expect(background.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: /1\. Introduction/ }).getAttribute("aria-expanded")).toBe("false");
+
+    const region = document.getElementById(background.getAttribute("aria-controls")!)!;
+    expect(within(region).getAllByRole("listitem")).toHaveLength(20);
+    await user.click(within(region).getByRole("button", { name: "Show 5 more (5 left)" }));
+    expect(within(region).getAllByRole("listitem")).toHaveLength(25);
+
+    // A closed section opens on a press.
+    const intro = screen.getByRole("button", { name: /1\. Introduction/ });
+    await user.click(intro);
+    expect(intro.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("shows a short list without section rows when the draft has no headings", () => {
+    view(stateOf([claim("contradicted"), claim("supported")]));
+    expect(screen.queryByRole("button", { expanded: true })).toBeNull();
+    expect(screen.getAllByRole("listitem").length).toBeGreaterThan(0);
+  });
+
+  it("says when a claim takes the citation at the end of its paragraph", () => {
+    view(stateOf([claim("supported", { citation: "(Lee & Park, 2021)", citationInherited: true, quote: "q", page: 2 })]));
+    expect(screen.getByText("(Lee & Park, 2021) · from the end of its paragraph")).toBeTruthy();
+  });
+
+  it("names what was checked when the draft came from a link or a file", () => {
+    render(<ResultsView state={stateOf([claim("supported")])} draftLabel="Google Doc" onRetryClaim={noop} onEvent={vi.fn()} />);
+    expect(screen.getByText("Draft: Google Doc")).toBeTruthy();
+  });
+});
+
+describe("ResultsView parts that were not read", () => {
+  it("names each part the AI could not read, and reads it again on a press", async () => {
+    const user = userEvent.setup();
+    const onReadPart = vi.fn().mockResolvedValue(undefined);
+    const state = { ...stateOf([claim("supported")], "scanned"), failedParts: [{ unit: 4, section: "3.2 Requirements" }, { unit: 0, section: null }] };
+    render(<ResultsView state={state} onRetryClaim={noop} onReadPart={onReadPart} onEvent={vi.fn()} />);
+    const group = screen.getByRole("group", { name: "The AI could not read 2 parts of your draft, so their claims are missing:" });
+    expect(within(group).getByText("3.2 Requirements")).toBeTruthy();
+    expect(within(group).getByText("Start of the draft")).toBeTruthy();
+    await user.click(within(group).getAllByRole("button", { name: "Read again" })[0]!);
+    expect(onReadPart).toHaveBeenCalledWith(4);
+  });
+
+  it("says nothing about unread parts while the scan is still running", () => {
+    const state = { ...stateOf([claim(null)], "extracting"), failedParts: [{ unit: 1, section: null }] };
+    view(state);
+    expect(screen.queryByText(/could not read/)).toBeNull();
+  });
+});
+
+describe("ResultsView claims with no known heading", () => {
+  it("puts them last, as 'Other claims'", async () => {
+    const user = userEvent.setup();
+    view(stateOf([claim("supported", { section: null }), claim("supported", { section: "1. Introduction" }), claim("contradicted", { section: "2. Background" })]));
+    await user.click(screen.getByRole("button", { name: /^All \(3\)$/ }));
+    expect([...document.querySelectorAll(".section-name")].map((el) => el.textContent)).toEqual(["1. Introduction", "2. Background", "Other claims"]);
   });
 });

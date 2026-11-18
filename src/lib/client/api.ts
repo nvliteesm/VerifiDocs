@@ -133,8 +133,9 @@ export function createApi(options: ApiOptions = {}) {
         json: { draft: input.draft.text, ...(input.references.trim() ? { references: input.references } : {}) },
       });
     },
-    extract: (runId: string, unit: number) =>
-      send<ExtractResponse>("POST", `/api/runs/${runId}/extract`, { json: { unit } }),
+    /** Reads one part of the draft. "skip" records it as not read; "retry" reads a part that was not read again. */
+    extract: (runId: string, unit: number, mode: "read" | "skip" | "retry" = "read") =>
+      send<ExtractResponse>("POST", `/api/runs/${runId}/extract`, { json: mode === "read" ? { unit } : { unit, mode } }),
     getRun: (runId: string) => send<RunResponse>("GET", `/api/runs/${runId}`),
     /** Deletes a check now (its draft text, claims and verdicts). */
     deleteRun: async (runId: string): Promise<void> => {

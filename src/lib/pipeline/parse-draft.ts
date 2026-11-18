@@ -132,6 +132,78 @@ export function splitIntoUnits(bodyText: string): ExtractionUnit[] {
   return buildUnits(bodyText.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean));
 }
 
+/** How many levels a numbered heading has ("2" is 1, "1.4." is 2, "1.4.1" is 3); 0 when it is not numbered. */
+function numberedDepth(heading: string | null): number {
+  const match = heading ? /^(\d+(?:\.\d+)*)\.?\s/.exec(heading) : null;
+  return match ? match[1]!.split(".").length : 0;
+}
+
+export interface HeadedParagraph {
+  text: string;
+  /** The nearest heading above this paragraph, possibly in an earlier unit; null before the first heading. */
+  heading: string | null;
+}
+
+/**
+ * The paragraphs of one unit (as splitIntoUnits cuts it), each with the heading it sits under, so a claim can be
+ * shown under its section ("2.1 Background"). A heading line is its own paragraph and is returned with itself as the
+ * heading. Pure: it reads the same stored body the units come from.
+ */
+export function unitParagraphs(bodyText: string, unitIndex: number): HeadedParagraph[] {
+  const paragraphs = bodyText.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  const units = buildUnits(paragraphs);
+  const unit = units[unitIndex];
+  if (!unit) return [];
+  // The unit's text starts at a paragraph (or piece of one) boundary. Walk the paragraphs in order, tracking the
+  // heading, and collect those whose text lies inside this unit.
+  // A document that numbers its headings ("1.4. Business Model") also has short unnumbered lines (list items, table
+  // cells) that look like headings: a real 176,000-character FYP report had 49 numbered headings and 132 such lines.
+  // So when there are numbered headings, only those two levels deep or less ("1", "1.4", not "1.4.1") start a section.
+  const numberedMode = paragraphs.filter((paragraph) => numberedDepth(headingText(paragraph)) > 0).length >= 3;
+  const sectionHeading = (paragraph: string): string | null => {
+    const found = headingText(paragraph);
+    if (found === null || !numberedMode) return found;
+    const depth = numberedDepth(found);
+    return depth > 0 && depth <= 2 ? found : null;
+  };
+  let heading: string | null = null;
+  let offset = 0;
+  const unitStart = units.slice(0, unitIndex).reduce((sum, u) => sum + u.text.length + 2, 0);
+  const unitEnd = unitStart + unit.text.length;
+  const out: HeadedParagraph[] = [];
+  for (const paragraph of paragraphs) {
+    const found = sectionHeading(paragraph);
+    if (found !== null) heading = found;
+    for (const piece of splitLongParagraph(paragraph, EXTRACTION_UNIT_MAX_CHARS)) {
+      const start = offset;
+      offset += piece.length + 2;
+      if (start >= unitStart && start < unitEnd) out.push({ text: piece, heading });
+    }
+  }
+  return out;
+}
+
+/** No hard-wrapped line (text copied out of a PDF, a plain-text email) is this long. */
+const PARAGRAPH_LINE_CHARS = 200;
+
+/**
+ * True when every line of the text is a paragraph of its own, with no blank line between them. That is how a Google
+ * Docs text export and text copied out of a word processor arrive (a real 176,000-character Google Doc had 3,378 lines
+ * and only 109 blank lines, so its headings and its "References" heading were buried inside large blocks). Hard-wrapped
+ * text has no line this long, so its lines are still joined into paragraphs at blank lines as before.
+ */
+export function linesAreParagraphs(text: string): boolean {
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  if (lines.length < 3) return false;
+  const long = lines.filter((line) => line.trim().length > PARAGRAPH_LINE_CHARS).length;
+  return long >= 2 && long / lines.length >= 0.01;
+}
+
+function toParagraphs(cleaned: string): string[] {
+  const separator = linesAreParagraphs(cleaned) ? /\n+/ : /\n\s*\n/;
+  return cleaned.split(separator).map((p) => p.trim()).filter(Boolean);
+}
+
 /** Parses already-extracted text. Exported for tests and for the .docx path. */
 export function parseDraftText(raw: string): ParsedDraft {
   const cleaned = cleanText(raw);
@@ -143,7 +215,7 @@ export function parseDraftText(raw: string): ParsedDraft {
     );
   }
 
-  const paragraphs = cleaned.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const paragraphs = toParagraphs(cleaned);
 
   // The last reference heading wins, so a contents page that mentions "References" is ignored.
   let referenceStart = -1;

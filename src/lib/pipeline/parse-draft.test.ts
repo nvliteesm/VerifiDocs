@@ -11,6 +11,8 @@ import {
   parseDraftText,
   parseReferenceList,
   splitIntoUnits,
+  linesAreParagraphs,
+  unitParagraphs,
 } from "./parse-draft";
 
 describe("parseDraftText", () => {
@@ -215,5 +217,78 @@ describe("parseReferenceList", () => {
     } catch (error) {
       expect((error as DraftError).code).toBe("too_many_references");
     }
+  });
+});
+
+// A Google Docs text export: one paragraph per line, no blank lines between them (as seen on a real 176,000-character
+// document, where the "References" heading was buried inside a large block and no reference list was found).
+const LONG = "Physical activity among university students in Southeast Asia has fallen over the last decade, and " +
+  "several national surveys report that fewer than half of students meet the recommended weekly minutes of exercise.";
+const googleDoc = [
+  "1. Introduction",
+  LONG,
+  "Most adults walk less than 5,000 steps a day [2].",
+  "2. Background",
+  LONG.replace("Physical", "Regular physical"),
+  "11. References",
+  "[1] Ward, Z. (2018). Obesity trends. The Lancet, 392, 1-10.",
+  "[2] Lee, K., & Park, J. (2021). Walking and health. BMJ Open, 11, 1-8.",
+].join("\n");
+
+describe("Google Docs text (one paragraph per line)", () => {
+  it("is recognised by its long lines, and hard-wrapped text is not", () => {
+    expect(linesAreParagraphs(googleDoc)).toBe(true);
+    const wrapped = Array.from({ length: 20 }, () => "a hard-wrapped line of about seventy characters, as a PDF gives it").join("\n");
+    expect(linesAreParagraphs(wrapped)).toBe(false);
+  });
+
+  it("finds the reference list and the headings", () => {
+    const parsed = parseDraftText(googleDoc);
+    expect(parseReferenceList(parsed.referenceText ?? "")).toHaveLength(2);
+    expect(parsed.text).not.toMatch(/Walking and health/);
+    expect(parsed.sections.map((s) => s.heading)).toEqual(["1. Introduction", "2. Background"]);
+  });
+});
+
+describe("unitParagraphs", () => {
+  it("gives each paragraph the heading above it, even when that heading is in an earlier unit", () => {
+    const parsed = parseDraftText(googleDoc);
+    const first = unitParagraphs(parsed.text, 0);
+    expect(first.find((p) => p.text.startsWith("Most adults"))?.heading).toBe("1. Introduction");
+    expect(first.find((p) => p.text.startsWith("Regular physical"))?.heading).toBe("2. Background");
+
+    // Push the second section into a unit of its own: its paragraphs still know their heading.
+    const filler = Array.from({ length: Math.ceil(EXTRACTION_UNIT_MAX_CHARS / LONG.length) + 1 }, () => LONG).join("\n\n");
+    const body = `2. Background\n\n${filler}\n\nScreen time rose sharply during the pandemic.`;
+    const units = splitIntoUnits(body);
+    expect(units.length).toBeGreaterThan(1);
+    const last = unitParagraphs(body, units.length - 1);
+    expect(last.at(-1)).toEqual({ text: "Screen time rose sharply during the pandemic.", heading: "2. Background" });
+    expect(unitParagraphs(body, units.length)).toEqual([]);
+  });
+});
+
+describe("sections in a document with numbered headings", () => {
+  it("starts sections only at numbered headings two levels deep, not at list items or table cells", () => {
+    const body = [
+      "1. Introduction",
+      "Shift work is common in retail.",
+      "1.4. Business Model",
+      "Revenue Streams",
+      "Most revenue comes from subscriptions.",
+      "1.4.1. Key Partners",
+      "Payroll providers are partners.",
+      "2. Background",
+      "Up to 10 active members",
+    ].join("\n\n");
+    const headings = unitParagraphs(body, 0).map((p) => [p.text, p.heading]);
+    expect(headings).toContainEqual(["Most revenue comes from subscriptions.", "1.4. Business Model"]);
+    expect(headings).toContainEqual(["Payroll providers are partners.", "1.4. Business Model"]);
+    expect(headings).toContainEqual(["Up to 10 active members", "2. Background"]);
+  });
+
+  it("keeps unnumbered headings in a document that does not number them", () => {
+    const body = ["Introduction", "Shift work is common in retail.", "Background", "Most revenue comes from subscriptions."].join("\n\n");
+    expect(unitParagraphs(body, 0).at(-1)).toEqual({ text: "Most revenue comes from subscriptions.", heading: "Background" });
   });
 });

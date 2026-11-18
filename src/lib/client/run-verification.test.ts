@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiClientError } from "./api";
 import {
   CHECK_CONCURRENCY,
+  retryPart,
   checkCited,
   oneClaimPerCitation,
   retryClaim,
@@ -19,6 +20,8 @@ const claim = (id: string, position: number, verdict: Verdict | null = null): Cl
   position,
   text: `Claim ${position}`,
   citation: "(Smith, 2021)",
+  citationInherited: false,
+  section: null,
   status: verdict ? "done" : "pending",
   verdict,
   quote: null,
@@ -33,6 +36,7 @@ const runOf = (claims: ClaimView[], status: RunStatus, unitCount = 2): RunRespon
   progress: { checked: 0, total: claims.length },
   counts: {},
   fixList: [],
+  failedParts: [],
   claims,
   references: [],
 });
@@ -50,6 +54,8 @@ interface Fake {
   checks?: Record<string, CheckResponse[]>;
   checkDelayMs?: number;
   extractError?: Error;
+  /** Units the AI fails on (model_unavailable) when read normally; a "skip" for them succeeds. */
+  unreadable?: number[];
   createError?: Error;
   checkError?: Record<string, Error>;
   statusBefore?: RunStatus;
@@ -58,7 +64,7 @@ interface Fake {
 function fakeDeps(fake: Fake = {}) {
   const claims = fake.claims ?? [claim("a", 1), claim("b", 2), claim("c", 3)];
   const unitCount = fake.unitCount ?? 2;
-  const log = { extracted: [] as number[], checked: [] as string[], sleeps: [] as number[], getRuns: 0, created: 0 };
+  const log = { extracted: [] as number[], skipped: [] as number[], checked: [] as string[], sleeps: [] as number[], getRuns: 0, created: 0 };
   let inFlight = 0;
   let peak = 0;
   const verdicts = new Map<string, Verdict>();
@@ -74,9 +80,14 @@ function fakeDeps(fake: Fake = {}) {
         if (fake.createError) throw fake.createError;
         return { runId: "run-1", status: "extracting", unitCount, referenceCount: 1 };
       },
-      async extract(_runId, unit) {
+      async extract(_runId, unit, mode = "read") {
+        if (mode === "skip") {
+          log.skipped.push(unit);
+          return { unit, alreadyExtracted: false, claimsAdded: 0, failed: true, status: "extracting", unitCount, unitsExtracted: 0, claimCount: 0 };
+        }
         log.extracted.push(unit);
         if (fake.extractError) throw fake.extractError;
+        if (fake.unreadable?.includes(unit)) throw new ApiClientError(503, "model_unavailable", "The AI service is busy. Try again in a moment.");
         return { unit, alreadyExtracted: false, claimsAdded: 1, status: "extracting", unitCount, unitsExtracted: log.extracted.length, claimCount: 1 };
       },
       async getRun() {
@@ -382,5 +393,51 @@ describe("retryClaim", () => {
     await scanAndCheck(failing.deps, input, collected.emit, signal());
     await retryClaim(failing.deps, "run-1", "a", collected.emit, signal());
     expect(collected.state().claimErrors.a).toBe("Something went wrong on our side.");
+  });
+});
+
+describe("parts of the draft the AI could not read", () => {
+  const collect = () => {
+    let state = initialState;
+    const events: VerifyEvent[] = [];
+    return { emit: (event: VerifyEvent) => { events.push(event); state = reduce(state, event); }, events, state: () => state };
+  };
+
+  it("records one unreadable part as not read and still finishes the scan", async () => {
+    const { deps, log } = fakeDeps({ unitCount: 8, unreadable: [5] });
+    const { emit, state } = collect();
+    await runVerification(deps, input, emit, new AbortController().signal);
+    expect(log.skipped).toEqual([5]);
+    expect(state().phase).toBe("scanned");
+    expect(state().error).toBeNull();
+  });
+
+  it("stops with 'the AI is busy' when most parts fail, and records none of them as not read", async () => {
+    const { deps, log } = fakeDeps({ unitCount: 4, unreadable: [0, 1, 2] });
+    const { emit, state } = collect();
+    await runVerification(deps, input, emit, new AbortController().signal);
+    expect(log.skipped).toEqual([]);
+    expect(state().phase).toBe("error");
+    expect(state().error).toBe("The AI service is busy. Try again in a moment.");
+  });
+
+  it("reads a part again on request, then shows the results again, waiting for the check if claims are new", async () => {
+    const calls: string[] = [];
+    const deps: VerifyDeps = {
+      api: {
+        createRun: async () => { throw new Error("unused"); },
+        check: async () => { throw new Error("unused"); },
+        extract: async (_id, unit, mode) => {
+          calls.push(`${unit}:${mode}`);
+          return { unit, alreadyExtracted: false, claimsAdded: 2, status: "checking", unitCount: 3, unitsExtracted: 3, claimCount: 2 };
+        },
+        getRun: async () => runOf([claim("a", 1)], "checking", 3),
+      },
+    };
+    const { emit, state, events } = collect();
+    await retryPart(deps, "run-1", 2, emit, new AbortController().signal);
+    expect(calls).toEqual(["2:retry"]);
+    expect(events.map((e) => e.type)).toEqual(["loaded", "phase"]);
+    expect(state().phase).toBe("scanned");
   });
 });

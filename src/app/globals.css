@@ -547,14 +547,144 @@ progress {
   padding-left: 20px;
   color: var(--muted);
 }
-.import-card {
-  display: grid;
-  gap: 12px;
+/*
+  The draft box takes pasted text, a pasted link or a dropped file, so the whole field is the drop target and lights
+  up the same way the sources tray does. A draft read from a link or file becomes one line (the card): a document is
+  edited in the student's own editor, not here.
+*/
+.draft-drop {
+  border-radius: 8px;
+  transition: background-color 0.15s, box-shadow 0.15s;
 }
-.import-preview {
-  max-height: 9rem;
-  overflow: hidden;
-  white-space: pre-line;
+.draft-drop.drop-active {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.draft-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.draft-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+}
+.draft-card-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.draft-card-name {
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.draft-card-note {
+  flex-basis: 100%;
+}
+/* The separate reference list is folded away: most drafts end with their own list. */
+.refs > summary {
+  font-weight: 600;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.refs[open] > summary {
+  margin-bottom: 6px;
+}
+.refs .hint {
+  font-weight: 400;
+}
+
+/*
+  Results by section: one row per heading of the draft, so a long thesis reads as its own table of contents.
+  The count is the row's one strong signal; a section with work in it shows it in the warning colour.
+*/
+.sections {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+.section {
+  border-bottom: 1px solid var(--line);
+}
+.section-head {
+  font-family: var(--sans);
+  font-size: 1rem;
+}
+.section-head button {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.section-head button:hover {
+  background: var(--accent-soft);
+}
+.section-arrow {
+  width: 1em;
+  color: var(--muted);
+}
+.section-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.section-count {
+  color: var(--muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.section-count-work {
+  color: var(--warn);
+  font-weight: 600;
+}
+.section > div {
+  padding: 4px 0 16px;
+}
+.section-more {
+  margin-top: 12px;
+}
+/* Parts of the draft the AI could not read: one line per part, the button beside its name. */
+.unread {
+  display: grid;
+  gap: 8px;
+}
+.unread ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.unread li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .tally-number {
   font-family: var(--serif);

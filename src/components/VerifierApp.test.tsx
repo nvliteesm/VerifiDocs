@@ -10,7 +10,16 @@ import { VerifierApp } from "./VerifierApp";
 
 /** A fake server behind `fetch`: just enough of the API for one claim to go from pasted text to a verdict. */
 function fakeServer(
-  options: { failCreate?: boolean; existingRun?: boolean; hangChecks?: boolean; deleteStatus?: number; exampleFails?: boolean; importFails?: boolean } = {},
+  options: {
+    failCreate?: boolean;
+    existingRun?: boolean;
+    hangChecks?: boolean;
+    deleteStatus?: number;
+    exampleFails?: boolean;
+    importFails?: boolean;
+    /** How many references the imported document ends with (default 2). */
+    importRefs?: number;
+  } = {},
 ) {
   const log: string[] = [];
   const eventBodies: { name: string; props: Record<string, unknown> }[] = [];
@@ -23,6 +32,8 @@ function fakeServer(
     position: 1,
     text: "International trade rose 5 percent",
     citation: "(Vaswani et al., 2017)",
+    citationInherited: false,
+    section: null,
     status: checked ? "done" : "pending",
     verdict: checked ? "supported" : null,
     quote: checked ? "International trade rose 5 percent." : null,
@@ -44,6 +55,7 @@ function fakeServer(
     progress: { checked: checked ? 1 : 0, total: 1 },
     counts: checked ? { supported: 1 } : {},
     fixList: [],
+    failedParts: [],
     claims: [claim()],
     references: [],
   });
@@ -62,7 +74,13 @@ function fakeServer(
         return json(422, { error: { code: "not_public", message: "The document could not be opened. Make sure Share is set to “Anyone with the link” and the link is right." } });
       }
       const isPdf = init?.body instanceof FormData;
-      return json(200, { text: "Imported draft text (Smith, 2021).", source: isPdf ? "pdf" : "link", warnings: isPdf ? [] : ["footnotes"], truncated: false });
+      return json(200, {
+        text: "Imported draft text (Smith, 2021).",
+        source: isPdf ? "pdf" : "link",
+        warnings: isPdf ? [] : ["footnotes"],
+        truncated: false,
+        referenceCount: options.importRefs ?? 2,
+      });
     }
     if (method === "POST" && url === "/api/sources/doc-ex/ingest") {
       return json(200, { documentId: "doc-ex", status: "ready", pagesIngested: 1, pageCount: 1, done: true });
@@ -112,11 +130,11 @@ async function openApp(server: ReturnType<typeof fakeServer>, opts: { lastRun?: 
   if (opts.lastRun) window.localStorage.setItem(LAST_RUN_KEY, "run-1");
   vi.stubGlobal("fetch", server.fetchImpl);
   render(<VerifierApp />);
-  return screen.findByLabelText(/Draft text/).catch(() => null);
+  return screen.findByLabelText(/Text or Google Docs link/).catch(() => null);
 }
 
 function fill(draft = DRAFT, refs = REFS) {
-  fireEvent.change(screen.getByLabelText(/Draft text/), { target: { value: draft } });
+  fireEvent.change(screen.getByLabelText(/Text or Google Docs link/), { target: { value: draft } });
   fireEvent.change(screen.getByLabelText(/Reference list/), { target: { value: refs } });
 }
 
@@ -135,7 +153,7 @@ describe("privacy note", () => {
     const user = userEvent.setup();
     render(<VerifierApp />);
     expect(await screen.findByText("Before you start")).toBeTruthy();
-    expect(await screen.findByLabelText(/Draft text/)).toBeTruthy(); // the product is not hidden behind the note
+    expect(await screen.findByLabelText(/Text or Google Docs link/)).toBeTruthy(); // the product is not hidden behind the note
     expect(screen.getByRole("button", { name: "Try an example" })).toHaveProperty("disabled", true); // hidden once a draft is typed
     expect(screen.getByRole("button", { name: "Choose PDFs" })).toHaveProperty("disabled", true);
     fill();
@@ -150,7 +168,7 @@ describe("privacy note", () => {
 
   it("puts the draft before the sources in the page, so a phone shows the draft first", async () => {
     await openApp(fakeServer());
-    const draft = screen.getByLabelText(/Draft text/);
+    const draft = screen.getByLabelText(/Text or Google Docs link/);
     const sources = screen.getByRole("heading", { name: "Your sources" });
     expect(draft.compareDocumentPosition(sources) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -169,7 +187,7 @@ describe("a check that fails to start", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Edit draft" }));
-    expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(DRAFT);
+    expect((screen.getByLabelText(/Text or Google Docs link/) as HTMLTextAreaElement).value).toBe(DRAFT);
     expect((screen.getByLabelText(/Reference list/) as HTMLTextAreaElement).value).toBe(REFS);
     expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", false);
   });
@@ -218,14 +236,14 @@ describe("a finished check", () => {
   it("Edit draft brings the draft back so a sentence can be fixed without re-pasting", async () => {
     const { user } = await finishedCheck();
     await user.click(screen.getByRole("button", { name: "Edit draft" }));
-    expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(DRAFT);
+    expect((screen.getByLabelText(/Text or Google Docs link/) as HTMLTextAreaElement).value).toBe(DRAFT);
     expect((screen.getByLabelText(/Reference list/) as HTMLTextAreaElement).value).toBe(REFS);
   });
 
   it("Start a new check clears the draft", async () => {
     const { user } = await finishedCheck();
     await user.click(screen.getByRole("button", { name: "Start a new check" }));
-    expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByLabelText(/Text or Google Docs link/) as HTMLTextAreaElement).value).toBe("");
     expect((screen.getByLabelText(/Reference list/) as HTMLTextAreaElement).value).toBe("");
   });
 
@@ -330,7 +348,7 @@ describe("deleting a check", () => {
 
     expect(await screen.findByText("Your check was deleted from our servers.")).toBeTruthy();
     expect(server.count("DELETE /api/runs/run-1")).toBe(1);
-    expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(""); // the draft is gone too
+    expect((screen.getByLabelText(/Text or Google Docs link/) as HTMLTextAreaElement).value).toBe(""); // the draft is gone too
     expect(window.localStorage.getItem(LAST_RUN_KEY)).toBeNull();
     expect(screen.queryByText("Check complete")).toBeNull();
   });
@@ -412,13 +430,13 @@ describe("keyboard focus is never dropped to the top of the page", () => {
   it("moves to the draft box after 'Edit draft' and after 'Start a new check'", async () => {
     const user = await finished();
     await user.click(screen.getByRole("button", { name: "Edit draft" }));
-    expect(document.activeElement).toBe(screen.getByLabelText(/Draft text/));
+    expect(document.activeElement).toBe(screen.getByLabelText(/Text or Google Docs link/));
 
     fireEvent.click(screen.getByRole("button", { name: "Scan my draft" }));
     fireEvent.click(await screen.findByRole("button", { name: /^Check \d+ cited claims?$/ }));
     await screen.findByText("Check complete");
     await user.click(screen.getByRole("button", { name: "Start a new check" }));
-    expect(document.activeElement).toBe(screen.getByLabelText(/Draft text/));
+    expect(document.activeElement).toBe(screen.getByLabelText(/Text or Google Docs link/));
   });
 
   it("moves to the filled draft after 'Try an example'", async () => {
@@ -519,133 +537,132 @@ describe("the scan, then the check", () => {
 
 describe("bringing a draft in without pasting it", () => {
   const LINK = "https://docs.google.com/document/d/1zNfrhNd-YvYB6stWLrujUCABad9c6EQcCdJWlmdfMe8/edit?usp=sharing";
-  const draftBox = () => screen.getByLabelText("Draft text") as HTMLTextAreaElement;
+  const draftBox = () => screen.getByLabelText("Text or Google Docs link") as HTMLTextAreaElement;
+  const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement;
 
-  it("reads a Google Docs link into the draft box, says what it read, warns about footnotes, and moves to the text", async () => {
+  it("reads a pasted Google Docs link and scans it at once, with no text box in between", async () => {
     const user = userEvent.setup();
     const server = fakeServer();
     await openApp(server);
-    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
-    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
-    await user.click(screen.getByRole("button", { name: "Read the document" }));
-
-    // A short card, not a box holding the whole document: what was read, the references found, a preview.
-    expect(await screen.findByText(/Read 34 characters from your Google Doc\. Press “Scan my draft” to scan it\./)).toBeTruthy();
+    await user.click(draftBox());
+    await user.paste(LINK);
+    expect(await screen.findByText("Scan complete")).toBeTruthy();
     expect(server.count("POST /api/import")).toBe(1);
-    expect(screen.queryByLabelText("Draft text")).toBeNull();
-    expect(screen.getByText("No reference list found at the end. Add one below if you have it.")).toBeTruthy();
-    expect(screen.getByLabelText("Start of the text").textContent).toContain("Imported draft text (Smith, 2021).");
-    expect(screen.getByText(/Footnotes were found/)).toBeTruthy();
-    // The cursor is on the button that scans it, which is enabled: one press scans the whole document.
-    const scan = screen.getByRole("button", { name: "Scan my draft" });
-    expect(document.activeElement).toBe(scan);
-    expect(scan).toHaveProperty("disabled", false);
-
-    // "Edit the text" opens the box with the full text, and editing clears the note about the import.
-    await user.click(screen.getByRole("button", { name: "Edit the text" }));
-    await waitFor(() => expect(draftBox().value).toBe("Imported draft text (Smith, 2021)."));
-    expect(document.activeElement).toBe(draftBox());
-    await user.type(draftBox(), " More.");
-    expect(screen.queryByText(/Read 34 characters/)).toBeNull();
+    expect(server.count("POST /api/runs")).toBe(1);
+    // The results say what was checked.
+    expect(screen.getByText("Draft: Google Doc")).toBeTruthy();
   });
 
-  it("scans the imported document with one press and no box in between", async () => {
+  it("waits when the document has no reference list at the end, and opens the reference list box", async () => {
     const user = userEvent.setup();
-    const server = fakeServer();
+    const server = fakeServer({ importRefs: 0 });
     await openApp(server);
-    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
-    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
-    await user.click(screen.getByRole("button", { name: "Read the document" }));
-    await screen.findByText(/Read 34 characters/);
+    await user.click(draftBox());
+    await user.paste(LINK);
+
+    // One line for the document, not a box holding all of it.
+    expect(await screen.findByText("Google Doc")).toBeTruthy();
+    expect(screen.queryByLabelText("Text or Google Docs link")).toBeNull();
+    expect(screen.getByText("No reference list found at the end. Paste it below.")).toBeTruthy();
+    expect(screen.getByText(/Footnotes were found/)).toBeTruthy();
+    expect(server.count("POST /api/runs")).toBe(0);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Reference list/)));
+
+    fireEvent.change(screen.getByLabelText(/Reference list/), { target: { value: REFS } });
     await user.click(screen.getByRole("button", { name: "Scan my draft" }));
     expect(await screen.findByText("Scan complete")).toBeTruthy();
     expect(server.count("POST /api/runs")).toBe(1);
   });
 
-  it("reads the link when the student presses Enter in the link box", async () => {
+  it("goes back to the empty box with 'Use a different draft'", async () => {
     const user = userEvent.setup();
-    const server = fakeServer();
-    await openApp(server);
-    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
-    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), `${LINK}{Enter}`);
-    expect(await screen.findByText(/Read 34 characters/)).toBeTruthy();
-    expect(server.count("POST /api/import")).toBe(1);
+    await openApp(fakeServer({ importRefs: 0 }));
+    await user.click(draftBox());
+    await user.paste(LINK);
+    await user.click(await screen.findByRole("button", { name: "Use a different draft" }));
+    await waitFor(() => expect(document.activeElement).toBe(draftBox()));
+    expect(draftBox().value).toBe("");
   });
 
-  it("offers to read a link that was pasted into the draft box instead of the draft", async () => {
-    const user = userEvent.setup();
-    const server = fakeServer();
-    await openApp(server);
-    fireEvent.change(draftBox(), { target: { value: LINK } });
-    expect(screen.getByText("That looks like a Google Docs link.")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Read the document" }));
-    expect(await screen.findByText(/Read 34 characters from your Google Doc/)).toBeTruthy();
-    // A real draft that merely mentions a link gets no such offer.
-    await user.click(screen.getByRole("button", { name: "Edit the text" }));
-    fireEvent.change(draftBox(), { target: { value: `My draft is at ${LINK}, please read it.` } });
-    expect(screen.queryByText("That looks like a Google Docs link.")).toBeNull();
-  });
-
-  it("says plainly why a document could not be read, and keeps what the student had", async () => {
-    const user = userEvent.setup();
-    const server = fakeServer({ importFails: true });
-    await openApp(server);
-    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
-    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
-    await user.click(screen.getByRole("button", { name: "Read the document" }));
-    expect((await screen.findByRole("alert")).textContent).toMatch(/Make sure Share is set to “Anyone with the link”/);
-    // Still in link mode, link still typed, nothing replaced.
-    expect((screen.getByLabelText("Google Docs link", { selector: "input" }) as HTMLInputElement).value).toBe(LINK);
-  });
-
-  it("keeps the link controls locked until the privacy note has been acknowledged", async () => {
-    vi.stubGlobal("fetch", fakeServer().fetchImpl);
-    const user = userEvent.setup();
-    render(<VerifierApp />);
-    await screen.findByLabelText(/Draft text/);
-    await user.click(screen.getByRole("button", { name: "Google Docs link" }));
-    await user.type(screen.getByLabelText("Google Docs link", { selector: "input" }), LINK);
-    expect(screen.getByRole("button", { name: "Read the document" })).toHaveProperty("disabled", true);
-    await user.click(screen.getByRole("button", { name: "Got it" }));
-    expect(screen.getByRole("button", { name: "Read the document" })).toHaveProperty("disabled", false);
-  });
-
-  it("reads a .txt file in the browser, with no request to the server", async () => {
-    const user = userEvent.setup();
-    const server = fakeServer();
-    await openApp(server);
-    await user.click(screen.getByRole("button", { name: "Upload file" }));
-    await user.upload(screen.getByLabelText(/Word, PDF or text file/), new File(["﻿First paragraph.\r\n\r\n\r\n\r\nSecond paragraph."], "draft.txt", { type: "text/plain" }));
-    expect(await screen.findByText(/from your text file/)).toBeTruthy();
-    expect(server.count("POST /api/import")).toBe(0);
-    await user.click(screen.getByRole("button", { name: "Edit the text" }));
-    await waitFor(() => expect(draftBox().value).toBe("First paragraph.\n\nSecond paragraph."));
-  });
-
-  it("sends a .pdf draft to the server to be read, and fills the draft box with the result", async () => {
-    const user = userEvent.setup();
-    const server = fakeServer();
-    await openApp(server);
-    await user.click(screen.getByRole("button", { name: "Upload file" }));
-    await user.upload(screen.getByLabelText(/Word, PDF or text file/), new File(["%PDF-1.4"], "draft.pdf", { type: "application/pdf" }));
-    expect(await screen.findByText(/from your PDF/)).toBeTruthy();
-    expect(server.count("POST /api/import")).toBe(1);
-    expect(screen.getByLabelText("Start of the text").textContent).toContain("Imported draft text (Smith, 2021).");
-  });
-
-  it("still takes a .docx as before, and refuses a type it cannot read", async () => {
+  it("shows the document again, not its text, after 'Edit draft'", async () => {
     const user = userEvent.setup();
     await openApp(fakeServer());
-    await user.click(screen.getByRole("button", { name: "Upload file" }));
-    const input = screen.getByLabelText(/Word, PDF or text file/);
-    await user.upload(input, new File(["x"], "thesis.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
-    expect(screen.getByText("Selected: thesis.docx")).toBeTruthy();
+    await user.click(draftBox());
+    await user.paste(LINK);
+    await user.click(await screen.findByRole("button", { name: "Edit draft" }));
+    expect(await screen.findByText("Google Doc")).toBeTruthy();
+    expect(screen.queryByLabelText("Text or Google Docs link")).toBeNull();
     expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", false);
+  });
 
-    fireEvent.change(input, { target: { files: [new File(["x"], "old.doc")] } });
-    expect(await screen.findByRole("alert")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toMatch(/Choose a \.docx, \.pdf or \.txt file/);
-    expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", true);
+  it("offers one press to read a link that was typed rather than pasted", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    fireEvent.change(draftBox(), { target: { value: `My draft is at ${LINK}, please read it.` } });
+    expect(screen.queryByText("That looks like a Google Docs link.")).toBeNull(); // a real draft that mentions a link
+    fireEvent.change(draftBox(), { target: { value: LINK } });
+    expect(screen.getByText("That looks like a Google Docs link.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", true); // the link is not a draft
+    await user.click(screen.getByRole("button", { name: "Read the document" }));
+    expect(await screen.findByText("Scan complete")).toBeTruthy();
+    expect(server.count("POST /api/import")).toBe(1);
+  });
+
+  it("says plainly why a document could not be read, and keeps the box", async () => {
+    const user = userEvent.setup();
+    await openApp(fakeServer({ importFails: true }));
+    await user.click(draftBox());
+    await user.paste(LINK);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Make sure Share is set to “Anyone with the link”/);
+    expect(draftBox()).toBeTruthy();
+  });
+
+  it("reads nothing until the privacy note has been acknowledged", async () => {
+    const server = fakeServer();
+    vi.stubGlobal("fetch", server.fetchImpl);
+    const user = userEvent.setup();
+    render(<VerifierApp />);
+    await screen.findByLabelText(/Text or Google Docs link/);
+    fireEvent.change(draftBox(), { target: { value: LINK } });
+    expect(screen.getByRole("button", { name: "Read the document" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Choose a file" })).toHaveProperty("disabled", true);
+    await user.click(screen.getByRole("button", { name: "Got it" }));
+    expect(screen.getByRole("button", { name: "Read the document" })).toHaveProperty("disabled", false);
+    expect(server.count("POST /api/import")).toBe(0);
+  });
+
+  it("reads a .txt file in the browser, with no request to the server, and scans it", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.upload(fileInput(), new File(["﻿First paragraph.\r\n\r\n\r\n\r\nSecond paragraph."], "draft.txt", { type: "text/plain" }));
+    expect(await screen.findByText("Scan complete")).toBeTruthy();
+    expect(server.count("POST /api/import")).toBe(0);
+    expect(screen.getByText("Draft: draft.txt")).toBeTruthy();
+  });
+
+  it("sends a .pdf draft to the server to be read, then scans it", async () => {
+    const user = userEvent.setup();
+    const server = fakeServer();
+    await openApp(server);
+    await user.upload(fileInput(), new File(["%PDF-1.4"], "draft.pdf", { type: "application/pdf" }));
+    expect(await screen.findByText("Scan complete")).toBeTruthy();
+    expect(server.count("POST /api/import")).toBe(1);
+  });
+
+  it("refuses a type it cannot read, and scans a .docx at once", async () => {
+    // A dropped file skips the picker's type filter, so the screen must refuse it itself.
+    const user = userEvent.setup({ applyAccept: false });
+    const server = fakeServer();
+    await openApp(server);
+    await user.upload(fileInput(), new File(["x"], "old.doc"));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Choose a \.docx, \.pdf or \.txt file/);
+    expect(server.count("POST /api/runs")).toBe(0);
+
+    await user.upload(fileInput(), new File(["x"], "thesis.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
+    expect(await screen.findByText("Scan complete")).toBeTruthy();
+    expect(screen.getByText("Draft: thesis.docx")).toBeTruthy();
   });
 });
 
@@ -664,13 +681,13 @@ describe("Bahasa Indonesia", () => {
   it("shows the screen in Indonesian when the browser asks for it, and switches back to English", async () => {
     const user = userEvent.setup();
     openIndonesian();
-    expect(await screen.findByLabelText("Teks draf")).toBeTruthy();
+    expect(await screen.findByLabelText("Teks atau link Google Docs")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Sumber kamu" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Pindai drafku" })).toBeTruthy();
     expect(document.documentElement.lang).toBe("id");
 
     await user.click(screen.getByRole("button", { name: "EN (English)" }));
-    expect(await screen.findByLabelText("Draft text")).toBeTruthy();
+    expect(await screen.findByLabelText("Text or Google Docs link")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Scan my draft" })).toBeTruthy();
     expect(document.documentElement.lang).toBe("en");
   });
@@ -680,7 +697,7 @@ describe("Bahasa Indonesia", () => {
     const example = exampleFor("id");
     openIndonesian();
     await user.click(await screen.findByRole("button", { name: "Coba contoh" }));
-    await waitFor(() => expect((screen.getByLabelText("Teks draf") as HTMLTextAreaElement).value).toBe(example.draft));
+    await waitFor(() => expect((screen.getByLabelText("Teks atau link Google Docs") as HTMLTextAreaElement).value).toBe(example.draft));
     expect((screen.getByLabelText(/Daftar pustaka/) as HTMLTextAreaElement).value).toBe(example.references);
     expect(await screen.findByText(example.sourceFilename)).toBeTruthy();
     expect(await screen.findByText("Siap, 1 halaman")).toBeTruthy();
@@ -699,7 +716,7 @@ describe("Bahasa Indonesia", () => {
     openIndonesian();
     await user.click(await screen.findByRole("button", { name: "EN (English)" }));
     await user.click(await screen.findByRole("button", { name: "Try an example" }));
-    await waitFor(() => expect((screen.getByLabelText("Draft text") as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
+    await waitFor(() => expect((screen.getByLabelText("Text or Google Docs link") as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
   });
 });
 
@@ -711,7 +728,7 @@ describe("Try an example", () => {
     expect(screen.getByText(/made-up report and draft/)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Try an example" }));
 
-    await waitFor(() => expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
+    await waitFor(() => expect((screen.getByLabelText(/Text or Google Docs link/) as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
     expect((screen.getByLabelText(/Reference list/) as HTMLTextAreaElement).value).toBe(EXAMPLE_REFERENCES);
     expect(await screen.findByText(EXAMPLE_SOURCE_FILENAME)).toBeTruthy();
     expect(server.count("POST /api/sources")).toBe(1);
@@ -742,7 +759,7 @@ describe("Try an example", () => {
     await openApp(server);
     await user.click(screen.getByRole("button", { name: "Try an example" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Could not load the example");
-    expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByLabelText(/Text or Google Docs link/) as HTMLTextAreaElement).value).toBe("");
     expect(server.count("POST /api/sources")).toBe(0);
     expect(screen.getByRole("button", { name: "Try an example" })).toBeTruthy(); // can try again
   });
@@ -754,9 +771,9 @@ describe("Try an example", () => {
     await user.click(screen.getByRole("button", { name: "Try an example" }));
     await screen.findByText("Ready, 1 page");
     // Clear the draft so the button comes back, then press it again.
-    fireEvent.change(screen.getByLabelText(/Draft text/), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText(/Text or Google Docs link/), { target: { value: "" } });
     await user.click(await screen.findByRole("button", { name: "Try an example" }));
-    await waitFor(() => expect((screen.getByLabelText(/Draft text/) as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
+    await waitFor(() => expect((screen.getByLabelText(/Text or Google Docs link/) as HTMLTextAreaElement).value).toBe(EXAMPLE_DRAFT));
     expect(server.count("POST /api/sources")).toBe(1);
   });
 });
@@ -811,7 +828,7 @@ describe("reopening a check after a reload", () => {
     window.localStorage.setItem(LAST_RUN_KEY, "run-1");
     vi.stubGlobal("fetch", gone);
     render(<VerifierApp />);
-    expect(await screen.findByLabelText(/Draft text/)).toBeTruthy();
+    expect(await screen.findByLabelText(/Text or Google Docs link/)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(window.localStorage.getItem(LAST_RUN_KEY)).toBeNull();
   });

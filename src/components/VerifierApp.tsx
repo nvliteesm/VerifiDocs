@@ -258,7 +258,14 @@ export function VerifierApp() {
             />
           ) : (
             <>
-              <ResultsView state={state} focusWhenDone={lastInput !== null} onRetryClaim={verification.retry} onEvent={event} />
+              <ResultsView
+                state={state}
+                draftLabel={lastInput?.label ?? null}
+                focusWhenDone={lastInput !== null}
+                onRetryClaim={verification.retry}
+                onReadPart={verification.readPart}
+                onEvent={event}
+              />
               <div className="actions">
                 {state.phase === "scanned" && (
                   <>

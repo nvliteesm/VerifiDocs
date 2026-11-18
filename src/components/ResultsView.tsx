@@ -10,14 +10,21 @@ import { SUMMARY_ORDER, VERDICT_INFO, attentionCount, verdictAdvice, verdictLabe
 import type { VerifierState } from "@/lib/client/verifier-state";
 import { useT } from "./LocaleProvider";
 
+/** Cards shown at once in a section; "Show more" adds this many again. */
+export const SECTION_PAGE = 20;
+
 interface Props {
   state: VerifierState;
+  /** What the draft was read from ("Google Doc", a file name), when it was not pasted. */
+  draftLabel?: string | null;
   /**
    * Move focus to the Results heading when the check finishes. True only when the student started this check in
    * this visit: they pressed a button that has since left the page. A check reopened after a reload must not take focus.
    */
   focusWhenDone?: boolean;
   onRetryClaim: (claimId: string) => void;
+  /** Reads a part of the draft the AI could not read before. */
+  onReadPart?: (unit: number) => Promise<void>;
   onEvent: (name: "evidence_opened" | "verdict_flagged_wrong" | "fix_accepted", props?: Record<string, unknown>) => void;
 }
 
@@ -104,7 +111,12 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
     <li className="claim" id={`claim-${claim.id}`}>
       <div className="claim-head">
         {verdict ? <Badge verdict={verdict} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
-        {claim.citation && <span className="citation">{claim.citation}</span>}
+        {claim.citation && (
+          <span className="citation">
+            {claim.citation}
+            {claim.citationInherited ? ` · ${t("claim.inherited")}` : ""}
+          </span>
+        )}
       </div>
       <p className="claim-text">{claim.text}</p>
 
@@ -207,9 +219,46 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
   );
 }
 
-export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEvent }: Props) {
+interface Group {
+  /** The heading text, or "" for claims before the first heading. */
+  key: string;
+  heading: string | null;
+  claims: ClaimView[];
+  /** How many of them need attention. */
+  attention: number;
+}
+
+/**
+ * The shown claims, grouped by the heading they sit under, in the order the sections appear in the draft. Inside a
+ * section the claims keep the order they were given (the ranked fix list first, then document order).
+ */
+export function groupBySection(claims: ClaimView[], needsAttention: (claim: ClaimView) => boolean): Group[] {
+  const groups = new Map<string, Group & { first: number }>();
+  for (const claim of claims) {
+    const key = claim.section ?? "";
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, heading: claim.section, claims: [], attention: 0, first: claim.position };
+      groups.set(key, group);
+    }
+    group.claims.push(claim);
+    if (needsAttention(claim)) group.attention += 1;
+    group.first = Math.min(group.first, claim.position);
+  }
+  // Claims with no known heading go last: they are not always before the first heading (a heading may not be found).
+  return [...groups.values()]
+    .sort((a, b) => (a.heading === null ? 1 : 0) - (b.heading === null ? 1 : 0) || a.first - b.first)
+    .map(({ key, heading, claims: list, attention }) => ({ key, heading, claims: list, attention }));
+}
+
+export function ResultsView({ state, draftLabel = null, focusWhenDone = false, onRetryClaim, onReadPart, onEvent }: Props) {
   const { t, locale } = useT();
+  // The part being read again, if any (one at a time: each is one model request).
+  const [readingPart, setReadingPart] = useState<number | null>(null);
   const [chosen, setFilter] = useState<Verdict | "attention" | "all">("attention");
+  // Which sections the student opened or closed by hand, and how many cards each one shows.
+  const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const [pages, setPages] = useState<Readonly<Record<string, number>>>({});
   const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set());
   const [copiedFix, setCopiedFix] = useState<Record<string, "copied" | "failed">>({});
   const checked = state.claims.filter((claim) => claim.verdict !== null).length;
@@ -267,6 +316,55 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
     });
   }, [state.claims, state.fixList, filter]);
 
+  const groups = useMemo(() => {
+    const ranked = new Set(state.fixList);
+    return groupBySection(shown, (claim) => ranked.has(claim.id));
+  }, [shown, state.fixList]);
+  // With no headings at all there is nothing to group: the list is shown as it is, a page at a time.
+  const flat = groups.length === 1 && groups[0]!.heading === null;
+  // Open by default: every section when the whole list is short, else the first one that needs attention.
+  const firstWithWork = groups.find((group) => group.attention > 0)?.key ?? groups[0]?.key;
+  const isOpen = (group: Group) =>
+    flat || (toggled.get(group.key) ?? (shown.length <= SECTION_PAGE || group.key === firstWithWork));
+
+  const card = (claim: ClaimView) => (
+    <ClaimCard
+      key={claim.id}
+      claim={claim}
+      error={state.claimErrors[claim.id]}
+      flagged={flagged.has(claim.id)}
+      copied={copiedFix[claim.id] ?? "idle"}
+      ended={finished}
+      scanned={scanned}
+      onFlag={(reason) => {
+        setFlagged((prev) => new Set(prev).add(claim.id));
+        if (claim.verdict) onEvent("verdict_flagged_wrong", { verdict: claim.verdict, reason });
+      }}
+      onCopied={(result) => setCopiedFix((prev) => ({ ...prev, [claim.id]: result }))}
+      onRetry={() => onRetryClaim(claim.id)}
+      onEvent={onEvent}
+    />
+  );
+
+  const cards = (group: Group) => {
+    const limit = pages[group.key] ?? SECTION_PAGE;
+    const left = group.claims.length - limit;
+    return (
+      <>
+        <ol className="claims">{group.claims.slice(0, limit).map(card)}</ol>
+        {left > 0 && (
+          <button
+            type="button"
+            className="btn btn-small section-more"
+            onClick={() => setPages((prev) => ({ ...prev, [group.key]: limit + SECTION_PAGE }))}
+          >
+            {t("section.more", { n: Math.min(left, SECTION_PAGE), left })}
+          </button>
+        )}
+      </>
+    );
+  };
+
   return (
     <section className="panel" aria-labelledby="results-title">
       <div className="panel-head">
@@ -284,6 +382,7 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
         <h2 id="results-title" ref={heading} tabIndex={-1}>
           {t("results.title")}
         </h2>
+        {draftLabel && <p className="hint">{t("results.draft", { label: draftLabel })}</p>}
       </div>
 
       {/* Stays mounted so screen readers hear the outcome when the progress line goes away. */}
@@ -308,6 +407,37 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
         <p role="alert" className="notice notice-bad">
           {state.error}
         </p>
+      )}
+
+      {/* Parts the AI could not read: their claims are missing, so the student is told where, and can try again. */}
+      {(finished || scanned) && state.failedParts.length > 0 && (
+        <div className="notice notice-warn unread" role="group" aria-labelledby="unread-title">
+          <p id="unread-title">{t(pluralKey(locale, "parts.failed", state.failedParts.length), { n: state.failedParts.length })}</p>
+          <ul>
+            {state.failedParts.map((part) => (
+              <li key={part.unit}>
+                <span>{part.section ?? t("parts.start")}</span>
+                {onReadPart && (
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    disabled={readingPart !== null}
+                    onClick={async () => {
+                      setReadingPart(part.unit);
+                      try {
+                        await onReadPart(part.unit);
+                      } finally {
+                        setReadingPart(null);
+                      }
+                    }}
+                  >
+                    {readingPart === part.unit ? t("parts.reading") : t("parts.retry")}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {finished && total === 0 && !stopped && (
@@ -348,26 +478,42 @@ export function ResultsView({ state, focusWhenDone = false, onRetryClaim, onEven
             </button>
           </div>
 
-          <ol className="claims">
-            {shown.map((claim) => (
-              <ClaimCard
-                key={claim.id}
-                claim={claim}
-                error={state.claimErrors[claim.id]}
-                flagged={flagged.has(claim.id)}
-                copied={copiedFix[claim.id] ?? "idle"}
-                ended={finished}
-                scanned={scanned}
-                onFlag={(reason) => {
-                  setFlagged((prev) => new Set(prev).add(claim.id));
-                  if (claim.verdict) onEvent("verdict_flagged_wrong", { verdict: claim.verdict, reason });
-                }}
-                onCopied={(result) => setCopiedFix((prev) => ({ ...prev, [claim.id]: result }))}
-                onRetry={() => onRetryClaim(claim.id)}
-                onEvent={onEvent}
-              />
-            ))}
-          </ol>
+          {flat
+            ? groups.map((group) => <div key={group.key}>{cards(group)}</div>)
+            : (
+              <div className="sections">
+                {groups.map((group, index) => {
+                  const open = isOpen(group);
+                  const id = `section-${index}`;
+                  return (
+                    <section key={group.key} className="section" aria-labelledby={`${id}-head`}>
+                      <h3 className="section-head">
+                        <button
+                          type="button"
+                          id={`${id}-head`}
+                          aria-expanded={open}
+                          aria-controls={id}
+                          onClick={() => setToggled((prev) => new Map(prev).set(group.key, !open))}
+                        >
+                          <span className="section-arrow" aria-hidden="true">
+                            {open ? "▾" : "▸"}
+                          </span>
+                          <span className="section-name">{group.heading ?? t("section.none")}</span>
+                          <span className={`section-count${group.attention > 0 ? " section-count-work" : ""}`}>
+                            {group.attention > 0
+                              ? t(pluralKey(locale, "section.attention", group.attention), { n: group.attention })
+                              : t(pluralKey(locale, "section.claims", group.claims.length), { n: group.claims.length })}
+                          </span>
+                        </button>
+                      </h3>
+                      <div id={id} hidden={!open}>
+                        {open && cards(group)}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            )}
           {shown.length === 0 && <p className="empty">{t("filter.nothing")}</p>}
         </>
       )}

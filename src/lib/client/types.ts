@@ -21,6 +21,8 @@ export interface ExtractResponse {
   unitCount: number;
   unitsExtracted: number;
   claimCount: number;
+  /** True when the AI could not read this part (or half of it). */
+  failed?: boolean;
 }
 
 export interface ClaimView {
@@ -28,6 +30,10 @@ export interface ClaimView {
   position: number;
   text: string;
   citation: string | null;
+  /** The sentence has no citation of its own; `citation` is the one later in its paragraph. */
+  citationInherited: boolean;
+  /** The heading the claim sits under, or null before the first heading. */
+  section: string | null;
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
   quote: string | null;
@@ -35,6 +41,11 @@ export interface ClaimView {
   reason: string | null;
   exitStage: number | null;
   fixSuggestion: string | null;
+}
+
+export interface FailedPart {
+  unit: number;
+  section: string | null;
 }
 
 export interface ReferenceView {
@@ -59,6 +70,8 @@ export interface RunResponse {
   counts: Partial<Record<Verdict, number>>;
   /** Claim ids that need attention, most serious first. */
   fixList: string[];
+  /** Parts of the draft the AI could not read (wholly or half), named by the heading they start under. */
+  failedParts: FailedPart[];
   claims: ClaimView[];
   references: ReferenceView[];
 }
@@ -123,6 +136,11 @@ export interface VerifyInput {
   draft: { kind: "paste"; text: string } | { kind: "docx"; file: File };
   /** Optional separate reference list. Empty means: use the one inside the draft, if any. */
   references: string;
+  /**
+   * What the draft was read from, when it was not pasted ("Google Doc", a file name), for the line that says what is
+   * being checked. Kept in memory only, like the draft itself.
+   */
+  label?: string;
 }
 
 /** Events a student's browser may report (the server logs all other events itself). */

@@ -7,6 +7,8 @@ const claim = (id: string, position: number, verdict: Verdict | null = null): Cl
   position,
   text: `Claim ${position}`,
   citation: null,
+  citationInherited: false,
+  section: null,
   status: verdict ? "done" : "pending",
   verdict,
   quote: null,
@@ -21,6 +23,7 @@ const runResponse = (claims: ClaimView[], status: RunResponse["run"]["status"] =
   progress: { checked: 0, total: claims.length },
   counts: {},
   fixList: [],
+  failedParts: [],
   claims,
   references: [{ position: 1, text: "Ref one", resolution: "found", resolvedTitle: "Title", yearMismatch: false }],
 });
