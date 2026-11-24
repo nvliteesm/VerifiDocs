@@ -43,7 +43,7 @@ export const JUDGE_SYSTEM_PROMPT =
 
 /** Stops text inside the data from closing our delimiters early. */
 export function escapeDelimiters(text: string): string {
-  return text.replace(/<\/?(claim|passage)\b/gi, (match) => match.replace("<", "&lt;"));
+  return text.replace(/<\/?(claim|passage|previous_quote)\b/gi, (match) => match.replace("<", "&lt;"));
 }
 
 export function passageLabel(index: number): string {
@@ -101,11 +101,41 @@ export function buildJudgePrompt(claimText: string, passages: JudgePassage[]): s
   ].join("\n");
 }
 
-/** Asks the judge. The result is unverified: run it through verifyJudgment (stage 8) before using it. */
-export async function judgeClaim(llm: Llm, claimText: string, passages: JudgePassage[]): Promise<RawJudgment> {
+/** A failed quote can be a long sentence; the note only needs enough of it to show the judge what went wrong. */
+const MAX_FAILED_QUOTE_CHARS = 600;
+
+/**
+ * Added to the judge prompt for the one retry after a quote was not found word for word (E21 of the 24 Nov 2026 eval:
+ * the judge wrote "We set ..." where the source said "and set ..."). It shows the judge its own failed quote and asks for
+ * an exact copy; the new answer goes through the same quote check, so a retry can never lower the standard of proof.
+ */
+export function buildRetryNote(failedQuote: string): string {
+  return [
+    "",
+    "Your previous answer quoted the text below, but it is not word for word in any passage:",
+    "<previous_quote>",
+    escapeDelimiters(failedQuote.slice(0, MAX_FAILED_QUOTE_CHARS)),
+    "</previous_quote>",
+    "Answer again. Copy the deciding words EXACTLY from ONE passage: start at the first word you need, even in the",
+    "middle of a sentence, and do not add, drop, change or reorder any word. If no passage states the claim, answer",
+    "not_in_sources.",
+  ].join("\n");
+}
+
+/**
+ * Asks the judge. The result is unverified: run it through verifyJudgment (stage 8) before using it.
+ * `retry` is set for the second ask after a quote was not found; it carries the quote that failed.
+ */
+export async function judgeClaim(
+  llm: Llm,
+  claimText: string,
+  passages: JudgePassage[],
+  retry?: { failedQuote: string },
+): Promise<RawJudgment> {
   if (passages.length === 0) throw new Error("The judge needs at least one passage.");
+  const prompt = buildJudgePrompt(claimText, passages);
   return llm.generateJson({
-    prompt: buildJudgePrompt(claimText, passages),
+    prompt: retry ? `${prompt}\n${buildRetryNote(retry.failedQuote)}` : prompt,
     system: JUDGE_SYSTEM_PROMPT,
     schema: judgeSchema,
     // Room for a long quote (a table) and a reason. A model that loops stops here, not at the timeout.

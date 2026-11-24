@@ -417,6 +417,66 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
     });
   });
 
+  describe("a quote that is in no passage gets one more ask (E21, 24 Nov 2026)", () => {
+    const tidied = { ...supportedJudgment, quote: "We had 300 respondents across three regions of the country." };
+    const claim = [{ text: "The survey had 300 respondents.", citation: "(Smith & Lee, 2021)" }];
+
+    it("saves the verdict when the second quote is copied exactly, with the source's own text as the evidence", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, claim);
+        const { llm, counts, prompts } = fakeLlm({ judge: (call) => (call === 1 ? tidied : supportedJudgment) });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({
+          outcome: "done",
+          quoteRetried: true,
+          verdict: { verdict: "supported", quote: "The survey had 300 respondents across three regions", page: 4 },
+        });
+        expect(counts().judge).toBe(2);
+        expect(prompts.filter((p) => p.includes("<previous_quote>"))).toHaveLength(1);
+        expect(prompts.find((p) => p.includes("<previous_quote>"))).toContain("We had 300 respondents across three regions of the country.");
+      });
+    });
+
+    it("still abstains, with no quote stored, when the second quote is also not in the source (hard rule 1)", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, claim);
+        const { llm, counts } = fakeLlm({ judge: () => tidied });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({ outcome: "done", quoteRetried: true, verdict: { verdict: "cant_tell", quote: null, page: null } });
+        expect(counts().judge).toBe(2); // one retry, never more
+        const [row] = await tx`select quote, chunk_id from verdicts where claim_id = ${claimIds[0]!}`;
+        expect(row).toMatchObject({ quote: null, chunk_id: null });
+      });
+    });
+
+    it("keeps the abstain when the second ask itself fails", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, claim);
+        const { llm } = fakeLlm({
+          judge: (call) => {
+            if (call === 1) return tidied;
+            throw new LlmUnavailableError("The Gemini API request failed (HTTP 503).");
+          },
+        });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({ outcome: "done", quoteRetried: true, verdict: { verdict: "cant_tell", quote: null } });
+      });
+    });
+
+    it("does not ask again for a missing or too short quote, or when the quote verified", async () => {
+      await inTx(async (tx) => {
+        for (const quote of [null, "The survey", supportedJudgment.quote]) {
+          const { sessionId, claimIds } = await seed(tx, claim);
+          const { llm, counts } = fakeLlm({ judge: () => ({ ...supportedJudgment, quote }) });
+          const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+          expect(result.outcome).toBe("done");
+          expect(result).not.toHaveProperty("quoteRetried");
+          expect(counts().judge).toBe(1);
+        }
+      });
+    });
+  });
+
   it("saves a Partial verdict with a safe fix, and drops a fix that invents a number", async () => {
     await inTx(async (tx) => {
       const { sessionId, claimIds } = await seed(tx, [

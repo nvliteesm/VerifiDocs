@@ -40,7 +40,7 @@ export interface CheckClaimDeps {
 
 export type CheckClaimResult =
   /** `reviewSkipped`: a Partly supported verdict whose second look failed (503, timeout). For the eval only; never sent to the browser. */
-  | { outcome: "done"; verdict: SavedVerdict; reviewSkipped?: true }
+  | { outcome: "done"; verdict: SavedVerdict; reviewSkipped?: true; quoteRetried?: true }
   /** A lookup or model call failed. The browser should call again; `attempt` is how many have been made. */
   | { outcome: "retry"; reason: string; attempt: number };
 
@@ -129,6 +129,7 @@ export async function checkClaim(
 
   let stage: ExitStage = 3;
   let reviewSkipped = false;
+  let quoteRetried = false;
   try {
     const rows = await sql<{ id: string; position: number; raw_text: string; document_id: string | null }[]>`
       select id, position, raw_text, document_id from reference_entries
@@ -179,10 +180,23 @@ export async function checkClaim(
     }));
 
     stage = 7;
-    const raw = await judgeClaim(deps.llm, claim.text, passages);
+    let raw = await judgeClaim(deps.llm, claim.text, passages);
 
     stage = 8;
-    const checkedQuote = verifyJudgment(raw, passages);
+    let checkedQuote = verifyJudgment(raw, passages);
+    // The judge sometimes tidies a sentence instead of copying it, so the quote is in no passage and the check abstains
+    // (E21, 24 Nov 2026). Ask once more, showing it the failed quote. The answer goes through the same quote check
+    // (hard rule 1). If the second ask itself fails, the abstain stands, exactly as before.
+    if (checkedQuote.quoteNotFound && raw.quote) {
+      quoteRetried = true;
+      try {
+        const again = await judgeClaim(deps.llm, claim.text, passages, { failedQuote: raw.quote });
+        raw = again;
+        checkedQuote = verifyJudgment(again, passages);
+      } catch (error) {
+        if (!(error instanceof LlmUnavailableError || error instanceof LlmOutputError)) throw error;
+      }
+    }
     // A Supported verdict gets its numbers checked and a second look (review.ts); any other verdict passes through.
     const verified = await reviewVerdict(deps.llm, {
       claimText: claim.text,
@@ -215,7 +229,8 @@ export async function checkClaim(
       { verdict: verified.verdict, exitStage: changedAtStage8 ? 8 : 7, reason: verified.reason },
       { quote: verified.quote, page: verified.page, chunkId: verified.chunkId, fixSuggestion, quoteGloss },
     );
-    return reviewSkipped && done.outcome === "done" ? { ...done, reviewSkipped: true } : done;
+    if (done.outcome !== "done") return done;
+    return { ...done, ...(reviewSkipped ? { reviewSkipped: true as const } : {}), ...(quoteRetried ? { quoteRetried: true as const } : {}) };
   } catch (error) {
     if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) {
       return failOrRetry(stage, error.message, error instanceof LlmUnavailableError);

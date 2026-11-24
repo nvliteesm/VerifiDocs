@@ -45,7 +45,16 @@ describe("scoreEval", () => {
     ]);
     expect(report.retried).toBe(1);
     expect(report.reviewSkipped).toEqual({ count: 2, ids: ["B"] });
-    expect(scoreEval(claims, [out("A", 1, "supported")])).toMatchObject({ retried: 0, reviewSkipped: { count: 0, ids: [] } });
+    expect(scoreEval(claims, [out("A", 1, "supported")])).toMatchObject({ retried: 0, reviewSkipped: { count: 0, ids: [] }, quoteRetried: { count: 0, ids: [] } });
+  });
+
+  it("reports checks where the judge was asked again after a quote was not found", () => {
+    const report = scoreEval(claims, [
+      { ...out("A", 1, "supported"), quoteRetried: true },
+      { ...out("A", 2, "supported"), quoteRetried: true },
+      { ...out("D", 1, "partial"), quoteRetried: false },
+    ]);
+    expect(report.quoteRetried).toEqual({ count: 2, ids: ["A"] });
   });
 
   it("counts a claim labelled unsupported but called Supported as a miss, against the 5% bar", () => {

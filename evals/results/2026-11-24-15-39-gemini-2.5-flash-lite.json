@@ -1,0 +1,82 @@
+{
+  "config": {
+    "date": "2026-11-24T15:39:18.313Z",
+    "commit": "6cccd0b",
+    "model": "gemini-2.5-flash-lite",
+    "review": "gemini-4-hydrogen",
+    "runs": 2,
+    "includeProposed": false
+  },
+  "report": {
+    "claims": 1,
+    "runs": 2,
+    "notApproved": 0,
+    "preview": false,
+    "strict": 0,
+    "lenient": 0,
+    "missed": {
+      "count": 0,
+      "of": 0,
+      "rate": 0,
+      "ids": []
+    },
+    "meetsBar": false,
+    "errors": 0,
+    "retried": 0,
+    "reviewSkipped": {
+      "count": 0,
+      "ids": []
+    },
+    "quoteRetried": {
+      "count": 2,
+      "ids": [
+        "E21"
+      ]
+    },
+    "byExpected": {
+      "supported": {
+        "n": 1,
+        "strict": 0,
+        "got": {
+          "cant_tell": 2
+        }
+      }
+    },
+    "bySplit": {
+      "held_out": {
+        "n": 1,
+        "strict": 0,
+        "lenient": 0
+      }
+    },
+    "byLanguage": {
+      "en": {
+        "n": 1,
+        "strict": 0,
+        "lenient": 0
+      }
+    },
+    "unstable": [],
+    "latency": {
+      "p50": 3232,
+      "p95": 6522,
+      "max": 6522
+    }
+  },
+  "rows": [
+    {
+      "id": "E21",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "cant_tell",
+        "cant_tell"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The judge's quote could not be found in the retrieved passages, so the check abstained."
+    }
+  ]
+}

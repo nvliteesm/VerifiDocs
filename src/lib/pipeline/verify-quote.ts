@@ -27,6 +27,11 @@ export interface VerifiedJudgment {
   downgradedFrom?: JudgeVerdict;
   /** The judge named a passage, but the quote was found in a different one. */
   reattributed?: boolean;
+  /**
+   * Set with downgradedFrom when the judge gave a quote of normal length and no passage contains it. The one failure a
+   * second ask can fix (the judge tidied or changed a word); a missing or too short quote is not retried.
+   */
+  quoteNotFound?: true;
 }
 
 const NEEDS_QUOTE = new Set<JudgeVerdict>(["supported", "partial", "contradicted"]);
@@ -36,7 +41,7 @@ function clip(text: string): string {
   return oneLine.length > MAX_REASON_CHARS ? `${oneLine.slice(0, MAX_REASON_CHARS)}...` : oneLine;
 }
 
-function downgrade(raw: RawJudgment, reason: string): VerifiedJudgment {
+function downgrade(raw: RawJudgment, reason: string, quoteNotFound = false): VerifiedJudgment {
   return {
     verdict: "cant_tell",
     quote: null,
@@ -44,6 +49,7 @@ function downgrade(raw: RawJudgment, reason: string): VerifiedJudgment {
     chunkId: null,
     reason,
     downgradedFrom: raw.verdict,
+    ...(quoteNotFound ? { quoteNotFound: true as const } : {}),
   };
 }
 
@@ -84,7 +90,7 @@ export function verifyJudgment(raw: RawJudgment, passages: JudgePassage[]): Veri
     }
   }
   if (found === undefined || !span) {
-    return downgrade(raw, "The judge's quote could not be found in the retrieved passages, so the check abstained.");
+    return downgrade(raw, "The judge's quote could not be found in the retrieved passages, so the check abstained.", true);
   }
 
   // The stored quote is the source's own text at the matched place, never the judge's wording.

@@ -29,6 +29,8 @@ export interface Outcome {
   retries: number;
   /** The Partly supported second look failed, so a claim that may deserve Contradicted kept Partly supported. */
   reviewSkipped?: boolean;
+  /** The judge's quote was not in any passage, so it was asked once more (hard rule 1 still decides the verdict). */
+  quoteRetried?: boolean;
 }
 
 const UNSUPPORTED = new Set(["partial", "contradicted", "not_in_sources"]);
@@ -55,6 +57,8 @@ export interface EvalReport {
   retried: number;
   /** Checks whose Partly supported second look failed: their verdict says nothing about the review prompt. */
   reviewSkipped: { count: number; ids: string[] };
+  /** Checks where the first quote failed the quote check and the judge was asked again. */
+  quoteRetried: { count: number; ids: string[] };
   byExpected: Record<string, { n: number; strict: number; got: Record<string, number> }>;
   bySplit: Record<string, Rate>;
   byLanguage: Record<string, Rate>;
@@ -129,6 +133,10 @@ export function scoreEval(allClaims: EvalClaim[], allOutcomes: Outcome[], option
     reviewSkipped: {
       count: outcomes.filter((o) => o.reviewSkipped).length,
       ids: [...new Set(outcomes.filter((o) => o.reviewSkipped).map((o) => o.id))],
+    },
+    quoteRetried: {
+      count: outcomes.filter((o) => o.quoteRetried).length,
+      ids: [...new Set(outcomes.filter((o) => o.quoteRetried).map((o) => o.id))],
     },
     byExpected,
     bySplit: group((c) => c.split),

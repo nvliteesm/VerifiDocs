@@ -127,6 +127,13 @@ describe("verifyJudgment: a quote that does not verify becomes Can't tell (hard 
     cantTell(judgment({ quote: "The survey had 500 respondents across three regions" }));
   });
 
+  it("marks only a quote that was not found as worth a second ask", () => {
+    expect(cantTell(judgment({ quote: "The survey had 500 respondents across three regions" })).quoteNotFound).toBe(true);
+    expect(cantTell(judgment({ quote: null })).quoteNotFound).toBeUndefined();
+    expect(cantTell(judgment({ quote: "The survey" })).quoteNotFound).toBeUndefined();
+    expect(verifyJudgment(judgment({ quote: "The survey had 300 respondents across three regions" }), passages).quoteNotFound).toBeUndefined();
+  });
+
   it("never lets a Supported verdict through without a verified quote and page", () => {
     for (const quote of [null, "invented text that is not in the source at all"]) {
       const result = verifyJudgment(judgment({ verdict: "supported", quote }), passages);
