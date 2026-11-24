@@ -224,7 +224,9 @@ describe("buildPartialReviewPrompt", () => {
     expect(prompt).toContain("only PARTLY supports the claim");
     expect(prompt).toContain("- contradicted: the claim's main assertion");
     expect(prompt).toContain("a right number attached to the wrong group, model or subject");
-    expect(prompt).toContain("It stays contradicted even when other words of the claim match.");
+    expect(prompt).toContain("It stays contradicted even when other words of the claim match, if the claim makes one point.");
+    expect(prompt).toContain("if the claim makes one point");
+    expect(prompt).toContain("is NOT contradicted when the passage states at least one of its points correctly");
     expect(prompt).toContain("- partial: part of the claim is stated");
     expect(prompt).toContain("When truly unsure, choose partial.");
   });

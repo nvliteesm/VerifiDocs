@@ -1,0 +1,113 @@
+{
+  "config": {
+    "date": "2026-11-24T15:17:24.550Z",
+    "commit": "5a91ae7",
+    "model": "gemini-2.5-flash-lite",
+    "review": "gemini-4-hydrogen",
+    "runs": 1,
+    "includeProposed": false
+  },
+  "report": {
+    "claims": 3,
+    "runs": 1,
+    "notApproved": 0,
+    "preview": false,
+    "strict": 0.6666666666666666,
+    "lenient": 1,
+    "missed": {
+      "count": 0,
+      "of": 3,
+      "rate": 0,
+      "ids": []
+    },
+    "meetsBar": false,
+    "errors": 0,
+    "retried": 0,
+    "reviewSkipped": {
+      "count": 0,
+      "ids": []
+    },
+    "byExpected": {
+      "partial": {
+        "n": 3,
+        "strict": 0.6666666666666666,
+        "got": {
+          "partial": 2,
+          "contradicted": 1
+        }
+      }
+    },
+    "bySplit": {
+      "held_out": {
+        "n": 1,
+        "strict": 1,
+        "lenient": 1
+      },
+      "dev": {
+        "n": 2,
+        "strict": 0.5,
+        "lenient": 1
+      }
+    },
+    "byLanguage": {
+      "id": {
+        "n": 3,
+        "strict": 0.6666666666666666,
+        "lenient": 1
+      }
+    },
+    "unstable": [],
+    "latency": {
+      "p50": 7662,
+      "p95": 8875,
+      "max": 8875
+    }
+  },
+  "rows": [
+    {
+      "id": "E06",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "partial"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The source passage does not show 95,2 from your sentence."
+    },
+    {
+      "id": "E16",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "partial"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Kutipan menyatakan bahwa Batch Normalization terkadang menghilangkan kebutuhan akan Dropout, bukan sepenuhnya menghilangkannya."
+    },
+    {
+      "id": "E27",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Teks sumber menyatakan bahwa LSTM tidak mengalami kesulitan pada kalimat panjang, bertentangan dengan klaim yang menyebut LSTM kesulitan menangani kalimat panjang."
+    }
+  ]
+}

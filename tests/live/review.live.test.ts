@@ -54,6 +54,11 @@ describe.skipIf(!live)("second look at Supported (live)", () => {
       { name: "one wrong detail beside right ones", claim: "The trial enrolled 300 patients and ran for two years.", passage: "The trial enrolled 300 patients and ran for one year.", want: "partial" },
       { name: "overstated amount", claim: "The drug works for all patients.", passage: "The drug works for most patients.", want: "partial" },
       { name: "extra detail not in the source", claim: "The survey of 300 people was run online.", passage: "The survey had 300 respondents across three regions.", want: "partial" },
+      // Mixed claims (24 Nov 2026): one point right, another wrong or reversed. Invented, with different subjects from
+      // the eval claims that showed the problem.
+      { name: "two figures, one wrong", claim: "The cohort had 500 smokers and 90 non-smokers.", passage: "The cohort had 500 smokers and 120 non-smokers.", want: "partial" },
+      { name: "right fact, reversed side clause", claim: "The robot reached 4 km/h, although it tipped over on slopes.", passage: "The robot reached 4 km/h. It did not tip over on slopes.", want: "partial" },
+      { name: "single point reversed", claim: "Sleep loss had no effect on reaction time in adults.", passage: "Sleep loss slowed reaction time in adults.", want: "contradicted" },
     ];
     // reviewVerdict keeps Partly supported when its review fails, so a model outage would look like a model answer.
     // Record every failure and insist there were none before reading the results (found when credits ran out).
@@ -85,7 +90,7 @@ describe.skipIf(!live)("second look at Supported (live)", () => {
     }
     console.log(rows.join("\n"));
     expect(failures, "the model failed, so these results say nothing about the prompt").toEqual([]);
-    expect(right).toBeGreaterThanOrEqual(5);
+    expect(right).toBeGreaterThanOrEqual(cases.length - 1);
   }, 120_000);
 
   it("catches a wrong number in code, then the review calls it Contradicted", async () => {
