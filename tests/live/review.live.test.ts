@@ -88,13 +88,13 @@ describe.skipIf(!live)("second look at Supported (live)", () => {
     expect(right).toBeGreaterThanOrEqual(5);
   }, 120_000);
 
-  it("catches a wrong number in code, before any model call", async () => {
+  it("catches a wrong number in code, then the review calls it Contradicted", async () => {
     const result = await reviewVerdict(llm!, {
       claimText: "Batch Normalization reaches the same accuracy with 41 times fewer training steps (Ioffe & Szegedy, 2015).",
       citation: "(Ioffe & Szegedy, 2015)",
       verified: asSupported("bn", "Batch Normalization achieves the same accuracy with 14 times fewer training steps"),
       passages,
     });
-    expect(result).toMatchObject({ verdict: "partial", reason: "The source passage does not show 41 from your sentence." });
+    expect(result.verdict).toBe("contradicted");
   }, 30_000);
 });
