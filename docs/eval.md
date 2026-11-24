@@ -1,6 +1,6 @@
 # Eval
 
-Status (24 Nov 2026): the harness exists (`npm run eval`, `evals/run.eval.ts`) with a public set of 40 claims whose labels are **proposed, not yet approved**. Steven's Sheet set below joins once it is exported with its PDFs.
+Status (24 Nov 2026): the harness exists (`npm run eval`, `evals/run.eval.ts`) with a public set of 51 claims, all labels approved by Steven on 24 Nov 2026 (the first 40, then 11 fresh held-out claims, E41 to E51, drafted afterwards and not yet run). Steven's Sheet set below joins once it is exported with its PDFs.
 
 ## Quality bar
 
@@ -39,8 +39,8 @@ Record correct-verdict rate and missed-unsupported rate for each, next to Verifi
 
 Built because the Sheet's rows have no matched PDFs yet, and to cover what the Sheet lacks: Bahasa Indonesia and every pre-judge verdict.
 
-- `evals/claims.json`: 40 claims, 20 English and 20 Bahasa Indonesia. Expected: 18 Supported, 9 Contradicted, 3 Partial, 3 Not in sources, 3 Reference not found, 2 Can't check, 2 No citation given. No Can't tell case yet (a garbled or scanned source is still to be added).
-- Each claim has the expected quote and page (checked against an independent text extraction, pypdf), `also_acceptable` where the definitions allow two verdicts, `split` (10 held out, 5 per language, none seen in tuning), `seen_in_tuning` (claims from the 23 Nov UAT that prompts were tuned against), and `status`.
+- `evals/claims.json`: 51 claims, 26 English and 25 Bahasa Indonesia. Expected: 23 Supported, 11 Contradicted, 5 Partial, 5 Not in sources, 3 Reference not found, 2 Can't check, 2 No citation given. No Can't tell case yet (a garbled or scanned source is still to be added).
+- Each claim has the expected quote and page (checked against an independent text extraction, pypdf), `also_acceptable` where the definitions allow two verdicts, `split` (21 held out: the first 10, 5 per language, then E41 to E51; none is marked seen in tuning, but E31 was seen failing before the 24 Nov review fix was designed and E21's failure was diagnosed, so E41 to E51 are the clean ones; do not look at their verdicts until tuning is frozen), `seen_in_tuning` (claims from the 23 Nov UAT that prompts were tuned against), and `status`.
 - `evals/bibliography.json`: one reference list of 15 entries for every claim, as in a real draft: 11 uploaded papers, 2 real papers deliberately not uploaded (Can't check), 2 invented entries (Reference not found; both confirmed absent from Crossref and OpenAlex on 24 Nov).
 - `evals/sources.json`: 11 open-access PDFs (10 arXiv papers pinned to a version, and one CC BY 4.0 paper in Scientific Reports) with SHA-256 checksums. The PDFs are not committed; the harness downloads them into the git-ignored `evals/.cache/`.
 
