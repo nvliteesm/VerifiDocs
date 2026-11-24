@@ -28,6 +28,78 @@ function fakeApi() {
   return { api, releaseList: (sources: SourceView[]) => releaseList(sources) };
 }
 
+/** A fake API that holds each PDF in "reading" until the test lets it finish, and records how many run at once. */
+function slowApi() {
+  const uploads: string[] = [];
+  const releases = new Map<string, () => void>();
+  let active = 0;
+  let peak = 0;
+  const api = {
+    listSources: async () => [],
+    upload: async (file: File) => {
+      uploads.push(file.name);
+      active += 1;
+      peak = Math.max(peak, active);
+      return { documentId: `d-${file.name}`, status: "ingesting" as const, pageCount: 1 };
+    },
+    ingest: (id: string) =>
+      new Promise((resolve) =>
+        releases.set(id, () => {
+          releases.delete(id);
+          active -= 1;
+          resolve({ documentId: id, status: "ready", pagesIngested: 1, pageCount: 1, done: true });
+        }),
+      ),
+    deleteSource: async () => {},
+  } as unknown as Api;
+  const releaseAll = () => [...releases.values()].forEach((release) => release());
+  return { api, uploads, releaseAll, reading: () => releases.size, peak: () => peak };
+}
+
+const pdf = (name: string) => new File(["x"], name, { type: "application/pdf" });
+
+describe("useSources: several PDFs at once (UAT 23 Nov 2026: ten PDFs took 38 s one by one)", () => {
+  it("shows every file at once, reads three at a time, and reads them all", async () => {
+    const { api, releaseAll, reading, peak } = slowApi();
+    const { result } = renderHook(() => useSources(api));
+    act(() => result.current.addFiles(["a.pdf", "b.pdf", "c.pdf", "d.pdf", "e.pdf"].map(pdf)));
+
+    expect(result.current.rows.map((row) => row.filename)).toEqual(["a.pdf", "b.pdf", "c.pdf", "d.pdf", "e.pdf"]);
+    await waitFor(() => expect(reading()).toBe(3));
+    expect(result.current.rows.filter((row) => row.phase === "waiting").map((row) => row.filename)).toEqual(["d.pdf", "e.pdf"]);
+    expect(result.current.busy).toBe(true);
+
+    for (let round = 0; round < 3 && result.current.rows.some((row) => row.phase !== "ready"); round += 1) {
+      await act(async () => releaseAll());
+      await waitFor(() => expect(reading() > 0 || result.current.rows.every((row) => row.phase === "ready")).toBe(true));
+    }
+    await waitFor(() => expect(result.current.rows.every((row) => row.phase === "ready")).toBe(true));
+    expect(peak()).toBe(3);
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("counts files still waiting toward the limit of 10", async () => {
+    const { api } = slowApi();
+    const { result } = renderHook(() => useSources(api));
+    act(() => result.current.addFiles(Array.from({ length: 8 }, (_, i) => pdf(`f${i}.pdf`))));
+    act(() => result.current.addFiles(["x.pdf", "y.pdf", "z.pdf"].map(pdf)));
+    expect(result.current.rows).toHaveLength(10);
+    expect(result.current.notice).toMatch(/z\.pdf/);
+  });
+
+  it("removes a waiting file without ever uploading it", async () => {
+    const { api, uploads } = slowApi();
+    const { result } = renderHook(() => useSources(api));
+    act(() => result.current.addFiles(["a.pdf", "b.pdf", "c.pdf", "d.pdf"].map(pdf)));
+    const waiting = result.current.rows.find((row) => row.filename === "d.pdf")!;
+    expect(waiting.phase).toBe("waiting");
+    await act(async () => result.current.remove(waiting));
+    expect(result.current.rows.map((row) => row.filename)).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
+    await waitFor(() => expect(uploads).toHaveLength(3));
+    expect(uploads).not.toContain("d.pdf");
+  });
+});
+
 describe("useSources: a file added before the first list arrives", () => {
   it("stays on screen when the list arrives empty", async () => {
     const { api, releaseList } = fakeApi();

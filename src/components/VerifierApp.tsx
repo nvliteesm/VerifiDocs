@@ -267,9 +267,11 @@ export function VerifierApp() {
               key={seedKey}
               importer={importer}
               locked={!consent}
-              disabled={sources.busy || !consent}
-              disabledReason={!consent ? t("locked", { ok: t("note.ok") }) : sources.busy ? t("wait.sources") : null}
-              noReadySources={sources.loaded && readySources === 0}
+              // The scan reads only the draft, so it does not wait for the sources (UAT 23 Nov 2026: ten PDFs held
+              // it for 38 s). The check of the cited claims does, below.
+              disabled={!consent}
+              disabledReason={!consent ? t("locked", { ok: t("note.ok") }) : null}
+              noReadySources={sources.loaded && readySources === 0 && !sources.busy}
               initial={lastInput}
               onStart={start}
               onTryExample={tryExample}
@@ -301,7 +303,11 @@ export function VerifierApp() {
                         {t("act.edit")}
                       </button>
                     )}
-                    {readySources === 0 && <span className="hint">{t("scan.addSources")}</span>}
+                    {sources.busy ? (
+                      <span className="hint">{t("wait.sources")}</span>
+                    ) : (
+                      readySources === 0 && <span className="hint">{t("scan.addSources")}</span>
+                    )}
                   </>
                 )}
                 {state.phase === "done" && (

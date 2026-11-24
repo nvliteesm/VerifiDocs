@@ -14,6 +14,8 @@ function fakeServer(
     failCreate?: boolean;
     existingRun?: boolean;
     hangChecks?: boolean;
+    /** The uploaded source never finishes reading. */
+    hangIngest?: boolean;
     deleteStatus?: number;
     exampleFails?: boolean;
     importFails?: boolean;
@@ -84,6 +86,7 @@ function fakeServer(
       });
     }
     if (method === "POST" && url === "/api/sources/doc-ex/ingest") {
+      if (options.hangIngest) return new Promise<Response>(() => {}); // still reading
       return json(200, { documentId: "doc-ex", status: "ready", pagesIngested: 1, pageCount: 1, done: true });
     }
     if (method === "POST" && url === "/api/runs") {
@@ -146,6 +149,30 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("sources still reading (UAT 23 Nov 2026)", () => {
+  it("lets the student scan the draft at once, and makes only the check wait, saying why", async () => {
+    vi.stubGlobal("fetch", fakeServer({ hangIngest: true }).fetchImpl);
+    const user = userEvent.setup();
+    render(<VerifierApp />);
+    await user.click(await screen.findByRole("button", { name: "Got it" }));
+    await user.upload(
+      document.querySelector('input[type="file"][multiple]') as HTMLInputElement,
+      new File(["%PDF-1.4"], "source.pdf", { type: "application/pdf" }),
+    );
+    expect(await screen.findByText(/Reading/)).toBeTruthy();
+
+    fill();
+    const scan = screen.getByRole("button", { name: "Scan my draft" });
+    expect(scan).toHaveProperty("disabled", false);
+    expect(screen.queryByText(/Add your source PDFs/)).toBeNull(); // a PDF is on its way, so this advice is wrong now
+
+    await user.click(scan);
+    const check = await screen.findByRole("button", { name: /Check 1 cited claim/ });
+    expect(check).toHaveProperty("disabled", true);
+    expect(screen.getByText("Wait for your sources to finish reading.")).toBeTruthy();
+  });
 });
 
 describe("privacy note", () => {

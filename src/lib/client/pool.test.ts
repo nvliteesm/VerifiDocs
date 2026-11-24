@@ -1,5 +1,67 @@
 import { describe, expect, it } from "vitest";
-import { runPool } from "./pool";
+import { createLimiter, runPool } from "./pool";
+
+describe("createLimiter", () => {
+  /** A task the test finishes by hand, recording when it started. */
+  function gate(log: string[], name: string) {
+    let finish: (fail?: boolean) => void = () => {};
+    const task = () =>
+      new Promise<string>((resolve, reject) => {
+        log.push(`start ${name}`);
+        finish = (fail) => (fail ? reject(new Error(name)) : resolve(name));
+      });
+    return { task, finish: (fail?: boolean) => finish(fail) };
+  }
+
+  it("runs at most the limit at once, in the order asked, and every task in the end", async () => {
+    const limit = createLimiter(3);
+    const log: string[] = [];
+    const tasks = ["a", "b", "c", "d", "e"].map((name) => gate(log, name));
+    const done = tasks.map((t) => limit(t.task));
+    await tick();
+    expect(log).toEqual(["start a", "start b", "start c"]);
+
+    tasks[1]!.finish();
+    await tick();
+    expect(log).toEqual(["start a", "start b", "start c", "start d"]);
+
+    for (const t of [tasks[0]!, tasks[2]!, tasks[3]!]) t.finish();
+    await tick();
+    tasks[4]!.finish();
+    expect(await Promise.all(done)).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("frees the place of a task that fails, and passes its error on", async () => {
+    const limit = createLimiter(1);
+    const log: string[] = [];
+    const first = gate(log, "first");
+    const second = gate(log, "second");
+    const failing = limit(first.task);
+    const next = limit(second.task);
+    await tick();
+    first.finish(true);
+    await expect(failing).rejects.toThrow("first");
+    await tick();
+    expect(log).toEqual(["start first", "start second"]);
+    second.finish();
+    expect(await next).toBe("second");
+  });
+
+  it("hands a freed place to the task that waited, not to one asked for later", async () => {
+    const limit = createLimiter(1);
+    const log: string[] = [];
+    const first = gate(log, "first");
+    const waiting = gate(log, "waiting");
+    const late = gate(log, "late");
+    void limit(first.task);
+    void limit(waiting.task);
+    await tick();
+    first.finish();
+    void limit(late.task); // asked for in the same turn the place came free
+    await tick();
+    expect(log).toEqual(["start first", "start waiting"]);
+  });
+});
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 1));
 

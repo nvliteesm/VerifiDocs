@@ -19,6 +19,8 @@ interface Props {
 
 function statusText(row: SourceRow, t: Translate, locale: Locale): string {
   switch (row.phase) {
+    case "waiting":
+      return t("src.waiting");
     case "uploading":
       return t("src.uploading");
     case "ingesting":

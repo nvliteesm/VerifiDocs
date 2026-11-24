@@ -3,11 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Api } from "@/lib/client/api";
 import { MAX_PDF_BYTES, MAX_SOURCES, megabytes } from "@/lib/client/limits";
+import { createLimiter } from "@/lib/client/pool";
 import { messageOf } from "@/lib/client/run-verification";
 import type { SourceView } from "@/lib/client/types";
 import { useT } from "./LocaleProvider";
 
-export type SourcePhase = "uploading" | "ingesting" | "ready" | "no_text" | "failed";
+/** "waiting": added, but its turn to upload has not come yet (at most INGEST_CONCURRENCY run at once). */
+export type SourcePhase = "waiting" | "uploading" | "ingesting" | "ready" | "no_text" | "failed";
+
+/**
+ * How many PDFs upload and read at once. One at a time took 38 s for ten PDFs in the UAT of 23 Nov 2026; three keeps
+ * the server's model budget and the database connections comfortable.
+ */
+export const INGEST_CONCURRENCY = 3;
 
 export interface SourceRow {
   /** A key that is stable while the row is on screen, before and after the server gives it an id. */
@@ -37,7 +45,9 @@ export function useSources(api: Api) {
   const [rows, setRows] = useState<SourceRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const queue = useRef<Promise<void>>(Promise.resolve());
+  const limit = useRef(createLimiter(INGEST_CONCURRENCY));
+  /** Rows removed while still waiting: their upload must never start. */
+  const removed = useRef(new Set<string>());
   const rowsRef = useRef<SourceRow[]>([]);
   rowsRef.current = rows;
 
@@ -88,7 +98,10 @@ export function useSources(api: Api) {
           return [...fromServer, ...current];
         });
         setLoaded(true);
-        for (const source of sources) if (source.status === "ingesting") void ingestUntilDone(source.id, source.id);
+        // PDFs still being read when the page was closed carry on, through the same limit as new ones.
+        for (const source of sources) {
+          if (source.status === "ingesting") void limit.current(() => ingestUntilDone(source.id, source.id));
+        }
       })
       .catch(() => {
         if (!cancelled) setLoaded(true);
@@ -98,13 +111,11 @@ export function useSources(api: Api) {
     };
   }, [api, ingestUntilDone]);
 
+  /** Runs when this file's turn comes. Its row is already on screen, as "waiting". */
   const uploadOne = useCallback(
-    async (file: File) => {
-      const key = crypto.randomUUID();
-      setRows((current) => [
-        ...current,
-        { key, id: null, filename: file.name, phase: "uploading", pagesIngested: 0, pageCount: null, error: null },
-      ]);
+    async (key: string, file: File) => {
+      if (removed.current.has(key)) return;
+      update(key, { phase: "uploading" });
       try {
         const uploaded = await api.upload(file);
         update(key, { id: uploaded.documentId, pageCount: uploaded.pageCount, phase: uploaded.status });
@@ -116,7 +127,10 @@ export function useSources(api: Api) {
     [api, ingestUntilDone, update, describe],
   );
 
-  /** Adds PDFs one after another, refusing files the server would refuse, with a plain reason. */
+  /**
+   * Adds PDFs, refusing files the server would refuse, with a plain reason. Every accepted file shows at once as
+   * "waiting" (so the limit of 10 counts it straight away), and up to INGEST_CONCURRENCY upload and read at once.
+   */
   const addFiles = useCallback(
     (files: File[]) => {
       setNotice(null);
@@ -134,7 +148,19 @@ export function useSources(api: Api) {
         }
       }
       if (problems.length > 0) setNotice(problems.join(" "));
-      for (const file of accepted) queue.current = queue.current.then(() => uploadOne(file));
+      const added: SourceRow[] = accepted.map((file) => ({
+        key: crypto.randomUUID(),
+        id: null,
+        filename: file.name,
+        phase: "waiting",
+        pagesIngested: 0,
+        pageCount: null,
+        error: null,
+      }));
+      // Counted at once, before the next render, so files added again straight away cannot pass the limit.
+      rowsRef.current = [...rowsRef.current, ...added];
+      setRows((current) => [...current, ...added]);
+      added.forEach((row, index) => void limit.current(() => uploadOne(row.key, accepted[index]!)));
     },
     [uploadOne],
   );
@@ -148,6 +174,7 @@ export function useSources(api: Api) {
 
   const remove = useCallback(
     async (row: SourceRow) => {
+      removed.current.add(row.key);
       try {
         if (row.id) await api.deleteSource(row.id);
       } catch (error) {
@@ -162,7 +189,7 @@ export function useSources(api: Api) {
     [api, update, describe],
   );
 
-  const busy = rows.some((row) => row.phase === "uploading" || row.phase === "ingesting");
+  const busy = rows.some((row) => row.phase === "waiting" || row.phase === "uploading" || row.phase === "ingesting");
   const readyCount = rows.filter((row) => row.phase === "ready").length;
 
   /**
