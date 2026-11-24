@@ -36,6 +36,12 @@ describe("buildJudgePrompt", () => {
     expect(prompt).toContain("<claim>\nThe survey had 500 respondents.\n</claim>");
   });
 
+  it("tells the judge the citation's names and year are not part of the claim (UAT 23 Nov 2026)", () => {
+    // A wrong year in the citation is shown on the card from the reference lookup; the judge must not turn
+    // "the passages do not say 2015" into Partly supported.
+    expect(prompt).toContain("never lower a verdict because the passages do not show that year or those names");
+  });
+
   it("never shows the model the real chunk ids", () => {
     expect(prompt).not.toContain("chunk-a");
     expect(prompt).not.toContain("chunk-b");

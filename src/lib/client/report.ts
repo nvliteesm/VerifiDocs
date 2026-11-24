@@ -35,6 +35,7 @@ export function buildReport(claims: ClaimView[], fixList: string[], t: Translate
       }
       if (claim.reason) lines.push(`   ${t("report.why", { reason: localizeReason(claim.reason, t) })}`);
       if (claim.fixSuggestion) lines.push(`   ${t("report.rewrite", { sentence: claim.fixSuggestion })}`);
+      for (const note of claim.yearNotes ?? []) lines.push(`   ${t("claim.year", { cited: note.cited, published: note.published })}`);
     });
   }
 
@@ -43,6 +44,7 @@ export function buildReport(claims: ClaimView[], fixList: string[], t: Translate
     for (const claim of supported) {
       lines.push(`- ${claim.text}${claim.page !== null ? ` ${t("report.page", { page: claim.page })}` : ""}`);
       if (claim.citationSource === "found") lines.push(`  ${t("report.found")}`);
+      for (const note of claim.yearNotes ?? []) lines.push(`  ${t("claim.year", { cited: note.cited, published: note.published })}`);
     }
   }
 

@@ -330,6 +330,12 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
       <p className="claim-text">{claim.text}</p>
       {/* The audit trail (PRD guard rule 2): this citation was attached here, after the claim was written. */}
       {claim.citationSource === "found" && <p className="found-tag">{t("claim.found")}</p>}
+      {/* The reference exists but its year in the list is off. A separate fix: the verdict stands. */}
+      {claim.yearNotes?.map((note) => (
+        <p key={note.position} className="year-tag">
+          {t("claim.year", { cited: note.cited, published: note.published })}
+        </p>
+      ))}
 
       {claim.reason && <p className="reason">{localizeReason(claim.reason, t)}</p>}
       {verdict && verdict !== "supported" && !listMissing && (
@@ -508,6 +514,16 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
     : attention === 0
       ? t("tally.allSupported")
       : t(pluralKey(locale, "tally.attention", total), { n: attention, total });
+  // Wrong years go in the summary too, by citation: a Supported card is hidden under "Needs attention", and its
+  // year still needs fixing. One item per reference, named by the first citation that points at it.
+  const yearItems = new Map<number, string>();
+  for (const claim of state.claims) {
+    for (const note of claim.yearNotes ?? []) {
+      if (!yearItems.has(note.position)) {
+        yearItems.set(note.position, t("tally.yearItem", { citation: claim.citation ?? "", published: note.published }));
+      }
+    }
+  }
 
   // A keyboard or screen-reader user who pressed "Check my claims" has lost that button (it left the page), so
   // when the results arrive, move focus to the Results heading instead of leaving it on the page body.
@@ -684,6 +700,7 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
           {finished && !scanView && (
             <div className="tally">
               <p className="tally-number">{tally}</p>
+              {yearItems.size > 0 && <p className="year-tag">{t("tally.years", { list: [...yearItems.values()].join("; ") })}</p>}
             </div>
           )}
 

@@ -1042,6 +1042,36 @@ describe.skipIf(!enabled)("checking claims, end to end", () => {
     });
   });
 
+  it("says when the cited year is off, in the check reply and the reopened run, and keeps the verdict (UAT 23 Nov 2026)", async () => {
+    await inTx(async (tx) => {
+      const { llm } = fakeLlm({
+        extract: claim2,
+        judge: () => ({
+          verdict: "supported",
+          quote: "The dominant sequence transduction models are based on complex recurrent networks",
+          page: 1,
+          chunk_id: "P1",
+          reason: "The source states it.",
+        }),
+      });
+      const farYear: ReferenceResolution = { ...found, year: 2013, yearMismatch: true };
+      const client = newClient(tx, llm, async () => farYear);
+
+      const { body: created } = await client.createRun({ draft: DRAFT2 });
+      await client.extract(created.runId, 0);
+      const { body: source } = await client.upload(pdfForm("sample.pdf"));
+      await client.ingest(source.documentId);
+      const claimId = (await client.getRun(created.runId)).body.claims[0].id;
+
+      const checked = await client.check(claimId);
+      expect(checked.body.verdict).toMatchObject({ verdict: "supported", yearNotes: [{ position: 1, cited: 2017, published: 2013 }] });
+
+      const reopened = await client.getRun(created.runId);
+      expect(reopened.body.claims[0]).toMatchObject({ verdict: "supported", yearNotes: [{ position: 1, cited: 2017, published: 2013 }] });
+      expect(reopened.body.fixList).toEqual([]);
+    });
+  });
+
   it("asks the browser to retry when a lookup fails, with the attempt number", async () => {
     await inTx(async (tx) => {
       const client = newClient(tx, fakeLlm({ extract: claim2 }).llm, async () => ({ status: "error", reason: "Crossref returned HTTP 503" }));

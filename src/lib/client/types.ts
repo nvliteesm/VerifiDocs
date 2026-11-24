@@ -49,6 +49,16 @@ export interface ClaimView {
   reason: string | null;
   exitStage: number | null;
   fixSuggestion: string | null;
+  /** Cited references whose year in the student's list is off. Never changes the verdict. */
+  yearNotes?: YearNoteView[];
+}
+
+/** "Your list says 2015, the paper came out in 2013" for one cited reference. */
+export interface YearNoteView {
+  /** 1-based position in the reference list. */
+  position: number;
+  cited: number;
+  published: number;
 }
 
 /** A paper Find a source found for an uncited claim (docs/source-discovery.md). */
@@ -160,6 +170,7 @@ export interface CheckedVerdict {
   reason: string;
   exitStage: number;
   fixSuggestion: string | null;
+  yearNotes?: YearNoteView[];
 }
 
 export type CheckResponse =

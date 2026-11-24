@@ -33,7 +33,7 @@ const references = {
 describe.skipIf(!live)("stage 3 against Crossref and OpenAlex (live)", () => {
   it("separates real references from invented ones", async () => {
     const results: Record<string, Awaited<ReturnType<typeof resolveReference>>> = {};
-    for (const [name, raw] of Object.entries(references)) results[name] = await resolveReference(raw);
+    for (const [name, raw] of Object.entries(references)) results[name] = await resolveReference(raw, undefined, undefined, { openAlexApiKey: process.env.OPENALEX_API_KEY || undefined });
 
     console.log(
       Object.entries(results)

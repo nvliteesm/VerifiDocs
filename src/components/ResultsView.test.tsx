@@ -49,6 +49,36 @@ const noop = () => {};
 const view = (state: VerifierState, onEvent = vi.fn()) =>
   render(<ResultsView state={state} onRetryClaim={noop} onEvent={onEvent} />);
 
+describe("ResultsView wrong year in a citation (UAT 23 Nov 2026)", () => {
+  const yearNotes = [{ position: 9, cited: 2015, published: 2013 }];
+
+  it("says so on the card, even when the claim is supported", async () => {
+    view(stateOf([claim("supported", { citation: "(Mikolov et al., 2015)", yearNotes })]));
+    expect(screen.getByText("Wrong year: your list says 2015, the paper came out in 2013.")).toBeTruthy();
+  });
+
+  it("names the citation in the summary, so it is seen while Needs attention hides the supported card", () => {
+    view(stateOf([claim("contradicted"), claim("supported", { citation: "(Mikolov et al., 2015)", yearNotes })]));
+    expect(screen.getByText("Wrong year in your list: (Mikolov et al., 2015), published 2013.")).toBeTruthy();
+    expect(screen.queryByText("Wrong year: your list says 2015, the paper came out in 2013.")).toBeNull();
+  });
+
+  it("names each reference once, even when several claims cite it", () => {
+    view(
+      stateOf([
+        claim("supported", { citation: "(Mikolov et al., 2015)", yearNotes }),
+        claim("partial", { citation: "(Mikolov et al., 2015)", yearNotes }),
+      ]),
+    );
+    expect(screen.getByText("Wrong year in your list: (Mikolov et al., 2015), published 2013.")).toBeTruthy();
+  });
+
+  it("shows no year line when no year is off", () => {
+    view(stateOf([claim("supported"), claim("contradicted")]));
+    expect(screen.queryByText(/Wrong year/)).toBeNull();
+  });
+});
+
 describe("ResultsView tally", () => {
   it("uses the singular for one claim", () => {
     view(stateOf([claim("contradicted", { quote: "q", reason: "r" })]));

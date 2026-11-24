@@ -6,6 +6,7 @@ import { z } from "zod";
 import type postgres from "postgres";
 import { EVENT_SCHEMAS, logEvent, type EventName } from "../events";
 import { checkClaim } from "../pipeline/claim-check";
+import { yearNotesFor } from "../pipeline/year-notes";
 import type { ApiContext } from "./handler";
 import { ApiError, assertId, jsonResponse, readJson } from "./http";
 
@@ -31,6 +32,26 @@ export async function checkClaimHandler(context: ApiContext, claimId: string): P
     return jsonResponse({ outcome: "retry", reason: result.reason, attempt: result.attempt });
   }
   const verdict = result.verdict;
+  // Only runs where the lookup flagged a year return rows here, so most checks pay for one empty query.
+  const references = await sql<
+    { citation_text: string | null; id: string; position: number; raw_text: string; document_id: string | null; resolved_year: number | null; year_mismatch: boolean }[]
+  >`
+    select c.citation_text, r.id, r.position, r.raw_text, r.document_id, r.resolved_year, r.year_mismatch
+    from claims c join reference_entries r on r.run_id = c.run_id
+    where c.id = ${claimId} and c.session_id = ${context.sessionId}
+      and exists (select 1 from reference_entries x where x.run_id = c.run_id and x.year_mismatch)
+    order by r.position`;
+  const yearNotes = yearNotesFor(
+    references[0]?.citation_text ?? null,
+    references.map((ref) => ({
+      id: ref.id,
+      position: ref.position,
+      raw: ref.raw_text,
+      documentId: ref.document_id,
+      yearMismatch: ref.year_mismatch,
+      resolvedYear: ref.resolved_year,
+    })),
+  );
   return jsonResponse({
     outcome: "done",
     runCompleted: verdict.runCompleted,
@@ -42,6 +63,7 @@ export async function checkClaimHandler(context: ApiContext, claimId: string): P
       reason: verdict.reason,
       exitStage: verdict.exitStage,
       fixSuggestion: verdict.fixSuggestion,
+      yearNotes,
     },
   });
 }

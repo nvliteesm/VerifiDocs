@@ -35,6 +35,18 @@ describe("buildReport", () => {
   ];
   const report = buildReport(claims, ["c", "b", "d"]);
 
+  it("says when a cited year is off, for a claim that needs attention and for a supported one", () => {
+    const withYears = buildReport(
+      [
+        claim("s", 1, "supported", { citation: "(Mikolov et al., 2015)", yearNotes: [{ position: 9, cited: 2015, published: 2013 }] }),
+        claim("p", 2, "partial", { citation: "(Lee, 2010)", yearNotes: [{ position: 4, cited: 2010, published: 2008 }] }),
+      ],
+      ["p"],
+    );
+    expect(withYears).toContain("Wrong year: your list says 2010, the paper came out in 2008.");
+    expect(withYears).toContain("Wrong year: your list says 2015, the paper came out in 2013.");
+  });
+
   it("starts with a one-line summary", () => {
     expect(report.split("\n")[0]).toBe("VerifiDocs report");
     expect(report).toContain("4 claims checked: 3 need attention, 1 supported.");

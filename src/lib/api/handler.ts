@@ -6,7 +6,7 @@
 import { getSql } from "../db";
 import { getLlm, type Llm } from "../llm/adapter";
 import { discoverSources, type DiscoverResult } from "../pipeline/discover-sources";
-import type { ReferenceResolution } from "../pipeline/resolve-reference";
+import { resolveReference, type ReferenceResolution } from "../pipeline/resolve-reference";
 import { limitImports, limitModelUse, type Limits } from "../rate-limit";
 import type { SqlLike } from "../rag/retrieve";
 import { purgeIfDue } from "../retention";
@@ -42,6 +42,7 @@ export function defaultDeps(): ApiDeps {
       return getLlm();
     },
     discover: (claimText) => discoverSources(getLlm(), claimText, { apiKey: process.env.OPENALEX_API_KEY || undefined }),
+    resolve: (raw) => resolveReference(raw, undefined, undefined, { openAlexApiKey: process.env.OPENALEX_API_KEY || undefined }),
   };
 }
 

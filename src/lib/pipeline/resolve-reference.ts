@@ -20,6 +20,14 @@ const MIN_REQUEST_MS = 300;
 export const USER_AGENT = "VerifiDocs-portfolio/0.1";
 const TITLE_CONTAINMENT_MIN = 0.8;
 const DOI_TITLE_CONTAINMENT_MIN = 0.6;
+/**
+ * A record whose title is only close to the entry's ("Generative Adversarial Networks" for the NeurIPS title
+ * "Generative adversarial nets") still counts when its first author is the entry's FIRST author and the year is
+ * within one. The first author, not any author: Mirza's "Conditional GAN" (2014) shares most words and lists
+ * Mirza first, and Mirza is a co-author in the GAN entry.
+ */
+const CLOSE_TITLE_CONTAINMENT_MIN = 0.6;
+const CLOSE_TITLE_MIN_TOKENS = 3;
 const MAX_TITLE_QUERIES = 3;
 const MAX_QUERY_CHARS = 200;
 
@@ -102,9 +110,29 @@ function containment(titleTokens: string[], rawTokens: Set<string>): number {
   return titleTokens.filter((token) => rawTokens.has(token)).length / titleTokens.length;
 }
 
-function firstYear(raw: string): number | null {
+/** The first year written in a reference entry, as the student wrote it. */
+export function firstYear(raw: string): number | null {
   const match = /\b(1[5-9]\d{2}|20\d{2})[a-z]?\b/.exec(raw);
   return match ? Number(match[1]) : null;
+}
+
+/**
+ * The entry's first author's surname, when the entry starts the APA way: "Goodfellow, I., ..." or
+ * "Warde-Farley, D. ...". `text` is as written (for a search filter); `family` is its last word, normalized.
+ * Null for any other shape ("Bank Indonesia. (2024)", "A. Vaswani et al."), so nothing is guessed.
+ */
+function leadAuthor(raw: string): { text: string; family: string } | null {
+  const match = /^\s*([\p{L}'’-]+(?:\s[\p{L}'’-]+)?),\s*\p{Lu}\./u.exec(raw);
+  if (!match) return null;
+  const family = normalizeForMatch(match[1]!).split(" ").at(-1);
+  return family && family.length >= 2 ? { text: match[1]!, family } : null;
+}
+
+/** The title of an APA entry: the text after "(2017)." up to the next sentence end. Null for other shapes. */
+function apaTitle(raw: string): string | null {
+  const afterYear = /\(\s*(?:1[5-9]\d{2}|20\d{2})[a-z]?\s*\)\.?\s*(.+)/s.exec(raw)?.[1];
+  const title = afterYear?.split(/(?<=[.?!])\s+/)[0]?.replace(/[.\s]+$/, "").trim();
+  return title && title.length >= 12 ? title.slice(0, MAX_QUERY_CHARS) : null;
 }
 
 /** Decides whether a candidate is the entry's reference. Exported for tests. */
@@ -115,11 +143,23 @@ export function judgeCandidate(
   const rawTokens = new Set(tokensOf(raw));
   const titleTokens = tokensOf(candidate.title);
   if (titleTokens.length < 2) return { match: false, yearMismatch: false };
-  if (containment(titleTokens, rawTokens) < TITLE_CONTAINMENT_MIN) return { match: false, yearMismatch: false };
 
   const rawYear = firstYear(raw);
   const yearKnown = rawYear !== null && candidate.year !== null;
   const yearClose = yearKnown && Math.abs(rawYear - candidate.year!) <= 1;
+
+  const share = containment(titleTokens, rawTokens);
+  if (share < TITLE_CONTAINMENT_MIN) {
+    const lead = leadAuthor(raw);
+    const closeTitle =
+      share >= CLOSE_TITLE_CONTAINMENT_MIN &&
+      titleTokens.length >= CLOSE_TITLE_MIN_TOKENS &&
+      yearClose &&
+      lead !== null &&
+      candidate.firstAuthorFamily !== null &&
+      candidate.firstAuthorFamily.split(" ").at(-1) === lead.family;
+    return { match: closeTitle, yearMismatch: false };
+  }
 
   if (candidate.firstAuthorFamily) {
     if (!rawTokens.has(candidate.firstAuthorFamily)) return { match: false, yearMismatch: false };
@@ -239,6 +279,15 @@ export interface ResolveOptions {
   /** Total time one lookup may take, across every request and retry wait. */
   deadlineMs?: number;
   now?: () => number;
+  /** The free OpenAlex key (OPENALEX_API_KEY). Without it OpenAlex answers 429 under load (UAT 23 Nov 2026). */
+  openAlexApiKey?: string;
+}
+
+/** OpenAlex search URL, with the key when there is one. */
+function openAlexSearchUrl(params: Record<string, string>, apiKey: string | undefined): string {
+  const query = new URLSearchParams({ ...params, "per-page": "5", select: "doi,title,publication_year,authorships" });
+  if (apiKey) query.set("api_key", apiKey);
+  return `https://api.openalex.org/works?${query}`;
 }
 
 export async function resolveReference(
@@ -272,8 +321,9 @@ export async function resolveReference(
         };
       }
     } else if (viaCrossref.kind === "notfound") {
+      const keyParam = options.openAlexApiKey ? `&api_key=${encodeURIComponent(options.openAlexApiKey)}` : "";
       const viaOpenAlex = await getJson(
-        fetchFn, `https://api.openalex.org/works/doi:${encodeURI(doi)}?select=doi,title,publication_year,authorships`,
+        fetchFn, `https://api.openalex.org/works/doi:${encodeURI(doi)}?select=doi,title,publication_year,authorships${keyParam}`,
         openAlexWork, "OpenAlex",
       );
       note(viaOpenAlex);
@@ -296,25 +346,45 @@ export async function resolveReference(
     new URLSearchParams({ "query.bibliographic": entry.slice(0, 500), rows: "5", select: "DOI,title,issued,author" });
   const crossref = await getJson(fetchFn, crossrefUrl, crossrefList, "Crossref");
   note(crossref);
+  // A Crossref match whose year is far off is kept only as a fallback: the original is often in OpenAlex under the
+  // right year (UAT 23 Nov 2026: "Attention is all you need", 2017, matched a 2025 Crossref record).
+  let crossrefFallback: ReferenceResolution | null = null;
   if (crossref.kind === "ok") {
     const best = pickBest(entry, crossref.data.message.items.map(fromCrossref));
-    if (best) return best;
+    if (best?.status === "found" && !best.yearMismatch) return best;
+    crossrefFallback = best;
   }
 
-  // 3. OpenAlex, searching with title-like pieces of the entry (a whole entry returns noise there).
-  const openAlexCandidates: (Candidate | null)[] = [];
-  for (const query of titleQueries(entry)) {
-    const url =
-      "https://api.openalex.org/works?" +
-      new URLSearchParams({ search: query, "per-page": "5", select: "doi,title,publication_year,authorships" });
-    const result = await getJson(fetchFn, url, openAlexList, "OpenAlex");
-    note(result);
-    if (result.kind === "ok") openAlexCandidates.push(...result.data.results.map(fromOpenAlex));
+  // 3. OpenAlex. First by the entry's first author and nearby years, which finds a famous title that plain searches
+  //    bury under look-alikes (GAN); then by title-like pieces of the entry (a whole entry returns noise there).
+  const queries = titleQueries(entry);
+  const lead = leadAuthor(entry);
+  const year = firstYear(entry);
+  const title = apaTitle(entry);
+  const searches: Record<string, string>[] = [];
+  if (lead && year !== null && title) {
+    searches.push({
+      search: title,
+      filter: `raw_author_name.search:${lead.text.replace(/[,|:]/g, " ")},publication_year:${year - 1}-${year + 1}`,
+    });
   }
-  const best = pickBest(entry, openAlexCandidates);
+  for (const query of queries) searches.push({ search: query });
+
+  const openAlexCandidates: (Candidate | null)[] = [];
+  for (const params of searches) {
+    const result = await getJson(fetchFn, openAlexSearchUrl(params, options.openAlexApiKey), openAlexList, "OpenAlex");
+    note(result);
+    if (result.kind !== "ok") continue;
+    openAlexCandidates.push(...result.data.results.map(fromOpenAlex));
+    const best = pickBest(entry, openAlexCandidates);
+    if (best?.status === "found" && !best.yearMismatch) return best;
+  }
+
+  // 4. A far-year match is still a match: the reference exists and the year may be mistyped.
+  const best = crossrefFallback ?? pickBest(entry, openAlexCandidates);
   if (best) return best;
 
-  // 4. Nothing matched. Say "not found" only if every lookup that ran actually answered.
+  // 5. Nothing matched. Say "not found" only if every lookup that ran actually answered.
   if (errors.length > 0) return { status: "error", reason: [...new Set(errors)].join("; ") };
   return { status: "not_found" };
 }

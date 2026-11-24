@@ -104,6 +104,14 @@ describe("reduce: claims, counts and the fix list", () => {
     expect(state.fixList).toEqual(["a", "b"]);
   });
 
+  it("keeps the year notes a verdict brings, and keeps none when it brings none", () => {
+    let state = reduce(initialState, { type: "loaded", run: runResponse([claim("a", 1), claim("b", 2)]) });
+    state = reduce(state, { type: "claim", verdict: verdictFor("a", "supported", { yearNotes: [{ position: 9, cited: 2015, published: 2013 }] }) });
+    state = reduce(state, { type: "claim", verdict: verdictFor("b", "supported") });
+    expect(state.claims[0]!.yearNotes).toEqual([{ position: 9, cited: 2015, published: 2013 }]);
+    expect(state.claims[1]!.yearNotes ?? []).toEqual([]);
+  });
+
   it("ignores a verdict for a claim it does not know", () => {
     const state = reduce(initialState, { type: "loaded", run: runResponse([claim("a", 1)]) });
     const after = reduce(state, { type: "claim", verdict: verdictFor("zzz", "supported") });

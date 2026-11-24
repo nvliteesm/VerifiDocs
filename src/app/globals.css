@@ -870,7 +870,9 @@ blockquote {
   margin-top: 4px;
 }
 /* The audit trail: a citation attached here, not in the draft. Warning colour, because the draft still lacks it. */
-.found-tag {
+/* Both are things to fix about a citation itself, not about the claim, so they share one quiet warning style. */
+.found-tag,
+.year-tag {
   color: var(--warn);
   font-size: 0.9rem;
   font-weight: 600;

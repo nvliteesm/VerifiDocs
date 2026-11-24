@@ -82,6 +82,31 @@ describe("judgeCandidate", () => {
     expect(judgeCandidate(VASWANI, { title: "Attention Is All You Need", year: 2025, firstAuthorFamily: null }).match).toBe(false);
   });
 
+  describe("a slightly different title (NeurIPS 'nets' vs arXiv 'networks', UAT 23 Nov 2026)", () => {
+    const GAN =
+      "Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A., & Bengio, Y. (2014). Generative adversarial nets. Advances in Neural Information Processing Systems, 27.";
+
+    it("matches when the record's first author is the entry's first author and the year is close", () => {
+      expect(judgeCandidate(GAN, { title: "Generative Adversarial Networks", year: 2014, firstAuthorFamily: "goodfellow" }))
+        .toEqual({ match: true, yearMismatch: false });
+    });
+
+    it("does not match when the record's first author is only a co-author in the entry", () => {
+      expect(judgeCandidate(GAN, { title: "Conditional Generative Adversarial Nets", year: 2014, firstAuthorFamily: "mirza" }).match)
+        .toBe(false);
+    });
+
+    it("does not match a close title from a far year, even by the same first author", () => {
+      expect(judgeCandidate(GAN, { title: "Generative Adversarial Networks", year: 2020, firstAuthorFamily: "goodfellow" }).match)
+        .toBe(false);
+    });
+
+    it("does not match a title that shares too few words", () => {
+      expect(judgeCandidate(GAN, { title: "Adversarial examples in the physical world", year: 2014, firstAuthorFamily: "goodfellow" }).match)
+        .toBe(false);
+    });
+  });
+
   it("ignores accents and case", () => {
     expect(
       judgeCandidate("Müller, H. (2018). Price dynamics in open economies. Review.", {
@@ -137,6 +162,85 @@ describe("resolveReference", () => {
       isCrossrefSearch(u) ? crossrefList([crossrefWork("Attention Is All You Need", 2025, "Vaswani")]) : json({}, 500),
     );
     expect(await resolveReference(VASWANI, fn)).toMatchObject({ status: "found", yearMismatch: true });
+  });
+
+  it("when Crossref only has a far-year copy, asks OpenAlex and prefers the record whose year fits", async () => {
+    const { fn } = fakeFetch((u) => {
+      if (isCrossrefSearch(u)) return crossrefList([crossrefWork("Attention Is All You Need", 2025, "Vaswani", "10.65/mirror")]);
+      if (isOpenAlexSearch(u)) return openAlexList([openAlexWork("Attention Is All You Need", 2017, "Ashish Vaswani", "https://doi.org/10.48550/arxiv.1706.03762")]);
+      return json({}, 500);
+    });
+    const result = await resolveReference(VASWANI, fn, noSleep);
+    expect(result).toMatchObject({ status: "found", resolver: "openalex", year: 2017, yearMismatch: false });
+  });
+
+  it("searches OpenAlex by the entry's first author and nearby years before the plain title searches", async () => {
+    const { fn, urls } = fakeFetch((u) => (isCrossrefSearch(u) ? crossrefList([]) : openAlexList([])));
+    await resolveReference(VASWANI, fn, noSleep);
+    const openAlex = urls.filter(isOpenAlexSearch).map((u) => new URL(u).searchParams);
+    expect(openAlex[0]!.get("filter")).toBe("raw_author_name.search:Vaswani,publication_year:2016-2018");
+    expect(openAlex[0]!.get("search")).toBe("Attention is all you need");
+    expect(openAlex.slice(1).every((p) => p.get("filter") === null)).toBe(true);
+  });
+
+  it("stops after the author search when it finds the reference with a fitting year", async () => {
+    const { fn, urls } = fakeFetch((u) =>
+      isCrossrefSearch(u) ? crossrefList([]) : openAlexList([openAlexWork("Attention Is All You Need", 2017, "Ashish Vaswani")]),
+    );
+    expect(await resolveReference(VASWANI, fn, noSleep)).toMatchObject({ status: "found", resolver: "openalex" });
+    expect(urls.filter(isOpenAlexSearch)).toHaveLength(1);
+  });
+
+  it("finds a real paper listed under a slightly different title (GAN, UAT 23 Nov 2026)", async () => {
+    const gan =
+      "Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A., & Bengio, Y. (2014). Generative adversarial nets. Advances in Neural Information Processing Systems, 27.";
+    const { fn } = fakeFetch((u) => {
+      if (isCrossrefSearch(u)) return crossrefList([crossrefWork("Generative adversarial networks", 2020, "Goodfellow", "10.1145/3422622")]);
+      const filter = new URL(u).searchParams.get("filter") ?? "";
+      if (filter.startsWith("raw_author_name.search:Goodfellow")) {
+        return openAlexList([
+          openAlexWork("NIPS 2016 Tutorial: Generative Adversarial Networks", 2017, "Ian Goodfellow"),
+          openAlexWork("Generative Adversarial Networks", 2014, "Ian Goodfellow", "https://doi.org/10.48550/arxiv.1406.2661"),
+        ]);
+      }
+      return openAlexList([openAlexWork("Conditional Generative Adversarial Nets", 2014, "Mehdi Mirza")]);
+    });
+    const result = await resolveReference(gan, fn, noSleep);
+    expect(result).toMatchObject({ status: "found", resolver: "openalex", doi: "10.48550/arxiv.1406.2661", year: 2014, yearMismatch: false });
+  });
+
+  it("does not take a co-author's paper with a similar title as the reference", async () => {
+    const gan = "Goodfellow, I., Mirza, M., & Bengio, Y. (2014). Generative adversarial nets. Advances in Neural Information Processing Systems, 27.";
+    const { fn } = fakeFetch((u) =>
+      isCrossrefSearch(u) ? crossrefList([]) : openAlexList([openAlexWork("Conditional Generative Adversarial Nets", 2014, "Mehdi Mirza")]),
+    );
+    expect(await resolveReference(gan, fn, noSleep)).toEqual({ status: "not_found" });
+  });
+
+  it("sends the OpenAlex key on every OpenAlex request when one is given, and never to Crossref", async () => {
+    const { fn, urls } = fakeFetch((u) => (isCrossrefSearch(u) ? crossrefList([]) : openAlexList([])));
+    await resolveReference(VASWANI, fn, noSleep, { openAlexApiKey: "test-key" });
+    const openAlex = urls.filter(isOpenAlexSearch);
+    expect(openAlex.length).toBeGreaterThan(0);
+    expect(openAlex.every((u) => new URL(u).searchParams.get("api_key") === "test-key")).toBe(true);
+    expect(urls.filter(isCrossrefSearch).every((u) => !u.includes("test-key"))).toBe(true);
+  });
+
+  it("sends no key when none is given", async () => {
+    const { fn, urls } = fakeFetch((u) => (isCrossrefSearch(u) ? crossrefList([]) : openAlexList([])));
+    await resolveReference(VASWANI, fn, noSleep);
+    expect(urls.some((u) => u.includes("api_key"))).toBe(false);
+  });
+
+  it("sends the key on an OpenAlex DOI lookup too", async () => {
+    const entry = "Author, A. (2020). A study of something specific here. Journal. 10.5555/openalex-only.";
+    const { fn, urls } = fakeFetch((u) => {
+      if (isCrossrefDoi(u) && !isCrossrefSearch(u)) return json({}, 404);
+      if (isOpenAlexDoi(u)) return json(openAlexWork("A study of something specific here", 2020, "A Author"));
+      return json({}, 500);
+    });
+    await resolveReference(entry, fn, noSleep, { openAlexApiKey: "test-key" });
+    expect(new URL(urls.find(isOpenAlexDoi)!).searchParams.get("api_key")).toBe("test-key");
   });
 
   it("falls back to OpenAlex when Crossref has nothing", async () => {
@@ -336,7 +440,8 @@ describe("resolveReference", () => {
       const net = slowNetwork(10);
       const result = await resolveReference(VASWANI, net.fn, noSleep, { deadlineMs: 7000, now: net.now });
       expect(result.status).toBe("not_found"); // every request ran and answered, and nothing matched
-      expect(net.urls).toHaveLength(3);
+      // Crossref, the OpenAlex search by first author and year, then the two OpenAlex title searches.
+      expect(net.urls).toHaveLength(4);
     });
 
     it("counts a Retry-After wait against the deadline", async () => {

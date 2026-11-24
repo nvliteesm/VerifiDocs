@@ -25,6 +25,7 @@ import { sourcesForRun } from "./sources-found";
 import { saveEarlyVerdicts } from "../pipeline/scan";
 import { completeRunIfFinished } from "../pipeline/save-verdict";
 import type { Verdict } from "../pipeline/types";
+import { yearNotesFor, type YearEntry } from "../pipeline/year-notes";
 import type { ApiContext } from "./handler";
 import { ApiError, assertId, jsonResponse, readJson, readUpload } from "./http";
 
@@ -299,10 +300,27 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     from claims c left join verdicts v on v.claim_id = c.id
     where c.run_id = ${run.id} order by c.position`;
   const references = await sql<
-    { position: number; raw_text: string; resolution: string; resolved_title: string | null; year_mismatch: boolean }[]
+    {
+      id: string;
+      position: number;
+      raw_text: string;
+      document_id: string | null;
+      resolution: string;
+      resolved_title: string | null;
+      resolved_year: number | null;
+      year_mismatch: boolean;
+    }[]
   >`
-    select position, raw_text, resolution, resolved_title, year_mismatch from reference_entries
+    select id, position, raw_text, document_id, resolution, resolved_title, resolved_year, year_mismatch from reference_entries
     where run_id = ${run.id} order by position`;
+  const yearEntries: YearEntry[] = references.map((ref) => ({
+    id: ref.id,
+    position: ref.position,
+    raw: ref.raw_text,
+    documentId: ref.document_id,
+    yearMismatch: ref.year_mismatch,
+    resolvedYear: ref.resolved_year,
+  }));
 
   const found = await sourcesForRun(sql, run.id);
   const claims = claimRows.map((row) => ({
@@ -323,6 +341,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     reason: row.reason,
     exitStage: row.exit_stage,
     fixSuggestion: row.fix_suggestion,
+    yearNotes: yearNotesFor(row.citation_text, yearEntries),
   }));
 
   const counts: Partial<Record<Verdict, number>> = {};

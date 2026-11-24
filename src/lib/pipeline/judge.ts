@@ -66,6 +66,9 @@ export function buildJudgePrompt(claimText: string, passages: JudgePassage[]): s
     '  Set "chunk_id" to that passage\'s id (for example "P2") and "page" to its page.',
     '- For not_in_sources and cant_tell, set "quote", "chunk_id" and "page" to null.',
     "- When you are unsure between supported and partial, choose partial.",
+    '- The citation in the claim (author names and a year, such as "(Smith, 2020)" or "Smith (2020)") only says',
+    "  where the claim comes from, and it is checked separately. Judge only what the claim states about the world:",
+    "  never lower a verdict because the passages do not show that year or those names.",
     // The language is named, not left to the model: a small model answers an Indonesian claim in English too often.
     `- "reason" is one short sentence, ${explanationLanguage(claimText)}.`,
     "",

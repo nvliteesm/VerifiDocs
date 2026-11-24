@@ -2,7 +2,8 @@
 //
 // Reads only: the session's documents that are 'ready' or 'no_text', and the first three pages of each.
 // A source is matched, in order of strength, by (1) a link the student made, (2) the DOI printed in the
-// first pages, (3) the resolved title printed in the first pages, (4) the title words in the filename.
+// first pages (or, for an arXiv DOI, the arXiv id), (3) the resolved title printed in the first pages,
+// (4) the title words in the filename.
 // The filename is the only clue for a scanned PDF, which has no text to read.
 import type { SqlLike } from "../rag/retrieve";
 import { normalizeForMatch } from "./citations";
@@ -125,12 +126,33 @@ export async function findSourceDocument(db: SqlLike, args: FindSourceArgs): Pro
     where d.session_id = ${args.sessionId} and d.status in ('ready', 'no_text')
     group by d.id, d.status, d.filename, d.created_at
     order by d.created_at, d.id`;
+  return matchResolvedToDocuments(rows, { title: args.title, doi: args.doi });
+}
+
+/** "10.48550/arxiv.1412.6980" -> "1412.6980". An arXiv PDF prints "arXiv:1412.6980v9", never this DOI. */
+function arxivIdOf(doi: string): string | null {
+  const match = /^10\.48550\/arxiv\.(.+)$/i.exec(doi);
+  return match ? match[1]!.toLowerCase() : null;
+}
+
+/**
+ * Picks the uploaded PDF for a reference that Crossref or OpenAlex resolved, from each PDF's filename and the text
+ * of its first pages. Exported for tests; findSourceDocument reads the rows and calls it.
+ */
+export function matchResolvedToDocuments(
+  rows: Pick<Row, "id" | "status" | "filename" | "head">[],
+  args: { title: string; doi?: string | null },
+): SourceLookup {
   if (rows.length === 0) return { kind: "none" };
 
   const title = titleTokens(args.title);
-  const normalizedTitle = title.join(" ");
+  // The whole title, one-letter words included: "in a neural network" must not become "in neural network",
+  // which never occurs in the page text (UAT 23 Nov 2026: Adam and Hinton's papers were never matched).
+  const normalizedTitle = normalizeForMatch(args.title);
   const doi = args.doi?.trim().toLowerCase() ?? "";
-  const matches: { row: Row; strength: number }[] = [];
+  const arxivId = arxivIdOf(doi);
+  const arxivPattern = arxivId ? new RegExp(`arxiv:\\s*${arxivId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\d.])`) : null;
+  const matches: { row: Pick<Row, "id" | "status">; strength: number }[] = [];
 
   for (const row of rows) {
     const head = normalizeForMatch(row.head);
@@ -138,6 +160,7 @@ export async function findSourceDocument(db: SqlLike, args: FindSourceArgs): Pro
     let strength = 0;
 
     if (doi.length > 0 && rawHead.includes(doi)) strength = 3;
+    else if (arxivPattern && arxivPattern.test(rawHead)) strength = 3;
     else if (title.length >= MIN_TITLE_TOKENS && ` ${head} `.includes(` ${normalizedTitle} `)) strength = 2;
     else if (title.length >= MIN_TITLE_TOKENS) {
       const fileTokens = new Set(normalizeForMatch(row.filename.replace(/\.pdf$/i, "")).split(" "));
