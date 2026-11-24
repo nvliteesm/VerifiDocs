@@ -2,12 +2,14 @@
 //   2/3/4  runPrelude: citation, reference list, Crossref/OpenAlex (cached per run), uploaded source
 //   6      retrieve the top passages from the cited source(s) only
 //   7      judge the claim against the passages
-//   8      verify the quote in code; a quote that does not verify becomes Can't tell
+//   8      verify the quote in code; a quote that does not verify becomes Can't tell. A Supported verdict then
+//          has its numbers checked and gets a second look from the review model (review.ts)
 //   9      save the verdict and log the events
 // "Fix this claim" runs after stage 8 for Partial and Contradicted, using only the verified quote.
 //
-// Retries are bounded: a failed lookup or model call asks the browser to try again (`retry`), and after
-// MAX_CLAIM_ATTEMPTS attempts the claim ends as Can't tell with the reason, so every claim gets a verdict.
+// Retries: a failed lookup, or a model that is unavailable or times out, asks the browser to try again (`retry`)
+// and never ends the claim; the browser gives up after a few rounds and offers "Try again" on that card. A model that
+// keeps giving unusable answers ends the claim as Can't tell after MAX_CLAIM_ATTEMPTS attempts.
 // The function is idempotent: a claim that already has a verdict returns it without any lookup or model call.
 import type postgres from "postgres";
 import { LlmOutputError, LlmUnavailableError, type Llm } from "../llm/adapter";
@@ -19,6 +21,7 @@ import { judgeClaim, type JudgePassage } from "./judge";
 import { runPrelude, type PreludeEntry } from "./prelude";
 import { resolveEntryCached } from "./reference-cache";
 import { resolveReference, type ReferenceResolution } from "./resolve-reference";
+import { reviewSupported } from "./review";
 import { getVerdict, saveVerdict, type SavedVerdict } from "./save-verdict";
 import type { ExitStage } from "./types";
 import { verifyJudgment } from "./verify-quote";
@@ -99,9 +102,13 @@ export async function checkClaim(
     return { outcome: "done", verdict: saved };
   };
 
-  /** Ask for another attempt, or give up with Can't tell once the attempts are used. */
-  const failOrRetry = async (stage: ExitStage, reason: string): Promise<CheckClaimResult> => {
-    if (attempt < MAX_CLAIM_ATTEMPTS) return { outcome: "retry", reason, attempt };
+  /**
+   * Ask for another attempt. A passing failure (a lookup or the model unavailable, or a timeout) never ends the
+   * claim: the browser retries, then offers "Try again" (UAT 23 Nov 2026: three claims were saved as Can't tell only
+   * because the model timed out). An answer the model keeps getting wrong ends as Can't tell once the attempts are used.
+   */
+  const failOrRetry = async (stage: ExitStage, reason: string, passing: boolean): Promise<CheckClaimResult> => {
+    if (passing || attempt < MAX_CLAIM_ATTEMPTS) return { outcome: "retry", reason, attempt };
     return finish({
       verdict: "cant_tell",
       exitStage: stage,
@@ -136,7 +143,7 @@ export async function checkClaim(
     });
 
     if (prelude.outcome === "exit") return finish(prelude.exit);
-    if (prelude.outcome === "retry") return failOrRetry(3, prelude.reason);
+    if (prelude.outcome === "retry") return failOrRetry(3, prelude.reason, true);
 
     stage = 6;
     const queryEmbedding = await embedQuery(deps.llm, claim.text);
@@ -163,7 +170,15 @@ export async function checkClaim(
     const raw = await judgeClaim(deps.llm, claim.text, passages);
 
     stage = 8;
-    const verified = verifyJudgment(raw, passages);
+    const checkedQuote = verifyJudgment(raw, passages);
+    // A Supported verdict gets its numbers checked and a second look (review.ts); any other verdict passes through.
+    const verified = await reviewSupported(deps.llm, {
+      claimText: claim.text,
+      citation: claim.citation_text,
+      verified: checkedQuote,
+      passages,
+    });
+    const changedAtStage8 = Boolean(checkedQuote.downgradedFrom) || verified !== checkedQuote;
 
     let fixSuggestion: string | null = null;
     if ((verified.verdict === "partial" || verified.verdict === "contradicted") && verified.quote) {
@@ -176,12 +191,12 @@ export async function checkClaim(
     }
 
     return finish(
-      { verdict: verified.verdict, exitStage: verified.downgradedFrom ? 8 : 7, reason: verified.reason },
+      { verdict: verified.verdict, exitStage: changedAtStage8 ? 8 : 7, reason: verified.reason },
       { quote: verified.quote, page: verified.page, chunkId: verified.chunkId, fixSuggestion },
     );
   } catch (error) {
     if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) {
-      return failOrRetry(stage, error.message);
+      return failOrRetry(stage, error.message, error instanceof LlmUnavailableError);
     }
     throw error;
   }

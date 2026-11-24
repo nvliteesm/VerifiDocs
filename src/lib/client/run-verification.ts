@@ -16,7 +16,10 @@ const say = (deps: { t?: Translate }, key: MessageKey) => (deps.t ?? english)(ke
 
 export const CHECK_CONCURRENCY = 5;
 export const EXTRACT_CONCURRENCY = 3;
-/** The server gives up after 3 attempts on its own; this only guards against a loop that never ends. */
+/**
+ * The server never ends a claim over a passing failure (a timeout, a busy service), so the browser stops after this
+ * many rounds and the card offers "Try again".
+ */
 const MAX_CHECK_ROUNDS = 6;
 
 export interface VerifyDeps {

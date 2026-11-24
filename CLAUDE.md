@@ -23,7 +23,7 @@ The user adds a draft (paste or .docx), the reference list, and source PDFs. For
 
 ## Stack
 
-TypeScript and Next.js. Neon free Postgres (project `VerifiDocs`, Singapore) with pgvector and Postgres full-text search. Gemini API through one adapter, starting on `gemini-2.5-flash-lite` (model name in an env var; `gemini-4-hydrogen` is tested later in the eval); embeddings `gemini-embedding-001` at 768 dimensions. Crossref and OpenAlex for reference lookup. Host: Vercel Hobby under consideration, not final. No Python backend.
+TypeScript and Next.js. Neon free Postgres (project `VerifiDocs`, Singapore) with pgvector and Postgres full-text search. Gemini API through one adapter: `gemini-2.5-flash-lite` judges (`GEMINI_MODEL`) and `gemini-4-hydrogen` takes a second look at Supported verdicts only (`GEMINI_REVIEW_MODEL`, optional; see `docs/decisions.md`, 24 Nov); embeddings `gemini-embedding-001` at 768 dimensions. Crossref and OpenAlex for reference lookup. Host: Vercel Hobby under consideration, not final. No Python backend.
 
 Neon credentials live in the git-ignored `.env.local`. Never print them.
 

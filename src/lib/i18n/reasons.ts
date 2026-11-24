@@ -38,6 +38,7 @@ const WHOLE_REASONS: MessageKey[] = [
   "reason.noText",
   "reason.noUploadedMatch",
   "reason.noPassages",
+  "reason.numberMissing",
 ];
 const DETAILS: MessageKey[] = [
   "reason.detail.unreachable",

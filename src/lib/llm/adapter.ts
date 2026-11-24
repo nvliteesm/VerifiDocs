@@ -61,6 +61,11 @@ export interface LlmConfig {
   apiKey: string;
   generationModel: string;
   embeddingModel: string;
+  /**
+   * The model for a second, stricter look at a Supported verdict (GEMINI_REVIEW_MODEL). Optional: without it there
+   * is no second look. A slower, stronger model than the judge's, used only where a mistake costs most.
+   */
+  reviewModel?: string;
   /** Hard deadline for each Gemini request. Defaults to 15 seconds. */
   timeoutMs?: number;
 }
@@ -112,11 +117,17 @@ export interface GenerateJsonRequest<T> {
   system?: string;
   /** Defaults to 0 so verdicts are as repeatable as the API allows. */
   temperature?: number;
+  /** "review" sends the request to the review model. Refused when none is set, never sent to the main model. */
+  role?: "review";
+  /** This request's own deadline, when it must be shorter than the default. */
+  timeoutMs?: number;
 }
 
 export interface Llm {
   /** Asks for JSON, validates it against `schema`, and retries once if it is malformed. */
   generateJson<T>(request: GenerateJsonRequest<T>): Promise<T>;
+  /** True when a review model is set, so a request with role "review" can run. */
+  readonly reviewAvailable?: boolean;
   /** Embeds texts at 768 dimensions, in batches of 100, returned in input order. */
   embed(texts: string[], task: EmbedTask): Promise<number[][]>;
 }
@@ -127,10 +138,12 @@ export function loadLlmConfig(env: Record<string, string | undefined> = process.
   if (missing.length > 0) {
     throw new LlmConfigError(`Missing required environment variables: ${missing.join(", ")}`);
   }
+  const reviewModel = env.GEMINI_REVIEW_MODEL?.trim();
   return {
     apiKey: env.GEMINI_API_KEY as string,
     generationModel: env.GEMINI_MODEL as string,
     embeddingModel: env.GEMINI_EMBEDDING_MODEL as string,
+    ...(reviewModel ? { reviewModel } : {}),
   };
 }
 
@@ -160,15 +173,19 @@ export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
 
   async function generateJson<T>(request: GenerateJsonRequest<T>): Promise<T> {
     let lastProblem = "no attempt made";
+    if (request.role === "review" && !config.reviewModel) {
+      throw new LlmConfigError("A review was asked for, but GEMINI_REVIEW_MODEL is not set.");
+    }
+    const model = request.role === "review" ? config.reviewModel! : config.generationModel;
 
     for (let attempt = 1; attempt <= MAX_JSON_ATTEMPTS; attempt += 1) {
       let text: string | undefined;
       try {
         const response = await gemini.models.generateContent({
-          model: config.generationModel,
+          model,
           contents: request.prompt,
           config: {
-            abortSignal: AbortSignal.timeout(timeoutMs),
+            abortSignal: AbortSignal.timeout(request.timeoutMs ?? timeoutMs),
             responseMimeType: "application/json",
             temperature: request.temperature ?? 0,
             ...(request.system !== undefined ? { systemInstruction: request.system } : {}),
@@ -243,7 +260,7 @@ export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
     return vectors;
   }
 
-  return { generateJson, embed };
+  return { generateJson, embed, reviewAvailable: Boolean(config.reviewModel) };
 }
 
 let shared: Llm | undefined;

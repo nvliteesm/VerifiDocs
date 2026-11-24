@@ -56,6 +56,15 @@ function fakeClient(options: {
 const verdictSchema = z.object({ verdict: z.string(), page: z.number() });
 
 describe("loadLlmConfig", () => {
+  it("reads the optional review model, and offers a review only when it is set", () => {
+    const base = { GEMINI_API_KEY: "k", GEMINI_MODEL: "main-model", GEMINI_EMBEDDING_MODEL: "embed-model" };
+    expect(loadLlmConfig(base).reviewModel).toBeUndefined();
+    expect(loadLlmConfig({ ...base, GEMINI_REVIEW_MODEL: "  " }).reviewModel).toBeUndefined();
+    expect(loadLlmConfig({ ...base, GEMINI_REVIEW_MODEL: "review-model" }).reviewModel).toBe("review-model");
+    expect(createLlm(config, fakeClient({}).client).reviewAvailable).toBe(false);
+    expect(createLlm({ ...config, reviewModel: "test-review-model" }, fakeClient({}).client).reviewAvailable).toBe(true);
+  });
+
   it("names every missing variable and never a value", () => {
     expect(() => loadLlmConfig({ GEMINI_API_KEY: "secret-value" })).toThrow(
       /GEMINI_MODEL, GEMINI_EMBEDDING_MODEL/,
@@ -231,6 +240,38 @@ describe("timeouts (hard rule 6: no request may run long)", () => {
     await expect(attempt).rejects.toBeInstanceOf(LlmUnavailableError);
     await expect(attempt).rejects.toThrow(/timed out/);
     expect(calls).toBe(1);
+  });
+
+  it("sends a review request to the review model, and the main model otherwise", async () => {
+    const { client, generateCalls } = fakeClient({ texts: ['{"verdict":"supported","page":1}', '{"verdict":"partial","page":1}'] });
+    const llm = createLlm({ ...config, reviewModel: "test-review-model" }, client);
+    await llm.generateJson({ prompt: "judge", schema: verdictSchema });
+    await llm.generateJson({ prompt: "look again", schema: verdictSchema, role: "review" });
+    expect(generateCalls.map((call) => call.model)).toEqual(["test-generation-model", "test-review-model"]);
+  });
+
+  it("refuses a review request when no review model is set, instead of quietly using the main model", async () => {
+    const { client, generateCalls } = fakeClient({ texts: ['{"verdict":"supported","page":1}'] });
+    const attempt = createLlm(config, client).generateJson({ prompt: "look again", schema: verdictSchema, role: "review" });
+    await expect(attempt).rejects.toBeInstanceOf(LlmConfigError);
+    expect(generateCalls).toHaveLength(0);
+  });
+
+  it("gives one request its own deadline when asked", async () => {
+    const client: GeminiClientLike = {
+      models: {
+        async generateContent(params) {
+          return hangsUntilAborted(params.config?.abortSignal);
+        },
+        async embedContent() {
+          throw new Error("not used");
+        },
+      },
+    };
+    const started = Date.now();
+    const attempt = createLlm({ ...config, timeoutMs: 60_000 }, client).generateJson({ prompt: "p", schema: verdictSchema, timeoutMs: 25 });
+    await expect(attempt).rejects.toThrow(/timed out/);
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 
   it("gives an embedding call a deadline too", async () => {

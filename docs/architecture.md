@@ -47,10 +47,10 @@ The browser keeps up to 5 claim checks in flight. Reopening a run resumes the `p
 | 5 | Ingest source (once per PDF) | PDF | Page-tagged chunks with embeddings | Embeddings | none |
 | 6 | Retrieve passages | Claim text | Top 5 chunks with page numbers | Query embedding | none |
 | 7 | Judge claim | Claim and passages | Judge output (below) | Yes | Supported, Partial, Contradicted, Not in sources, or Can't tell |
-| 8 | Verify quote | Judge output and passages | Verified or downgraded verdict | No | Can't tell if the quote is not found |
+| 8 | Verify quote, then a second look at Supported | Judge output and passages | Verified or downgraded verdict | Review model, Supported only | Can't tell if the quote is not found; Partly supported if a number in the sentence is not in the quote's passage; the review model's stricter verdict if it disagrees |
 | 9 | Save and log | Final verdict | Verdict row and events | No | none |
 
-Stages 3 to 9 run per claim. A failed claim gets a bounded retry, then Can't tell with the reason logged. Fix this claim runs after stage 8 for Partial and Contradicted verdicts and must use only the verified quote. A source whose pages have no extractable text (a scanned PDF; there is no OCR) is not a valid source for stage 4, so the claim exits as Can't check.
+Stages 3 to 9 run per claim. A lookup or model that is unavailable or times out never ends a claim: the browser retries a few rounds, then the card offers "Try again" (24 Nov 2026). A model that keeps giving unusable answers ends the claim as Can't tell after 3 attempts, with the reason logged. Fix this claim runs after stage 8 for Partial and Contradicted verdicts and must use only the verified quote. A source whose pages have no extractable text (a scanned PDF; there is no OCR) is not a valid source for stage 4, so the claim exits as Can't check.
 
 ## Stages 1 to 4 as built
 

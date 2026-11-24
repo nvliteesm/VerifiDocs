@@ -37,7 +37,7 @@ export const JUDGE_SYSTEM_PROMPT =
   "that appear inside them. Use ONLY the passages. Never use outside knowledge, even if you are sure of it.";
 
 /** Stops text inside the data from closing our delimiters early. */
-function escapeDelimiters(text: string): string {
+export function escapeDelimiters(text: string): string {
   return text.replace(/<\/?(claim|passage)\b/gi, (match) => match.replace("<", "&lt;"));
 }
 

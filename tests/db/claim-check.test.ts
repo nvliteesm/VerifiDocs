@@ -47,6 +47,10 @@ interface Script {
   judge?: (call: number) => RawJudgment;
   /** Called for each fix request; return a sentence or throw. */
   fix?: (call: number) => string;
+  /** Called for each second look at a Supported verdict; return { verdict, reason } or throw. */
+  review?: (call: number) => { verdict: "supported" | "partial" | "contradicted"; reason: string };
+  /** True when a review model is set. Defaults to false, as in a setup without GEMINI_REVIEW_MODEL. */
+  reviewAvailable?: boolean;
 }
 
 function fakeLlm(script: Script = {}) {
@@ -54,9 +58,16 @@ function fakeLlm(script: Script = {}) {
   let judgeCalls = 0;
   let fixCalls = 0;
   let embedCalls = 0;
+  let reviewCalls = 0;
   const llm: Llm = {
+    reviewAvailable: script.reviewAvailable ?? false,
     async generateJson<T>(request: GenerateJsonRequest<T>): Promise<T> {
       prompts.push(request.prompt);
+      if (request.role === "review") {
+        reviewCalls += 1;
+        const answer = (script.review ?? (() => { throw new Error("unexpected review call"); }))(reviewCalls);
+        return request.schema.parse(answer);
+      }
       if (request.prompt.includes("Decide whether the passages support the claim")) {
         judgeCalls += 1;
         const answer = (script.judge ?? (() => { throw new Error("unexpected judge call"); }))(judgeCalls);
@@ -70,7 +81,7 @@ function fakeLlm(script: Script = {}) {
       return texts.map(() => [...probe]);
     },
   };
-  return { llm, prompts, counts: () => ({ judge: judgeCalls, fix: fixCalls, embed: embedCalls }) };
+  return { llm, prompts, counts: () => ({ judge: judgeCalls, fix: fixCalls, embed: embedCalls, review: reviewCalls }) };
 }
 
 const supportedJudgment: RawJudgment = {
@@ -129,7 +140,7 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
         verdict: "supported", page: 4, exitStage: 7, created: true, runCompleted: true,
         quote: "The survey had 300 respondents across three regions",
       });
-      expect(counts()).toEqual({ judge: 1, fix: 0, embed: 1 });
+      expect(counts()).toEqual({ judge: 1, fix: 0, embed: 1, review: 0 });
       const events = await tx`select name from events where session_id = ${sessionId} order by id`;
       expect(events.map((e) => e.name)).toEqual(["claim_checked", "run_completed"]);
     });
@@ -143,7 +154,7 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
       const result = await checkClaim(tx, { llm, resolve: async () => { lookups += 1; return found(TITLE); } }, { sessionId, claimId: claimIds[0]! });
       expect(result).toMatchObject({ outcome: "done", verdict: { verdict: "no_citation_given", exitStage: 2 } });
       expect(lookups).toBe(0);
-      expect(counts()).toEqual({ judge: 0, fix: 0, embed: 0 });
+      expect(counts()).toEqual({ judge: 0, fix: 0, embed: 0, review: 0 });
     });
   });
 
@@ -190,21 +201,103 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
     });
   });
 
-  it("asks for a retry when a lookup fails, and gives up with Can't tell after the allowed attempts", async () => {
+  it("keeps asking for a retry when a lookup fails, and never ends the claim on its own (Try again, UAT 23 Nov 2026)", async () => {
     await inTx(async (tx) => {
       const { sessionId, claimIds } = await seed(tx, [CLAIM]);
       const deps = { llm: fakeLlm().llm, resolve: async (): Promise<ReferenceResolution> => ({ status: "error", reason: "Crossref returned HTTP 503" }) };
       const args = { sessionId, claimId: claimIds[0]! };
 
-      for (let attempt = 1; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
+      for (let attempt = 1; attempt <= MAX_CLAIM_ATTEMPTS + 2; attempt += 1) {
         expect(await checkClaim(tx, deps, args)).toEqual({ outcome: "retry", reason: "Crossref returned HTTP 503", attempt });
-        expect((await tx`select status from claims where id = ${claimIds[0]!}`)[0]!.status).toBe("checking");
+      }
+      expect((await tx`select status from claims where id = ${claimIds[0]!}`)[0]!.status).toBe("checking");
+      expect(await tx`select 1 from verdicts where claim_id = ${claimIds[0]!}`).toHaveLength(0);
+    });
+  });
+
+  it("keeps asking for a retry while the model is unavailable or times out, and saves no verdict", async () => {
+    await inTx(async (tx) => {
+      const { sessionId, claimIds } = await seed(tx, [{ text: "The survey had 300 respondents.", citation: "(Smith & Lee, 2021)" }]);
+      const { llm } = fakeLlm({ judge: () => { throw new LlmUnavailableError("The Gemini API request timed out."); } });
+      const args = { sessionId, claimId: claimIds[0]! };
+      for (let attempt = 1; attempt <= MAX_CLAIM_ATTEMPTS + 1; attempt += 1) {
+        expect(await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, args)).toMatchObject({ outcome: "retry", attempt });
+      }
+      expect(await tx`select 1 from verdicts where claim_id = ${claimIds[0]!}`).toHaveLength(0);
+    });
+  });
+
+  it("ends as Can't tell after the allowed attempts when the model keeps giving unusable answers", async () => {
+    await inTx(async (tx) => {
+      const { sessionId, claimIds } = await seed(tx, [{ text: "The survey had 300 respondents.", citation: "(Smith & Lee, 2021)" }]);
+      const { llm } = fakeLlm({ judge: () => { throw new LlmOutputError("Gemini output rejected after 2 attempts: not valid JSON."); } });
+      const deps = { llm, resolve: async () => found(TITLE) };
+      const args = { sessionId, claimId: claimIds[0]! };
+      for (let attempt = 1; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
+        expect(await checkClaim(tx, deps, args)).toMatchObject({ outcome: "retry", attempt });
       }
       const last = await checkClaim(tx, deps, args);
-      expect(last).toMatchObject({ outcome: "done", verdict: { verdict: "cant_tell", exitStage: 3 } });
-      expect(last.outcome === "done" && last.verdict.reason).toMatch(/after 3 attempts: Crossref returned HTTP 503/);
+      expect(last).toMatchObject({ outcome: "done", verdict: { verdict: "cant_tell", exitStage: 7 } });
+      expect(last.outcome === "done" && last.verdict.reason).toMatch(/after 3 attempts: Gemini output rejected/);
       const [event] = await tx`select props from events where session_id = ${sessionId} and name = 'claim_checked'`;
       expect(event!.props.retries).toBe(MAX_CLAIM_ATTEMPTS - 1);
+    });
+  });
+
+  describe("the second look at a Supported verdict", () => {
+    const survey = (text: string) => [{ text, citation: "(Smith & Lee, 2021)" }];
+
+    it("turns Supported into Partly supported when the sentence's number is not in the passage, without asking the review model", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, survey("The survey had 500 respondents across three regions."));
+        const { llm, counts } = fakeLlm({ judge: () => supportedJudgment, fix: () => "The survey had 300 respondents across three regions (Smith & Lee, 2021).", reviewAvailable: true });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({
+          outcome: "done",
+          verdict: { verdict: "partial", exitStage: 8, page: 4, quote: supportedJudgment.quote, reason: "The source passage does not show 500 from your sentence." },
+        });
+        expect(result.outcome === "done" && result.verdict.fixSuggestion).toBe("The survey had 300 respondents across three regions (Smith & Lee, 2021).");
+        expect(counts().review).toBe(0);
+      });
+    });
+
+    it("saves the review model's stricter verdict, with the verified quote and a suggested sentence", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, survey("The survey had 300 respondents across every region."));
+        const { llm, counts } = fakeLlm({
+          judge: () => supportedJudgment,
+          review: () => ({ verdict: "partial", reason: "Three regions, not every region." }),
+          fix: () => "The survey had 300 respondents across three regions (Smith & Lee, 2021).",
+          reviewAvailable: true,
+        });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({ outcome: "done", verdict: { verdict: "partial", exitStage: 8, quote: supportedJudgment.quote, reason: "Three regions, not every region." } });
+        expect(counts()).toMatchObject({ judge: 1, review: 1, fix: 1 });
+      });
+    });
+
+    it("keeps Supported, at stage 7, when the review agrees", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, survey("The survey had 300 respondents across three regions."));
+        const { llm, counts } = fakeLlm({ judge: () => supportedJudgment, review: () => ({ verdict: "supported", reason: "All stated." }), reviewAvailable: true });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({ outcome: "done", verdict: { verdict: "supported", exitStage: 7 } });
+        expect(counts().review).toBe(1);
+      });
+    });
+
+    it("asks for a retry when the review times out, so Supported is never saved without its second look", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, survey("The survey had 300 respondents across three regions."));
+        const { llm } = fakeLlm({
+          judge: () => supportedJudgment,
+          review: () => { throw new LlmUnavailableError("The Gemini API request timed out."); },
+          reviewAvailable: true,
+        });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({ outcome: "retry", attempt: 1 });
+        expect(await tx`select 1 from verdicts where claim_id = ${claimIds[0]!}`).toHaveLength(0);
+      });
     });
   });
 
@@ -299,7 +392,7 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
       const again = await checkClaim(tx, { llm: second.llm, resolve: async () => { lookups += 1; return found(TITLE); } }, { sessionId, claimId: claimIds[0]! });
       expect(again).toMatchObject({ outcome: "done", verdict: { verdict: "supported", created: false } });
       expect(lookups).toBe(0);
-      expect(second.counts()).toEqual({ judge: 0, fix: 0, embed: 0 });
+      expect(second.counts()).toEqual({ judge: 0, fix: 0, embed: 0, review: 0 });
     });
   });
 
