@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:ci": "VERIFIDOCS_NO_ENV_FILES=1 vitest run",
     "test:live": "LIVE=1 vitest run tests/live",
     "smoke:api": "node --env-file-if-exists=.env.local --env-file-if-exists=.env.development.local scripts/smoke-api.mjs",
     "db:migrate": "node --env-file-if-exists=.env.local --env-file-if-exists=.env.development.local scripts/migrate.ts",

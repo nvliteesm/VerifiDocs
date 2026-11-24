@@ -50,7 +50,8 @@ npm run dev          # Next.js dev server on http://localhost:3000 (GET / return
 npm run build        # production build
 npm run typecheck    # tsc --noEmit (TypeScript 7)
 npm run lint         # ESLint with eslint-config-next and jsx-a11y; TypeScript 6 is installed beside 7 for it (see docs/decisions.md)
-npm test             # vitest run: unit tests, plus database tests on the Neon dev branch
+npm test             # vitest run: unit tests, plus database tests on the Neon dev branch (it loads .env.local, so it always has your keys)
+npm run test:ci      # the same, without the env files: what GitHub's CI sees. Run it before pushing
 npm run test:live    # opt-in (LIVE=1): real Crossref, OpenAlex and Gemini calls with synthetic text; skipped by npm test
 npm run smoke:api    # needs `npm run dev` running: a full check over real HTTP with a real PDF, timing every request; refuses unless NEON_BRANCH=dev and cleans up after itself
 npm run db:migrate   # apply db/migrations/*.sql in order; refuses the main branch unless --allow-main
@@ -61,7 +62,7 @@ Env files, both git-ignored: `.env.local` holds the Neon `main` branch strings a
 
 - Database tests (`tests/db/`) run only when `NEON_BRANCH=dev` and are skipped otherwise, so they never touch `main`. Each runs in a rolled-back transaction.
 - The Neon `dev` branch expires on 1 Dec 2026 (the 7-day policy in `neon.ts`; re-created 24 Nov). Re-create it with `neon checkout dev --create --no-env-pull`, rewrite `.env.development.local` from `neon connection-string dev`, then run `npm run db:migrate`. `--no-env-pull` matters: without it the CLI pulls variables into a local `.env`.
-- CI (`.github/workflows/ci.yml`) runs typecheck, lint, tests and build on every push to main and every pull request. It needs no secrets; the database and live tests skip themselves. The recipe was run from a clean copy with no env files; the workflow itself has not run on GitHub yet.
+- CI (`.github/workflows/ci.yml`) runs typecheck, lint, tests and build on every push to main and every pull request. It needs no secrets; the database and live tests skip themselves. The recipe was run from a clean copy with no env files; the workflow itself failed on GitHub from commit 04a86dc until 24 Nov 2026: a live test built the Gemini client while vitest was collecting tests, which throws without keys, and plain `npm test` never showed it because it loads `.env.local`. Fixed, and `npm run test:ci` now reproduces CI's environment (checked on a fresh clone, all four steps pass).
 - Component tests (`src/components/*.test.tsx`) run in jsdom with Testing Library. A new `.test.tsx` file needs `// @vitest-environment jsdom` on its first line.
 - Not run, so unconfirmed: `npm start`, the CI workflow on GitHub, and any eval command (there is no eval harness yet).
 - Plain `node` cannot import the `src/` files directly, because the imports have no `.js` or `.ts` extension; use vitest for ad-hoc checks.

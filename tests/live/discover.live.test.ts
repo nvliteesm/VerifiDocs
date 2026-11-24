@@ -22,17 +22,19 @@ const SHOULD_FIND = [
 ];
 
 describe.skipIf(!live)("Find a source (live)", () => {
-  const llm = createLlm({ ...loadLlmConfig(), timeoutMs: 20_000 });
+  // skipIf skips the tests, not this body: vitest still runs it to collect them. Building the client here without the
+  // guard made loadLlmConfig() throw on GitHub, where there are no keys, and failed the whole CI run (found 24 Nov 2026).
+  const llm = live ? createLlm({ ...loadLlmConfig(), timeoutMs: 20_000 }) : null;
   const apiKey = process.env.OPENALEX_API_KEY;
 
   it.each(NOTHING_FITS)("finds nothing for a product or own-work fact: %s", async (claim) => {
-    const result = await discoverSources(llm, claim, { apiKey });
+    const result = await discoverSources(llm!, claim, { apiKey });
     expect(result.exit, JSON.stringify(result.sources.map((s) => s.title))).toBe("nothing_relevant");
   }, 30_000);
 
   it.each(SHOULD_FIND)("finds a real paper with a verified sentence: %s", async (claim) => {
     const started = Date.now();
-    const result = await discoverSources(llm, claim, { apiKey });
+    const result = await discoverSources(llm!, claim, { apiKey });
     expect(result.exit).toBe("found");
     expect(result.sources.length).toBeGreaterThan(0);
     expect(Date.now() - started).toBeLessThan(10_000);

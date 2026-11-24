@@ -5,8 +5,12 @@ import { fileURLToPath } from "node:url";
 // Load the local env files so the dev Neon branch variables reach the tests. process.loadEnvFile
 // never overrides a variable that is already set, so the dev file is loaded first and wins over
 // .env.local. Tests that touch the database only run when NEON_BRANCH is "dev".
-for (const file of [".env.development.local", ".env.local"]) {
-  if (existsSync(file)) process.loadEnvFile(file);
+// VERIFIDOCS_NO_ENV_FILES=1 (npm run test:ci) skips them, so the run sees what GitHub's CI sees: no keys, no database.
+// Without it a plain `npm test` always finds your keys here and passes, which hid a CI failure for six commits.
+if (process.env.VERIFIDOCS_NO_ENV_FILES !== "1") {
+  for (const file of [".env.development.local", ".env.local"]) {
+    if (existsSync(file)) process.loadEnvFile(file);
+  }
 }
 
 export default defineConfig({
