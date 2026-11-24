@@ -26,6 +26,8 @@ export interface SaveVerdictArgs {
   exitStage: ExitStage;
   /** Only for partial and contradicted; the database rejects it otherwise. */
   fixSuggestion: string | null;
+  /** A translation of the quote for the student to read (needsGloss); only with a quote. Never the evidence. */
+  quoteGloss?: string | null;
   latencyMs: number;
   retries: number;
 }
@@ -38,6 +40,7 @@ export interface SavedVerdict {
   reason: string;
   exitStage: number;
   fixSuggestion: string | null;
+  quoteGloss: string | null;
   /** False when a verdict already existed and was returned unchanged. */
   created: boolean;
   /** True when this save closed the run. */
@@ -52,6 +55,7 @@ interface VerdictRow {
   reason: string;
   exit_stage: number;
   fix_suggestion: string | null;
+  quote_gloss: string | null;
 }
 
 function toSaved(row: VerdictRow, created: boolean, runCompleted: boolean): SavedVerdict {
@@ -63,6 +67,7 @@ function toSaved(row: VerdictRow, created: boolean, runCompleted: boolean): Save
     reason: row.reason,
     exitStage: row.exit_stage,
     fixSuggestion: row.fix_suggestion,
+    quoteGloss: row.quote_gloss,
     created,
     runCompleted,
   };
@@ -75,7 +80,7 @@ export async function getVerdict(
 ): Promise<SavedVerdict | null> {
   const sql = db as postgres.Sql;
   const [row] = await sql<VerdictRow[]>`
-    select claim_id, verdict, quote, page, reason, exit_stage, fix_suggestion
+    select claim_id, verdict, quote, page, reason, exit_stage, fix_suggestion, quote_gloss
     from verdicts where claim_id = ${args.claimId} and session_id = ${args.sessionId}`;
   return row ? toSaved(row, false, false) : null;
 }
@@ -119,11 +124,11 @@ export async function saveVerdict(db: SqlLike, args: SaveVerdictArgs): Promise<S
 
     const inserted = await tx<{ id: string }[]>`
       insert into verdicts
-        (claim_id, session_id, verdict, quote, page, chunk_id, reason, exit_stage, fix_suggestion, latency_ms, retries)
+        (claim_id, session_id, verdict, quote, page, chunk_id, reason, exit_stage, fix_suggestion, quote_gloss, latency_ms, retries)
       values
         (${args.claimId}, ${args.sessionId}, ${args.verdict}, ${args.quote}, ${args.page}, ${args.chunkId},
-         ${args.reason}, ${args.exitStage}, ${args.fixSuggestion}, ${Math.max(0, Math.round(args.latencyMs))},
-         ${Math.max(0, args.retries)})
+         ${args.reason}, ${args.exitStage}, ${args.fixSuggestion}, ${args.quoteGloss ?? null},
+         ${Math.max(0, Math.round(args.latencyMs))}, ${Math.max(0, args.retries)})
       on conflict (claim_id) do nothing
       returning id`;
     const created = inserted.length > 0;
@@ -145,7 +150,7 @@ export async function saveVerdict(db: SqlLike, args: SaveVerdictArgs): Promise<S
     const runCompleted = await completeRunIfFinished(tx, args.sessionId, claim.run_id);
 
     const [stored] = await tx<VerdictRow[]>`
-      select claim_id, verdict, quote, page, reason, exit_stage, fix_suggestion
+      select claim_id, verdict, quote, page, reason, exit_stage, fix_suggestion, quote_gloss
       from verdicts where claim_id = ${args.claimId}`;
     return toSaved(stored!, created, runCompleted);
   });

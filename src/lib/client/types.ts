@@ -49,6 +49,8 @@ export interface ClaimView {
   reason: string | null;
   exitStage: number | null;
   fixSuggestion: string | null;
+  /** For an Indonesian claim with an English quote: a machine translation to show under the quote. Not evidence. */
+  quoteGloss?: string | null;
   /** Cited references whose year in the student's list is off. Never changes the verdict. */
   yearNotes?: YearNoteView[];
 }
@@ -170,6 +172,7 @@ export interface CheckedVerdict {
   reason: string;
   exitStage: number;
   fixSuggestion: string | null;
+  quoteGloss?: string | null;
   yearNotes?: YearNoteView[];
 }
 

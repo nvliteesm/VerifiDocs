@@ -18,6 +18,7 @@ import { retrieveTopChunks, type SqlLike } from "../rag/retrieve";
 import { findSourceDocument, findSourceForEntry } from "./find-source";
 import { suggestFix } from "./fix";
 import { judgeClaim, type JudgePassage } from "./judge";
+import { needsGloss } from "./language";
 import { runPrelude, type PreludeEntry } from "./prelude";
 import { resolveEntryCached } from "./reference-cache";
 import { resolveReference, type ReferenceResolution } from "./resolve-reference";
@@ -27,6 +28,8 @@ import type { ExitStage } from "./types";
 import { verifyJudgment } from "./verify-quote";
 
 export const MAX_CLAIM_ATTEMPTS = 3;
+/** A translation of the quote is one or two sentences; anything longer is cut. */
+const MAX_GLOSS_CHARS = 800;
 
 export interface CheckClaimDeps {
   llm: Llm;
@@ -84,7 +87,13 @@ export async function checkClaim(
 
   const finish = async (
     exit: { verdict: SavedVerdict["verdict"]; exitStage: ExitStage; reason: string },
-    extra: { quote?: string | null; page?: number | null; chunkId?: string | null; fixSuggestion?: string | null } = {},
+    extra: {
+      quote?: string | null;
+      page?: number | null;
+      chunkId?: string | null;
+      fixSuggestion?: string | null;
+      quoteGloss?: string | null;
+    } = {},
   ): Promise<CheckClaimResult> => {
     const saved = await saveVerdict(sql, {
       sessionId,
@@ -96,6 +105,7 @@ export async function checkClaim(
       reason: exit.reason,
       exitStage: exit.exitStage,
       fixSuggestion: extra.fixSuggestion ?? null,
+      quoteGloss: extra.quoteGloss ?? null,
       latencyMs: now() - started,
       retries: attempt - 1,
     });
@@ -190,9 +200,15 @@ export async function checkClaim(
       });
     }
 
+    // For an Indonesian claim with an English quote, the judge's translation of the quote, to show under it. Display
+    // text only: the verified quote stays the evidence, and a translation is never kept without one.
+    const gloss = raw.gloss?.replace(/\s+/g, " ").trim() ?? "";
+    const quoteGloss =
+      verified.quote && gloss && needsGloss(claim.text, verified.quote) ? gloss.slice(0, MAX_GLOSS_CHARS) : null;
+
     return finish(
       { verdict: verified.verdict, exitStage: changedAtStage8 ? 8 : 7, reason: verified.reason },
-      { quote: verified.quote, page: verified.page, chunkId: verified.chunkId, fixSuggestion },
+      { quote: verified.quote, page: verified.page, chunkId: verified.chunkId, fixSuggestion, quoteGloss },
     );
   } catch (error) {
     if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) {

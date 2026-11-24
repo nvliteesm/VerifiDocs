@@ -82,6 +82,26 @@ describe("buildJudgePrompt", () => {
   });
 });
 
+describe("the gloss: a translation of the quote for an Indonesian claim (24 Nov 2026)", () => {
+  it("asks for it when the claim is in Bahasa Indonesia, as display text that is not the evidence", () => {
+    const prompt = buildJudgePrompt("Survei tersebut memiliki 500 responden dari semua wilayah yang ada.", passages);
+    expect(prompt).toContain('"gloss"');
+    expect(prompt).toContain("translate your quote into Indonesian");
+    expect(prompt).toContain('"quote" stays exactly as the passage has it');
+  });
+
+  it("does not ask for it when the claim is in English", () => {
+    expect(buildJudgePrompt("The survey had 500 respondents across all regions.", passages)).not.toContain("gloss");
+  });
+
+  it("is accepted as text, as null, or left out", () => {
+    const base = { verdict: "supported", quote: "q", page: 4, chunk_id: "P1", reason: "r" };
+    expect(judgeSchema.safeParse({ ...base, gloss: "Terjemahan." }).success).toBe(true);
+    expect(judgeSchema.safeParse({ ...base, gloss: null }).success).toBe(true);
+    expect(judgeSchema.safeParse(base).success).toBe(true);
+  });
+});
+
 describe("judgeSchema", () => {
   const ok = { verdict: "supported", quote: "q", page: 4, chunk_id: "P1", reason: "r" };
 

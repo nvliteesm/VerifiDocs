@@ -254,6 +254,7 @@ interface ClaimRow {
   reason: string | null;
   exit_stage: number | null;
   fix_suggestion: string | null;
+  quote_gloss: string | null;
 }
 
 /**
@@ -296,7 +297,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
   }
   const claimRows = await sql<ClaimRow[]>`
     select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.need, c.citation_source, c.sources_searched_at is not null as sources_searched, c.status,
-           v.verdict, v.quote, v.page, v.reason, v.exit_stage, v.fix_suggestion
+           v.verdict, v.quote, v.page, v.reason, v.exit_stage, v.fix_suggestion, v.quote_gloss
     from claims c left join verdicts v on v.claim_id = c.id
     where c.run_id = ${run.id} order by c.position`;
   const references = await sql<
@@ -341,6 +342,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     reason: row.reason,
     exitStage: row.exit_stage,
     fixSuggestion: row.fix_suggestion,
+    quoteGloss: row.quote_gloss,
     yearNotes: yearNotesFor(row.citation_text, yearEntries),
   }));
 

@@ -34,6 +34,15 @@ export function detectLanguage(text: string): TextLanguage {
   return "unknown";
 }
 
+/**
+ * True when a quote needs a translation for the student: the claim is in Bahasa Indonesia and the evidence is in
+ * English (the test market's usual case: a skripsi in Indonesian citing English papers). False whenever either
+ * language is not clear, so a translation is never shown on a guess.
+ */
+export function needsGloss(claimText: string, quote: string): boolean {
+  return detectLanguage(claimText) === "id" && detectLanguage(quote) === "en";
+}
+
 /** The model's instruction for the language of a short explanation about `claimText`. */
 export function explanationLanguage(claimText: string): string {
   switch (detectLanguage(claimText)) {

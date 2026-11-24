@@ -32,6 +32,7 @@ export function buildReport(claims: ClaimView[], fixList: string[], t: Translate
       if (claim.citationSource === "found") lines.push(`   ${t("report.found")}`);
       if (claim.quote) {
         lines.push(`   ${claim.page !== null ? t("report.saysPage", { page: claim.page, quote: claim.quote }) : t("report.says", { quote: claim.quote })}`);
+        if (claim.quoteGloss) lines.push(`   ${t("report.gloss", { gloss: claim.quoteGloss })}`);
       }
       if (claim.reason) lines.push(`   ${t("report.why", { reason: localizeReason(claim.reason, t) })}`);
       if (claim.fixSuggestion) lines.push(`   ${t("report.rewrite", { sentence: claim.fixSuggestion })}`);

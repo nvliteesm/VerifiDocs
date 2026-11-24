@@ -47,6 +47,16 @@ describe("buildReport", () => {
     expect(withYears).toContain("Wrong year: your list says 2015, the paper came out in 2013.");
   });
 
+  it("gives the translation of an English quote right after the quote, marked as a machine translation", () => {
+    const withGloss = buildReport(
+      [claim("p", 1, "partial", { quote: "Pain fell in 70% of patients.", page: 3, quoteGloss: "Nyeri turun pada 70% pasien." })],
+      ["p"],
+    );
+    const lines = withGloss.split("\n");
+    const quoteLine = lines.findIndex((line) => line.includes("Pain fell in 70% of patients."));
+    expect(lines[quoteLine + 1]).toBe("   Machine translation: Nyeri turun pada 70% pasien.");
+  });
+
   it("starts with a one-line summary", () => {
     expect(report.split("\n")[0]).toBe("VerifiDocs report");
     expect(report).toContain("4 claims checked: 3 need attention, 1 supported.");

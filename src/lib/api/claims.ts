@@ -63,6 +63,7 @@ export async function checkClaimHandler(context: ApiContext, claimId: string): P
       reason: verdict.reason,
       exitStage: verdict.exitStage,
       fixSuggestion: verdict.fixSuggestion,
+      quoteGloss: verdict.quoteGloss,
       yearNotes,
     },
   });

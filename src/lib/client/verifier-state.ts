@@ -123,6 +123,7 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
               reason: verdict.reason,
               exitStage: verdict.exitStage,
               fixSuggestion: verdict.fixSuggestion,
+              quoteGloss: verdict.quoteGloss ?? null,
               yearNotes: verdict.yearNotes ?? [],
             }
           : claim,

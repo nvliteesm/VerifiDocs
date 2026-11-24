@@ -244,6 +244,32 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
     });
   });
 
+  describe("a translation of the quote for an Indonesian claim (24 Nov 2026)", () => {
+    const GLOSS = "Survei itu memiliki 300 responden di tiga wilayah negara.";
+
+    it("saves the judge's translation when the claim is in Indonesian and the quote in English", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, [
+          { text: "Survei tersebut memiliki 300 responden yang tersebar di tiga wilayah dari negara itu.", citation: "(Smith & Lee, 2021)" },
+        ]);
+        const { llm } = fakeLlm({ judge: () => ({ ...supportedJudgment, gloss: GLOSS }) });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({ outcome: "done", verdict: { verdict: "supported", quote: supportedJudgment.quote, quoteGloss: GLOSS } });
+        const [row] = await tx`select quote_gloss from verdicts where claim_id = ${claimIds[0]!}`;
+        expect(row!.quote_gloss).toBe(GLOSS);
+      });
+    });
+
+    it("saves none for an English claim, even when the model sends one", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, [{ text: "The survey had 300 respondents across three regions.", citation: "(Smith & Lee, 2021)" }]);
+        const { llm } = fakeLlm({ judge: () => ({ ...supportedJudgment, gloss: GLOSS }) });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({ outcome: "done", verdict: { verdict: "supported", quoteGloss: null } });
+      });
+    });
+  });
+
   describe("the second look at a Supported verdict", () => {
     const survey = (text: string) => [{ text, citation: "(Smith & Lee, 2021)" }];
 

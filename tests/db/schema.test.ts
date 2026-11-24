@@ -70,6 +70,16 @@ describe.skipIf(!enabled)("schema constraints (dev branch)", () => {
     ).rejects.toThrow(/only_verified_verdicts_carry_quote/);
   });
 
+  it("rejects a translation of the quote when there is no quote", async () => {
+    await expect(
+      inTx(async (tx) => {
+        const { sessionId, claimId } = await seedClaim(tx);
+        await tx`insert into verdicts (claim_id, session_id, verdict, quote_gloss, exit_stage)
+                 values (${claimId}, ${sessionId}, 'not_in_sources', 'terjemahan', 7)`;
+      }),
+    ).rejects.toThrow(/gloss_needs_quote/);
+  });
+
   it("rejects a fix suggestion on a Supported verdict", async () => {
     await expect(
       inTx(async (tx) => {

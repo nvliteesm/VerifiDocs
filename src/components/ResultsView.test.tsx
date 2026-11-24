@@ -49,6 +49,22 @@ const noop = () => {};
 const view = (state: VerifierState, onEvent = vi.fn()) =>
   render(<ResultsView state={state} onRetryClaim={noop} onEvent={onEvent} />);
 
+describe("ResultsView translation of an English quote (24 Nov 2026)", () => {
+  it("shows it under the quote, labelled as a machine translation, with the quote first", () => {
+    view(stateOf([claim("partial", { quote: "Pain fell in 70% of patients.", page: 3, reason: "r", quoteGloss: "Nyeri turun pada 70% pasien." })]));
+    const quote = screen.getByText("Pain fell in 70% of patients.");
+    const gloss = screen.getByText("Nyeri turun pada 70% pasien.");
+    expect(screen.getByText("Machine translation:")).toBeTruthy();
+    expect(quote.compareDocumentPosition(gloss) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(gloss.closest("details")).toBe(quote.closest("details")); // inside the evidence, not instead of it
+  });
+
+  it("shows no translation line when there is none", () => {
+    view(stateOf([claim("partial", { quote: "Pain fell in 70% of patients.", page: 3, reason: "r" })]));
+    expect(screen.queryByText("Machine translation:")).toBeNull();
+  });
+});
+
 describe("ResultsView wrong year in a citation (UAT 23 Nov 2026)", () => {
   const yearNotes = [{ position: 9, cited: 2015, published: 2013 }];
 

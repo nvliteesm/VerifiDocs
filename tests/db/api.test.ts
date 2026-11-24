@@ -1072,6 +1072,38 @@ describe.skipIf(!enabled)("checking claims, end to end", () => {
     });
   });
 
+  it("returns a translation of the English quote for an Indonesian claim, in the check reply and the run (24 Nov 2026)", async () => {
+    await inTx(async (tx) => {
+      const claimText = "Model transduksi urutan yang dominan didasarkan pada jaringan rekuren yang kompleks dan sebuah encoder (Vaswani, 2017).";
+      const draft =
+        `${claimText}\n\nReferences\n\n` +
+        "Vaswani, A. (2017). Attention is all you need. Advances in Neural Information Processing Systems.";
+      const gloss = "Model transduksi urutan yang dominan didasarkan pada jaringan rekuren yang kompleks.";
+      const { llm } = fakeLlm({
+        extract: () => ({ claims: [{ text: claimText, citation: "(Vaswani, 2017)" }] }),
+        judge: () => ({
+          verdict: "supported",
+          quote: "The dominant sequence transduction models are based on complex recurrent networks",
+          page: 1,
+          chunk_id: "P1",
+          reason: "Kutipan menyatakannya.",
+          gloss,
+        }),
+      });
+      const client = newClient(tx, llm, async () => found);
+      const { body: created } = await client.createRun({ draft });
+      await client.extract(created.runId, 0);
+      const { body: source } = await client.upload(pdfForm("sample.pdf"));
+      await client.ingest(source.documentId);
+      const claimId = (await client.getRun(created.runId)).body.claims[0].id;
+
+      const checked = await client.check(claimId);
+      expect(checked.body.verdict).toMatchObject({ verdict: "supported", quoteGloss: gloss });
+      const reopened = await client.getRun(created.runId);
+      expect(reopened.body.claims[0]).toMatchObject({ verdict: "supported", quoteGloss: gloss });
+    });
+  });
+
   it("asks the browser to retry when a lookup fails, with the attempt number", async () => {
     await inTx(async (tx) => {
       const client = newClient(tx, fakeLlm({ extract: claim2 }).llm, async () => ({ status: "error", reason: "Crossref returned HTTP 503" }));

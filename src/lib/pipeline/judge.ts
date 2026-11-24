@@ -9,7 +9,7 @@
 // into another chunk's id.
 import { z } from "zod";
 import type { Llm } from "../llm/adapter";
-import { explanationLanguage } from "./language";
+import { detectLanguage, explanationLanguage } from "./language";
 
 export const JUDGE_VERDICTS = ["supported", "partial", "contradicted", "not_in_sources", "cant_tell"] as const;
 export type JudgeVerdict = (typeof JUDGE_VERDICTS)[number];
@@ -21,6 +21,11 @@ export const judgeSchema = z.object({
   /** The passage label the quote came from, such as "P2", or null. */
   chunk_id: z.string().nullable(),
   reason: z.string(),
+  /**
+   * Only for a claim in Bahasa Indonesia: the quote translated into Indonesian, for the student to read. Never the
+   * evidence and never checked against the source; kept only when the verified quote is in English (needsGloss).
+   */
+  gloss: z.string().nullable().optional(),
 });
 
 export type RawJudgment = z.infer<typeof judgeSchema>;
@@ -50,6 +55,9 @@ export function buildJudgePrompt(claimText: string, passages: JudgePassage[]): s
     (passage, index) =>
       `<passage id="${passageLabel(index)}" page="${passage.pageNumber}">\n${escapeDelimiters(passage.content)}\n</passage>`,
   );
+  // An Indonesian claim usually cites English papers: ask, in the same call, for a translation of the quote to show
+  // under it. Not asked otherwise, so English claims pay nothing for it.
+  const asksForGloss = detectLanguage(claimText) === "id";
   return [
     "Decide whether the passages support the claim, and answer with one verdict:",
     "- supported: a passage states the claim, including any condition that matters.",
@@ -73,8 +81,17 @@ export function buildJudgePrompt(claimText: string, passages: JudgePassage[]): s
     "  never lower a verdict because the passages do not show that year or those names.",
     // The language is named, not left to the model: a small model answers an Indonesian claim in English too often.
     `- "reason" is one short sentence, ${explanationLanguage(claimText)}.`,
+    ...(asksForGloss
+      ? [
+          '- The claim is in Indonesian. If your quote is in another language, translate your quote into Indonesian as',
+          '  "gloss": plain, faithful, nothing added. Otherwise set "gloss" to null.',
+          '  "quote" stays exactly as the passage has it: the gloss only helps the student read it.',
+        ]
+      : []),
     "",
-    'Return JSON only: {"verdict":"...","quote":"..." or null,"page":number or null,"chunk_id":"..." or null,"reason":"..."}',
+    asksForGloss
+      ? 'Return JSON only: {"verdict":"...","quote":"..." or null,"page":number or null,"chunk_id":"..." or null,"reason":"...","gloss":"..." or null}'
+      : 'Return JSON only: {"verdict":"...","quote":"..." or null,"page":number or null,"chunk_id":"..." or null,"reason":"..."}',
     "",
     "<claim>",
     escapeDelimiters(claimText),

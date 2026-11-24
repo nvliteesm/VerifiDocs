@@ -801,6 +801,18 @@ blockquote {
   font-style: italic;
   overflow-wrap: anywhere;
 }
+/* The machine translation under an English quote: plainly secondary to the evidence above it, so it is never read
+   as the source's own words (not the quote's serif italic, no panel of its own). */
+.gloss {
+  margin: 0 0 8px;
+  padding: 0 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.gloss-label {
+  font-weight: 600;
+}
 .fix {
   display: grid;
   gap: 8px;

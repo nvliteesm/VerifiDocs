@@ -112,6 +112,12 @@ describe("reduce: claims, counts and the fix list", () => {
     expect(state.claims[1]!.yearNotes ?? []).toEqual([]);
   });
 
+  it("keeps the translation of the quote a verdict brings", () => {
+    let state = reduce(initialState, { type: "loaded", run: runResponse([claim("a", 1)]) });
+    state = reduce(state, { type: "claim", verdict: verdictFor("a", "supported", { quote: "The text.", page: 2, quoteGloss: "Teksnya." }) });
+    expect(state.claims[0]).toMatchObject({ quote: "The text.", quoteGloss: "Teksnya." });
+  });
+
   it("ignores a verdict for a claim it does not know", () => {
     const state = reduce(initialState, { type: "loaded", run: runResponse([claim("a", 1)]) });
     const after = reduce(state, { type: "claim", verdict: verdictFor("zzz", "supported") });

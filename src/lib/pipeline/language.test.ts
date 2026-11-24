@@ -1,7 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { EXAMPLES } from "../client/example";
 import { buildJudgePrompt } from "./judge";
-import { detectLanguage, explanationLanguage } from "./language";
+import { detectLanguage, explanationLanguage, needsGloss } from "./language";
+
+describe("needsGloss (an Indonesian claim, an English quote)", () => {
+  const indonesian = "Pengaturan bawaan yang disarankan untuk optimizer Adam adalah α = 0,001 dan β1 = 0,9 (Kingma & Ba, 2015).";
+  const english = "Good default settings for the tested machine learning problems are α = 0.001, β1 = 0.9 and � = 10-8.";
+
+  it("is true when the claim is in Bahasa Indonesia and the quote in English", () => {
+    expect(needsGloss(indonesian, english)).toBe(true);
+  });
+
+  it("is false when both are in the same language, or the claim is in English", () => {
+    expect(needsGloss(indonesian, "Pengaturan ini adalah yang terbaik untuk semua model dan data.")).toBe(false);
+    expect(needsGloss("The survey had 300 respondents across all regions.", english)).toBe(false);
+  });
+
+  it("is false when either language is not clear", () => {
+    expect(needsGloss(indonesian, "α = 0.001, β1 = 0.9")).toBe(false);
+  });
+});
 
 const passage = [{ chunkId: "c1", pageNumber: 2, content: "Harga pangan naik 7,1 persen pada 2023." }];
 

@@ -362,6 +362,12 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
             {claim.page !== null ? t("evidence.page", { n: claim.page }) : t("evidence.summary")}
           </summary>
           <blockquote>{claim.quote}</blockquote>
+          {/* Help to read an English quote. The quote above stays the evidence; this line is never checked. */}
+          {claim.quoteGloss && (
+            <p className="gloss">
+              <span className="gloss-label">{t("evidence.gloss")}</span> {claim.quoteGloss}
+            </p>
+          )}
         </details>
       )}
 
