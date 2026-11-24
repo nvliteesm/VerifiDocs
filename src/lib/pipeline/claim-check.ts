@@ -22,7 +22,7 @@ import { needsGloss } from "./language";
 import { runPrelude, type PreludeEntry } from "./prelude";
 import { resolveEntryCached } from "./reference-cache";
 import { resolveReference, type ReferenceResolution } from "./resolve-reference";
-import { reviewSupported } from "./review";
+import { reviewVerdict } from "./review";
 import { getVerdict, saveVerdict, type SavedVerdict } from "./save-verdict";
 import type { ExitStage } from "./types";
 import { verifyJudgment } from "./verify-quote";
@@ -182,7 +182,7 @@ export async function checkClaim(
     stage = 8;
     const checkedQuote = verifyJudgment(raw, passages);
     // A Supported verdict gets its numbers checked and a second look (review.ts); any other verdict passes through.
-    const verified = await reviewSupported(deps.llm, {
+    const verified = await reviewVerdict(deps.llm, {
       claimText: claim.text,
       citation: claim.citation_text,
       verified: checkedQuote,

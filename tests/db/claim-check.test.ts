@@ -273,17 +273,78 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
   describe("the second look at a Supported verdict", () => {
     const survey = (text: string) => [{ text, citation: "(Smith & Lee, 2021)" }];
 
-    it("turns Supported into Partly supported when the sentence's number is not in the passage, without asking the review model", async () => {
+    it("turns Supported into Partly supported when the sentence's number is not in the passage, and the review agrees", async () => {
       await inTx(async (tx) => {
         const { sessionId, claimIds } = await seed(tx, survey("The survey had 500 respondents across three regions."));
-        const { llm, counts } = fakeLlm({ judge: () => supportedJudgment, fix: () => "The survey had 300 respondents across three regions (Smith & Lee, 2021).", reviewAvailable: true });
+        const { llm, counts } = fakeLlm({
+          judge: () => supportedJudgment,
+          review: () => ({ verdict: "partial", reason: "Only the regions are right." }),
+          fix: () => "The survey had 300 respondents across three regions (Smith & Lee, 2021).",
+          reviewAvailable: true,
+        });
         const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
         expect(result).toMatchObject({
           outcome: "done",
           verdict: { verdict: "partial", exitStage: 8, page: 4, quote: supportedJudgment.quote, reason: "The source passage does not show 500 from your sentence." },
         });
         expect(result.outcome === "done" && result.verdict.fixSuggestion).toBe("The survey had 300 respondents across three regions (Smith & Lee, 2021).");
-        expect(counts().review).toBe(0);
+        expect(counts().review).toBe(1);
+      });
+    });
+
+    it("saves Contradicted, with the verified quote and a suggested sentence, when the review finds the wrong number is the claim's main assertion", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, survey("The survey had 500 respondents."));
+        const { llm, counts } = fakeLlm({
+          judge: () => supportedJudgment,
+          review: () => ({ verdict: "contradicted", reason: "The source says 300 respondents, not 500." }),
+          fix: () => "The survey had 300 respondents (Smith & Lee, 2021).",
+          reviewAvailable: true,
+        });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({
+          outcome: "done",
+          verdict: { verdict: "contradicted", exitStage: 8, page: 4, quote: supportedJudgment.quote, reason: "The source says 300 respondents, not 500.", fixSuggestion: "The survey had 300 respondents (Smith & Lee, 2021)." },
+        });
+        expect(counts()).toMatchObject({ judge: 1, review: 1, fix: 1 });
+      });
+    });
+
+    it("moves a judge's Partly supported to Contradicted when the review says so (E31 and E32 of the first eval)", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, survey("The survey had 300 respondents in every region of the world."));
+        const { llm, counts } = fakeLlm({
+          judge: () => ({ ...supportedJudgment, verdict: "partial" }),
+          review: () => ({ verdict: "contradicted", reason: "The source says three regions." }),
+          fix: () => "The survey had 300 respondents across three regions (Smith & Lee, 2021).",
+          reviewAvailable: true,
+        });
+        const result = await checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! });
+        expect(result).toMatchObject({ outcome: "done", verdict: { verdict: "contradicted", exitStage: 8, quote: supportedJudgment.quote } });
+        expect(counts()).toMatchObject({ judge: 1, review: 1, fix: 1 });
+      });
+    });
+
+    it("keeps a judge's Partly supported, at stage 7, when the review agrees or when it times out", async () => {
+      await inTx(async (tx) => {
+        const agrees = await seed(tx, survey("The survey had 300 respondents across all regions."));
+        const a = fakeLlm({ judge: () => ({ ...supportedJudgment, verdict: "partial" }), review: () => ({ verdict: "partial", reason: "Three, not all." }), fix: () => "x", reviewAvailable: true });
+        expect(await checkClaim(tx, { llm: a.llm, resolve: async () => found(TITLE) }, { sessionId: agrees.sessionId, claimId: agrees.claimIds[0]! })).toMatchObject({
+          outcome: "done",
+          verdict: { verdict: "partial", exitStage: 7 },
+        });
+
+        const fails = await seed(tx, survey("The survey had 300 respondents across all regions."));
+        const b = fakeLlm({
+          judge: () => ({ ...supportedJudgment, verdict: "partial" }),
+          review: () => { throw new LlmUnavailableError("The Gemini API request timed out."); },
+          fix: () => "x",
+          reviewAvailable: true,
+        });
+        expect(await checkClaim(tx, { llm: b.llm, resolve: async () => found(TITLE) }, { sessionId: fails.sessionId, claimId: fails.claimIds[0]! })).toMatchObject({
+          outcome: "done",
+          verdict: { verdict: "partial", exitStage: 7 },
+        });
       });
     });
 

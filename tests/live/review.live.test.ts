@@ -2,9 +2,9 @@
 // Skipped unless LIVE=1 (npm run test:live) and GEMINI_REVIEW_MODEL is set. Synthetic claims; passages are short
 // quotes from public papers (Ioffe & Szegedy 2015; Lewis et al. 2020).
 import { describe, expect, it } from "vitest";
-import { createLlm, loadLlmConfig } from "../../src/lib/llm/adapter";
+import { createLlm, loadLlmConfig, type Llm } from "../../src/lib/llm/adapter";
 import type { JudgePassage } from "../../src/lib/pipeline/judge";
-import { reviewSupported } from "../../src/lib/pipeline/review";
+import { reviewVerdict } from "../../src/lib/pipeline/review";
 import type { VerifiedJudgment } from "../../src/lib/pipeline/verify-quote";
 
 const live = process.env.LIVE === "1" && Boolean(process.env.GEMINI_REVIEW_MODEL?.trim());
@@ -25,14 +25,14 @@ describe.skipIf(!live)("second look at Supported (live)", () => {
 
   it("does not let an overstated claim stay Supported, and keeps a true one", async () => {
     const started = Date.now();
-    const overstated = await reviewSupported(llm!, {
+    const overstated = await reviewVerdict(llm!, {
       claimText: "Batch Normalization removes the need for Dropout entirely (Ioffe & Szegedy, 2015).",
       citation: "(Ioffe & Szegedy, 2015)",
       verified: asSupported("bn", "It also acts as a regularizer, in some cases eliminating the need for Dropout."),
       passages,
     });
     const reviewMs = Date.now() - started;
-    const truthful = await reviewSupported(llm!, {
+    const truthful = await reviewVerdict(llm!, {
       claimText: "RAG combines a pre-trained seq2seq model as parametric memory with a dense vector index of Wikipedia as non-parametric memory (Lewis et al., 2020).",
       citation: "(Lewis et al., 2020)",
       verified: asSupported("rag", RAG),
@@ -44,8 +44,52 @@ describe.skipIf(!live)("second look at Supported (live)", () => {
     expect(truthful.verdict).toBe("supported");
   }, 60_000);
 
+  // Invented cases, not eval claims (the eval stays clean for scoring): the line between Contradicted and Partly
+  // supported that the first eval of 24 Nov 2026 showed flash-lite getting wrong. Both verdicts start as "partial".
+  it("separates a Contradicted claim from a Partly supported one", async () => {
+    const cases = [
+      { name: "wrong number", claim: "The trial enrolled 400 patients.", passage: "The trial enrolled 300 patients at 12 hospitals.", want: "contradicted" },
+      { name: "reversed effect", claim: "Chronic stress had no effect on memory scores.", passage: "Chronic stress lowered memory scores in all three age groups.", want: "contradicted" },
+      { name: "right number, wrong group", claim: "Treatment A cured 60% of patients.", passage: "Treatment B cured 60% of patients. Treatment A cured 20%.", want: "contradicted" },
+      { name: "one wrong detail beside right ones", claim: "The trial enrolled 300 patients and ran for two years.", passage: "The trial enrolled 300 patients and ran for one year.", want: "partial" },
+      { name: "overstated amount", claim: "The drug works for all patients.", passage: "The drug works for most patients.", want: "partial" },
+      { name: "extra detail not in the source", claim: "The survey of 300 people was run online.", passage: "The survey had 300 respondents across three regions.", want: "partial" },
+    ];
+    // reviewVerdict keeps Partly supported when its review fails, so a model outage would look like a model answer.
+    // Record every failure and insist there were none before reading the results (found when credits ran out).
+    const failures: string[] = [];
+    const watched: Llm = {
+      reviewAvailable: llm!.reviewAvailable,
+      embed: (texts, task) => llm!.embed(texts, task),
+      generateJson: async (request) => {
+        try {
+          return await llm!.generateJson(request);
+        } catch (error) {
+          failures.push(error instanceof Error ? error.message : String(error));
+          throw error;
+        }
+      },
+    };
+    const rows: string[] = [];
+    let right = 0;
+    for (const c of cases) {
+      const started = Date.now();
+      const result = await reviewVerdict(watched, {
+        claimText: c.claim,
+        citation: null,
+        verified: { verdict: "partial", quote: c.passage, page: 1, chunkId: "p", reason: "First check." },
+        passages: [{ chunkId: "p", pageNumber: 1, content: c.passage }],
+      });
+      if (result.verdict === c.want) right += 1;
+      rows.push(`${result.verdict === c.want ? "ok  " : "DIFF"} ${c.name.padEnd(34)} want ${c.want.padEnd(12)} got ${result.verdict.padEnd(12)} ${Date.now() - started} ms`);
+    }
+    console.log(rows.join("\n"));
+    expect(failures, "the model failed, so these results say nothing about the prompt").toEqual([]);
+    expect(right).toBeGreaterThanOrEqual(5);
+  }, 120_000);
+
   it("catches a wrong number in code, before any model call", async () => {
-    const result = await reviewSupported(llm!, {
+    const result = await reviewVerdict(llm!, {
       claimText: "Batch Normalization reaches the same accuracy with 41 times fewer training steps (Ioffe & Szegedy, 2015).",
       citation: "(Ioffe & Szegedy, 2015)",
       verified: asSupported("bn", "Batch Normalization achieves the same accuracy with 14 times fewer training steps"),
