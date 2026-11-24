@@ -10,6 +10,7 @@
 // a Supported verdict is never saved without its second look while a review model is set.
 import { z } from "zod";
 import type { Llm } from "../llm/adapter";
+import { UNREADABLE } from "../rag/normalize";
 import { escapeDelimiters, type JudgePassage } from "./judge";
 import { explanationLanguage } from "./language";
 import type { VerifiedJudgment } from "./verify-quote";
@@ -75,6 +76,8 @@ export function buildReviewPrompt(claimText: string, passage: string): string {
     "- partial: part is stated, but part is overstated, missing a condition, or not in the passage.",
     "- contradicted: the passage gives a different number or says the opposite.",
     'The citation in the claim (names and a year, such as "(Smith, 2020)") is not part of the claim: ignore it.',
+    `A "${UNREADABLE}" in the passage is a symbol the PDF could not read: treat it as unknown, and do not count it`,
+    "against the claim when everything around it matches.",
     `"reason" is one short sentence, ${explanationLanguage(claimText)}.`,
     'Return JSON only: {"verdict":"...","reason":"..."}',
     "",
@@ -111,6 +114,10 @@ export async function reviewSupported(
     schema: reviewSchema,
     role: "review",
     timeoutMs: REVIEW_TIMEOUT_MS,
+    // The review model thinks before it answers, and its thinking counts against the cap. Unbounded, it thought for
+    // 30 s about one unreadable symbol; with 512 tokens it answers in 2 to 4 s (spike, 24 Nov 2026).
+    thinkingBudget: 512,
+    maxOutputTokens: 2048,
   });
   if (review.verdict === "supported") return verified;
   return { ...verified, verdict: review.verdict, reason: clip(review.reason) };

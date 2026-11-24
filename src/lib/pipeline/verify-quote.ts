@@ -8,7 +8,7 @@
 //
 // The stored quote is the exact text of the source (a span of the chunk), not the model's copy, and the
 // stored page is the chunk's page, not the page the model said.
-import { containsQuote, normalizeText } from "../rag/normalize";
+import { findQuote, normalizeText } from "../rag/normalize";
 import type { JudgePassage, JudgeVerdict, RawJudgment } from "./judge";
 
 /** A very short quote matches almost anywhere, so it is not evidence. Starting values. */
@@ -74,17 +74,24 @@ export function verifyJudgment(raw: RawJudgment, passages: JudgePassage[]): Veri
     ...(namedIsValid ? [named] : []),
     ...passages.map((_, index) => index).filter((index) => index !== named),
   ];
-  const found = order.find((index) => containsQuote(quote, passages[index]!.content));
-  if (found === undefined) {
+  let found: number | undefined;
+  let span: { start: number; end: number } | null = null;
+  for (const index of order) {
+    span = findQuote(quote, passages[index]!.content);
+    if (span) {
+      found = index;
+      break;
+    }
+  }
+  if (found === undefined || !span) {
     return downgrade(raw, "The judge's quote could not be found in the retrieved passages, so the check abstained.");
   }
 
+  // The stored quote is the source's own text at the matched place, never the judge's wording.
   const passage = passages[found]!;
-  const sourceText = normalizeText(passage.content);
-  const start = sourceText.indexOf(normalizedQuote);
   return {
     verdict: raw.verdict,
-    quote: sourceText.slice(start, start + normalizedQuote.length),
+    quote: normalizeText(passage.content).slice(span.start, span.end),
     page: passage.pageNumber,
     chunkId: passage.chunkId,
     reason: clip(raw.reason),

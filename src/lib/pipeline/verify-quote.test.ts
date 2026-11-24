@@ -20,6 +20,29 @@ const judgment = (over: Partial<RawJudgment>): RawJudgment => ({
   ...over,
 });
 
+describe("verifyJudgment: a symbol the PDF could not decode (the Adam case, UAT 23 Nov 2026)", () => {
+  const adam: JudgePassage[] = [
+    {
+      chunkId: "chunk-adam",
+      pageNumber: 2,
+      content: "Good default settings for the tested machine learning problems are α = 0.001, β1 = 0.9, β2 = 0.999 and \u000f = 10-8. All operations",
+    },
+  ];
+
+  it("keeps Supported when the judge wrote a space for the unreadable symbol, and stores the source's own text", () => {
+    const result = verifyJudgment(
+      judgment({
+        quote: "Good default settings for the tested machine learning problems are α = 0.001, β1 = 0.9, β2 = 0.999 and   = 10-8.",
+        chunk_id: "P1",
+        page: 2,
+      }),
+      adam,
+    );
+    expect(result).toMatchObject({ verdict: "supported", page: 2, chunkId: "chunk-adam" });
+    expect(result.quote).toBe("Good default settings for the tested machine learning problems are α = 0.001, β1 = 0.9, β2 = 0.999 and � = 10-8.");
+  });
+});
+
 describe("verifyJudgment: a verified quote keeps its verdict", () => {
   it("keeps supported, partial and contradicted and stores the exact source text, page and chunk", () => {
     for (const verdict of ["supported", "partial", "contradicted"] as const) {

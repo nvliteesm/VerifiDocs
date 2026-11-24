@@ -110,7 +110,9 @@ describe("reviewSupported", () => {
     const { llm, requests } = fakeLlm({ answer: { verdict: "partial", reason: "Only in some cases, not entirely." } });
     const result = await reviewSupported(llm, args(supported("chunk-b", bnQuote)));
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({ role: "review", timeoutMs: REVIEW_TIMEOUT_MS });
+    // The review model thinks before it answers, and its thinking counts against the cap: a bounded budget keeps it
+    // within its deadline (it thought 30 s about one unreadable symbol, UAT 24 Nov 2026), and the cap leaves room.
+    expect(requests[0]).toMatchObject({ role: "review", timeoutMs: REVIEW_TIMEOUT_MS, thinkingBudget: 512, maxOutputTokens: 2048 });
     expect(requests[0]!.prompt).toContain("Batch Normalization in some cases eliminates the need for Dropout.");
     expect(result).toEqual({ verdict: "partial", quote: bnQuote, page: 4, chunkId: "chunk-b", reason: "Only in some cases, not entirely." });
   });
@@ -141,6 +143,10 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("<claim>\nA claim (Smith, 2020).\n</claim>");
     expect(prompt).toContain("<passage>\nA passage.\n</passage>");
     expect(prompt).toMatch(/citation .* is not part of the claim/i);
+  });
+
+  it("says a symbol the PDF could not read is unknown, not evidence against the claim", () => {
+    expect(prompt).toContain('A "�" in the passage is a symbol the PDF could not read: treat it as unknown');
   });
 
   it("neutralises delimiters inside the claim and the passage", () => {

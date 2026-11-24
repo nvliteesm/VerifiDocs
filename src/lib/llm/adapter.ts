@@ -17,6 +17,13 @@ const MAX_JSON_ATTEMPTS = 2;
  * check retries a bounded number of times.
  */
 const DEFAULT_TIMEOUT_MS = 15_000;
+/**
+ * Every answer has a length cap. The small model sometimes writes a complete answer and then repeats its last words
+ * without end (UAT 24 Nov 2026: `90.5%."}` over and over on an Indonesian claim); without a cap that ran into the
+ * timeout on every attempt. With one, the reply stops and parseModelJson takes the complete object it starts with.
+ * Generous by default for claim extraction; the stages with short answers ask for less.
+ */
+const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
 
 /**
  * Parses the model's JSON. The small model sometimes returns a complete, valid object followed by stray text
@@ -100,6 +107,8 @@ export interface GeminiClientLike {
         systemInstruction?: string;
         responseMimeType?: string;
         temperature?: number;
+        maxOutputTokens?: number;
+        thinkingConfig?: { thinkingBudget?: number };
         abortSignal?: AbortSignal;
       };
     }): Promise<{ text?: string | undefined }>;
@@ -121,6 +130,13 @@ export interface GenerateJsonRequest<T> {
   role?: "review";
   /** This request's own deadline, when it must be shorter than the default. */
   timeoutMs?: number;
+  /** The longest answer allowed, in tokens. Defaults to DEFAULT_MAX_OUTPUT_TOKENS. */
+  maxOutputTokens?: number;
+  /**
+   * For a model that thinks before it answers: how many tokens it may think for. Unset leaves the model's own default.
+   * Thinking counts against maxOutputTokens, so leave room for the answer.
+   */
+  thinkingBudget?: number;
 }
 
 export interface Llm {
@@ -188,6 +204,8 @@ export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
             abortSignal: AbortSignal.timeout(request.timeoutMs ?? timeoutMs),
             responseMimeType: "application/json",
             temperature: request.temperature ?? 0,
+            maxOutputTokens: request.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+            ...(request.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: request.thinkingBudget } } : {}),
             ...(request.system !== undefined ? { systemInstruction: request.system } : {}),
           },
         });

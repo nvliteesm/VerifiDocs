@@ -242,6 +242,28 @@ describe("timeouts (hard rule 6: no request may run long)", () => {
     expect(calls).toBe(1);
   });
 
+  it("caps every answer's length, so a model that loops ends at the cap instead of running into the timeout (UAT 24 Nov 2026)", async () => {
+    const { client, generateCalls } = fakeClient({ texts: ['{"verdict":"supported","page":1}', '{"verdict":"supported","page":1}'] });
+    const llm = createLlm(config, client);
+    await llm.generateJson({ prompt: "p", schema: verdictSchema });
+    await llm.generateJson({ prompt: "p", schema: verdictSchema, maxOutputTokens: 512 });
+    expect(generateCalls.map((call) => call.config?.maxOutputTokens)).toEqual([8192, 512]);
+  });
+
+  it("sends a thinking budget only when a request asks for one", async () => {
+    const { client, generateCalls } = fakeClient({ texts: ['{"verdict":"supported","page":1}', '{"verdict":"supported","page":1}'] });
+    const llm = createLlm(config, client);
+    await llm.generateJson({ prompt: "p", schema: verdictSchema });
+    await llm.generateJson({ prompt: "p", schema: verdictSchema, thinkingBudget: 512 });
+    expect(generateCalls.map((call) => call.config?.thinkingConfig)).toEqual([undefined, { thinkingBudget: 512 }]);
+  });
+
+  it("takes the answer a looping model wrote before it hit the cap", async () => {
+    const looped = '{"verdict":"partial","page":1}\n90.5%."}\n5%."}\n90.5%."}\n5%."}';
+    const { client } = fakeClient({ texts: [looped] });
+    expect(await createLlm(config, client).generateJson({ prompt: "p", schema: verdictSchema, maxOutputTokens: 64 })).toEqual({ verdict: "partial", page: 1 });
+  });
+
   it("sends a review request to the review model, and the main model otherwise", async () => {
     const { client, generateCalls } = fakeClient({ texts: ['{"verdict":"supported","page":1}', '{"verdict":"partial","page":1}'] });
     const llm = createLlm({ ...config, reviewModel: "test-review-model" }, client);

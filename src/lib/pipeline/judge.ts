@@ -63,6 +63,8 @@ export function buildJudgePrompt(claimText: string, passages: JudgePassage[]): s
     "Rules:",
     '- For supported, partial and contradicted, "quote" is required: copy the sentence or sentences that decide',
     "  the verdict EXACTLY, character for character, from ONE passage. Do not paraphrase, shorten or fix it.",
+    "  Copy it in the passage's own language, even when the claim is in another language: never translate it.",
+    '  A symbol the PDF could not read shows as "�": copy it as it is.',
     '  Set "chunk_id" to that passage\'s id (for example "P2") and "page" to its page.',
     '- For not_in_sources and cant_tell, set "quote", "chunk_id" and "page" to null.',
     "- When you are unsure between supported and partial, choose partial.",
@@ -89,5 +91,7 @@ export async function judgeClaim(llm: Llm, claimText: string, passages: JudgePas
     prompt: buildJudgePrompt(claimText, passages),
     system: JUDGE_SYSTEM_PROMPT,
     schema: judgeSchema,
+    // Room for a long quote (a table) and a reason. A model that loops stops here, not at the timeout.
+    maxOutputTokens: 1024,
   });
 }

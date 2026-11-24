@@ -62,6 +62,7 @@ describe("suggestFix", () => {
     expect(await suggestFix(llm, input)).toBe("The drug reduced pain in 70% of patients (Smith, 2021).");
     expect(requests).toHaveLength(1);
     expect(requests[0]!.prompt).toContain(input.quote);
+    expect(requests[0]!.maxOutputTokens).toBe(512);
   });
 
   it("drops a suggestion with an invented number", async () => {

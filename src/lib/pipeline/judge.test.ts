@@ -42,6 +42,11 @@ describe("buildJudgePrompt", () => {
     expect(prompt).toContain("never lower a verdict because the passages do not show that year or those names");
   });
 
+  it("asks for the quote in the passage's own language, never translated, with unreadable symbols copied as they are", () => {
+    expect(prompt).toContain("in the passage's own language, even when the claim is in another language: never translate it");
+    expect(prompt).toContain('A symbol the PDF could not read shows as "�": copy it as it is.');
+  });
+
   it("never shows the model the real chunk ids", () => {
     expect(prompt).not.toContain("chunk-a");
     expect(prompt).not.toContain("chunk-b");
@@ -103,6 +108,7 @@ describe("judgeClaim", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]!.system).toBe(JUDGE_SYSTEM_PROMPT);
     expect(requests[0]!.prompt).toContain("The survey had 500 respondents.");
+    expect(requests[0]!.maxOutputTokens).toBe(1024); // a short answer: a loop stops here, not at the timeout
   });
 
   it("refuses to judge without passages, and makes no model call", async () => {

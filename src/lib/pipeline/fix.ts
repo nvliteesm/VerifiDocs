@@ -65,6 +65,7 @@ export async function suggestFix(llm: Llm, input: FixInput): Promise<string | nu
       prompt: buildFixPrompt(input),
       system: FIX_SYSTEM_PROMPT,
       schema: fixSchema,
+      maxOutputTokens: 512, // one sentence of at most MAX_FIX_CHARS
     }));
   } catch (error) {
     if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) return null;
