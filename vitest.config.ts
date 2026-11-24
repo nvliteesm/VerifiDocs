@@ -15,7 +15,8 @@ export default defineConfig({
   },
   test: {
     // Component tests are .test.tsx and opt into jsdom with a "@vitest-environment jsdom" comment on their first line.
-    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.ts"],
+    // evals/*.test.ts are the eval's own unit tests (scoring); the eval run itself is evals/*.eval.ts (npm run eval).
+    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.ts", "evals/**/*.test.ts"],
     environment: "node",
     // Database tests talk to Neon over the internet, and a waking compute can add seconds.
     testTimeout: 30_000,

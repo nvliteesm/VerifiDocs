@@ -1,6 +1,6 @@
 # Eval
 
-Status: the eval harness does not exist yet (no `evals/` directory). Building it is not part of the first rebuild session (see `docs/rebuild-brief.md`).
+Status (24 Nov 2026): the harness exists (`npm run eval`, `evals/run.eval.ts`) with a public set of 40 claims whose labels are **proposed, not yet approved**. Steven's Sheet set below joins once it is exported with its PDFs.
 
 ## Quality bar
 
@@ -35,9 +35,30 @@ Run the same claims against:
 
 Record correct-verdict rate and missed-unsupported rate for each, next to VerifiDocs. A full-context vs retrieval comparison is also worth running: it shows whether retrieval earns its place.
 
+## Public set (24 Nov 2026)
+
+Built because the Sheet's rows have no matched PDFs yet, and to cover what the Sheet lacks: Bahasa Indonesia and every pre-judge verdict.
+
+- `evals/claims.json`: 40 claims, 20 English and 20 Bahasa Indonesia. Expected: 18 Supported, 9 Contradicted, 3 Partial, 3 Not in sources, 3 Reference not found, 2 Can't check, 2 No citation given. No Can't tell case yet (a garbled or scanned source is still to be added).
+- Each claim has the expected quote and page (checked against an independent text extraction, pypdf), `also_acceptable` where the definitions allow two verdicts, `split` (10 held out, 5 per language, none seen in tuning), `seen_in_tuning` (claims from the 23 Nov UAT that prompts were tuned against), and `status`.
+- `evals/bibliography.json`: one reference list of 15 entries for every claim, as in a real draft: 11 uploaded papers, 2 real papers deliberately not uploaded (Can't check), 2 invented entries (Reference not found; both confirmed absent from Crossref and OpenAlex on 24 Nov).
+- `evals/sources.json`: 11 open-access PDFs (10 arXiv papers pinned to a version, and one CC BY 4.0 paper in Scientific Reports) with SHA-256 checksums. The PDFs are not committed; the harness downloads them into the git-ignored `evals/.cache/`.
+
+**Approval (hard rule 10).** Steven reviews every label on the review page (a private claude.ai artifact, https://claude.ai/artifact/KJ2WNXMoXzFm1CY4CTABbs) and marks it Agree or Change. Claude Code then reads his marks and sets `status: "approved"` (with his verdict and alternatives where he changed one) in `claims.json`. No label is approved any other way.
+
 ## Running it
 
-Fill in once the harness exists: command, output location, and where results are logged. The harness must call the same pipeline code as the app, through the same Gemini adapter.
+```bash
+npm run eval                                  # every approved claim, 3 runs, on the Neon dev branch
+EVAL_ONLY=E01,E05 EVAL_RUNS=1 npm run eval    # a few claims, one run
+EVAL_INCLUDE_PROPOSED=1 npm run eval          # also score unapproved labels: the report says PREVIEW
+```
+
+- It refuses to run unless `NEON_BRANCH=dev`, creates its own sessions, and deletes them (and their events) when it ends, even after a failure.
+- Each claim goes through `checkClaim`, the same code and Gemini adapter as the app, with real Crossref and OpenAlex lookups; sources are read with the app's own ingest. Sources are split into sessions of at most 10 PDFs (the app's limit); each claim runs in the session that holds its cited PDF.
+- Output: `evals/results/<date>-<model>.md` and `.json`: strict and lenient correctness against the bar, missed unsupported claims, results by expected verdict, split and language, retrieval hits (is the expected passage in the top 5), the claims whose verdict changed between runs, and check times.
+- Scoring is `evals/score.ts`, unit tested in `npm test` (`evals/score.test.ts`). The run itself is never part of `npm test` or CI.
+- A 6-claim smoke run on 24 Nov (preview, labels unapproved) worked end to end: every check finished, p95 8.4 s, 3 of 3 retrieval hits.
 
 ## Rules
 

@@ -129,6 +129,24 @@ export async function findSourceDocument(db: SqlLike, args: FindSourceArgs): Pro
   return matchResolvedToDocuments(rows, { title: args.title, doi: args.doi });
 }
 
+/**
+ * Is `normalizedTitle` printed in `head` (both normalized) as this paper's title, and not just as words in a sentence?
+ *
+ * A distinctive title (SHORT_TITLE_WORDS words or more) counts anywhere in the first pages. A short, generic one does
+ * not: "Deep learning", LeCun et al.'s title, is also in the introduction of Adam, BatchNorm, GAN and the Walters paper
+ * (eval of 24 Nov 2026: a claim citing LeCun, whose PDF was not uploaded, was checked against Adam). A paper's own
+ * short title sits on its title page, so it must start within TITLE_NEAR_TOP_CHARS of the text. In that eval every
+ * paper's own title started at character 0 to 115, and every false match at 1,258 or later.
+ */
+const SHORT_TITLE_WORDS = 5;
+const TITLE_NEAR_TOP_CHARS = 400;
+
+function titleIsPrintedAsTitle(head: string, normalizedTitle: string): boolean {
+  const at = ` ${head} `.indexOf(` ${normalizedTitle} `);
+  if (at < 0) return false;
+  return normalizedTitle.split(" ").length >= SHORT_TITLE_WORDS || at <= TITLE_NEAR_TOP_CHARS;
+}
+
 /** "10.48550/arxiv.1412.6980" -> "1412.6980". An arXiv PDF prints "arXiv:1412.6980v9", never this DOI. */
 function arxivIdOf(doi: string): string | null {
   const match = /^10\.48550\/arxiv\.(.+)$/i.exec(doi);
@@ -161,7 +179,7 @@ export function matchResolvedToDocuments(
 
     if (doi.length > 0 && rawHead.includes(doi)) strength = 3;
     else if (arxivPattern && arxivPattern.test(rawHead)) strength = 3;
-    else if (title.length >= MIN_TITLE_TOKENS && ` ${head} `.includes(` ${normalizedTitle} `)) strength = 2;
+    else if (title.length >= MIN_TITLE_TOKENS && titleIsPrintedAsTitle(head, normalizedTitle)) strength = 2;
     else if (title.length >= MIN_TITLE_TOKENS) {
       const fileTokens = new Set(normalizeForMatch(row.filename.replace(/\.pdf$/i, "")).split(" "));
       const share = title.filter((token) => fileTokens.has(token)).length / title.length;

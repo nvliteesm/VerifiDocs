@@ -54,6 +54,7 @@ npm test             # vitest run: unit tests, plus database tests on the Neon d
 npm run test:live    # opt-in (LIVE=1): real Crossref, OpenAlex and Gemini calls with synthetic text; skipped by npm test
 npm run smoke:api    # needs `npm run dev` running: a full check over real HTTP with a real PDF, timing every request; refuses unless NEON_BRANCH=dev and cleans up after itself
 npm run db:migrate   # apply db/migrations/*.sql in order; refuses the main branch unless --allow-main
+npm run eval         # the eval (docs/eval.md): approved claims in evals/claims.json through the real pipeline, dev branch only
 ```
 
 Env files, both git-ignored: `.env.local` holds the Neon `main` branch strings and the Gemini key and model names; `.env.development.local` holds the Neon `dev` branch strings and `NEON_BRANCH=dev`, and wins in dev and in tests. `.env.example` lists names only.

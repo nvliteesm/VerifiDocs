@@ -72,6 +72,46 @@ describe("matchResolvedToDocuments (an uploaded PDF for a reference Crossref or 
     expect(result).toEqual({ kind: "found", documentId: "byTitle" });
   });
 
+  describe("a short, generic title (E34 in the eval of 24 Nov 2026)", () => {
+    // LeCun et al. (2015), "Deep learning": the phrase is in the introduction of many other papers.
+    const lecun = { title: "Deep learning", doi: "10.1038/nature14539" };
+    // A real abstract runs about 1,000 characters, so the introduction starts well past the title page.
+    const abstract = "Abstract. We introduce a method for optimization that is simple to implement and uses little memory. ".repeat(9);
+    const introduction = `${abstract}1 Introduction Machine learning has had many success stories, such as recent advances in deep learning (Deng et al., 2013).`;
+    const filler = " Results are reported in the tables below.".repeat(20);
+
+    it("does not take another paper that only says the phrase in a sentence of its introduction", () => {
+      const head = `Published as a conference paper at ICLR 2015 ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION Diederik Kingma ${introduction}${filler}`;
+      expect(matchResolvedToDocuments([doc("adam", "adam.pdf", head)], lecun)).toEqual({ kind: "none" });
+    });
+
+    it("takes the paper whose title page opens with it", () => {
+      const head = "Deep learning Yann LeCun, Yoshua Bengio & Geoffrey Hinton Deep learning allows computational models that are composed of multiple processing layers";
+      expect(matchResolvedToDocuments([doc("lecun", "scan0042.pdf", head)], lecun)).toEqual({ kind: "found", documentId: "lecun" });
+    });
+
+    it("picks the real paper, not an earlier upload that mentions the phrase", () => {
+      const other = doc("adam", "adam.pdf", `ADAM: A METHOD FOR STOCHASTIC OPTIMIZATION ${introduction}${filler}`);
+      const real = doc("lecun", "scan0042.pdf", "Deep learning Yann LeCun, Yoshua Bengio & Geoffrey Hinton");
+      expect(matchResolvedToDocuments([other, real], lecun)).toEqual({ kind: "found", documentId: "lecun" });
+    });
+
+    it("still matches by the DOI printed in the paper, wherever the title is", () => {
+      const head = `${"Preamble text. ".repeat(60)}Nature 521, 436-444 doi:10.1038/nature14539 Deep learning is discussed here.`;
+      expect(matchResolvedToDocuments([doc("lecun", "x.pdf", head)], lecun)).toEqual({ kind: "found", documentId: "lecun" });
+    });
+
+    it("still matches a long title that sits below a long journal header", () => {
+      const header = "Contents lists available at ScienceDirect Journal of Applied Findings journal homepage: www.example.org ".repeat(6);
+      const head = `${header}Quantum inflation dynamics in household spending patterns Smith and Lee Abstract`;
+      expect(matchResolvedToDocuments([doc("j", "paper.pdf", head)], { title: "Quantum inflation dynamics in household spending patterns" })).toEqual({ kind: "found", documentId: "j" });
+    });
+
+    it("falls back to the filename for a short title, as for any other", () => {
+      expect(matchResolvedToDocuments([doc("f", "Deep-Learning.pdf", introduction)], lecun)).toEqual({ kind: "found", documentId: "f" });
+    });
+  });
+
   it("returns none when nothing matches", () => {
     expect(matchResolvedToDocuments([doc("d1", "x.pdf", "Unrelated")], { title: "Attention Is All You Need" })).toEqual({ kind: "none" });
   });
