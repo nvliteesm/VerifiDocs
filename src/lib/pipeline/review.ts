@@ -147,31 +147,48 @@ function askReview(llm: Llm, prompt: string) {
 }
 
 /** For a Partly supported verdict: Contradicted if the review says so, else the same verdict, unchanged. */
-async function escalatePartial(llm: Llm, claimText: string, passage: string, verified: VerifiedJudgment): Promise<VerifiedJudgment> {
+async function escalatePartial(
+  llm: Llm,
+  claimText: string,
+  passage: string,
+  verified: VerifiedJudgment,
+  onReviewSkipped?: () => void,
+): Promise<VerifiedJudgment> {
   if (!llm.reviewAvailable) return verified;
   try {
     const review = await askReview(llm, buildPartialReviewPrompt(claimText, passage));
     return review.verdict === "contradicted" ? { ...verified, verdict: "contradicted", reason: clip(review.reason) } : verified;
   } catch (error) {
     // Already flagged for the student: do not fail the whole check over a second look at how serious it is.
-    if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) return verified;
+    // The caller is told, so the eval can tell "the review said Partly supported" from "the review never ran".
+    if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) {
+      onReviewSkipped?.();
+      return verified;
+    }
     throw error;
   }
 }
 
 export async function reviewVerdict(
   llm: Llm,
-  args: { claimText: string; citation: string | null; verified: VerifiedJudgment; passages: JudgePassage[] },
+  args: {
+    claimText: string;
+    citation: string | null;
+    verified: VerifiedJudgment;
+    passages: JudgePassage[];
+    /** Called when a Partly supported verdict kept its verdict only because the second look failed. Not saved or shown. */
+    onReviewSkipped?: () => void;
+  },
 ): Promise<VerifiedJudgment> {
   const { verified } = args;
   if (verified.verdict !== "supported" && verified.verdict !== "partial") return verified;
   const passage = args.passages.find((candidate) => candidate.chunkId === verified.chunkId)?.content ?? verified.quote ?? "";
 
-  if (verified.verdict === "partial") return escalatePartial(llm, args.claimText, passage, verified);
+  if (verified.verdict === "partial") return escalatePartial(llm, args.claimText, passage, verified, args.onReviewSkipped);
 
   const missing = missingNumbers(args.claimText, args.citation, passage);
   if (missing.length > 0) {
-    return escalatePartial(llm, args.claimText, passage, { ...verified, verdict: "partial", reason: numberReason(missing) });
+    return escalatePartial(llm, args.claimText, passage, { ...verified, verdict: "partial", reason: numberReason(missing) }, args.onReviewSkipped);
   }
 
   if (!llm.reviewAvailable) return verified;

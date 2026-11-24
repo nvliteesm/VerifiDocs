@@ -160,7 +160,7 @@ describe.skipIf(!enabled)("eval (Neon dev branch only)", () => {
         for (let round = 1; round <= MAX_ROUNDS; round += 1) {
           const result = await checkClaim(db, deps, { sessionId: row.sessionId, claimId: row.claimId });
           if (result.outcome === "done") {
-            outcomes.push({ id: claim.id, run, verdict: result.verdict.verdict, latencyMs: Date.now() - started, retries: round - 1, exitStage: result.verdict.exitStage, reason: result.verdict.reason });
+            outcomes.push({ id: claim.id, run, verdict: result.verdict.verdict, latencyMs: Date.now() - started, retries: round - 1, exitStage: result.verdict.exitStage, reason: result.verdict.reason, reviewSkipped: result.reviewSkipped === true });
             return;
           }
           await sleep(Math.min(1_000 * result.attempt, 4_000));
@@ -220,6 +220,8 @@ function writeResults(report: EvalReport, outcomes: (Outcome & { reason?: string
     `| Verdict changed between runs | ${report.unstable.length ? report.unstable.join(", ") : "none"} | |`,
     `| Check time p50 / p95 / max | ${(report.latency.p50 / 1000).toFixed(1)} s / ${(report.latency.p95 / 1000).toFixed(1)} s / ${(report.latency.max / 1000).toFixed(1)} s | under 10 s |`,
     `| Checks that never finished | ${report.errors} | |`,
+    `| Checks that needed a retry | ${report.retried} of ${report.claims * report.runs} | |`,
+    `| Second look failed (kept Partly supported) | ${report.reviewSkipped.count}${report.reviewSkipped.ids.length ? `: ${report.reviewSkipped.ids.join(", ")}` : ""} | none, or rerun those claims |`,
     "",
     "| Split or language | Claims | Strict | Lenient |",
     "| --- | --- | --- | --- |",

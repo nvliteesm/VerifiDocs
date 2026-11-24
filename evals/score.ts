@@ -27,6 +27,8 @@ export interface Outcome {
   verdict: string;
   latencyMs: number;
   retries: number;
+  /** The Partly supported second look failed, so a claim that may deserve Contradicted kept Partly supported. */
+  reviewSkipped?: boolean;
 }
 
 const UNSUPPORTED = new Set(["partial", "contradicted", "not_in_sources"]);
@@ -49,6 +51,10 @@ export interface EvalReport {
   missed: { count: number; of: number; rate: number; ids: string[] };
   meetsBar: boolean;
   errors: number;
+  /** Checks that needed more than one round (a lookup or model call failed and was tried again). */
+  retried: number;
+  /** Checks whose Partly supported second look failed: their verdict says nothing about the review prompt. */
+  reviewSkipped: { count: number; ids: string[] };
   byExpected: Record<string, { n: number; strict: number; got: Record<string, number> }>;
   bySplit: Record<string, Rate>;
   byLanguage: Record<string, Rate>;
@@ -119,6 +125,11 @@ export function scoreEval(allClaims: EvalClaim[], allOutcomes: Outcome[], option
     missed,
     meetsBar: overall.strict >= BAR.strict && missed.rate <= BAR.missed,
     errors: outcomes.filter((o) => o.verdict === "error").length,
+    retried: outcomes.filter((o) => o.retries > 0).length,
+    reviewSkipped: {
+      count: outcomes.filter((o) => o.reviewSkipped).length,
+      ids: [...new Set(outcomes.filter((o) => o.reviewSkipped).map((o) => o.id))],
+    },
     byExpected,
     bySplit: group((c) => c.split),
     byLanguage: group((c) => c.language),

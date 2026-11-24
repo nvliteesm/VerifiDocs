@@ -39,7 +39,8 @@ export interface CheckClaimDeps {
 }
 
 export type CheckClaimResult =
-  | { outcome: "done"; verdict: SavedVerdict }
+  /** `reviewSkipped`: a Partly supported verdict whose second look failed (503, timeout). For the eval only; never sent to the browser. */
+  | { outcome: "done"; verdict: SavedVerdict; reviewSkipped?: true }
   /** A lookup or model call failed. The browser should call again; `attempt` is how many have been made. */
   | { outcome: "retry"; reason: string; attempt: number };
 
@@ -127,6 +128,7 @@ export async function checkClaim(
   };
 
   let stage: ExitStage = 3;
+  let reviewSkipped = false;
   try {
     const rows = await sql<{ id: string; position: number; raw_text: string; document_id: string | null }[]>`
       select id, position, raw_text, document_id from reference_entries
@@ -187,6 +189,9 @@ export async function checkClaim(
       citation: claim.citation_text,
       verified: checkedQuote,
       passages,
+      onReviewSkipped: () => {
+        reviewSkipped = true;
+      },
     });
     const changedAtStage8 = Boolean(checkedQuote.downgradedFrom) || verified !== checkedQuote;
 
@@ -206,10 +211,11 @@ export async function checkClaim(
     const quoteGloss =
       verified.quote && gloss && needsGloss(claim.text, verified.quote) ? gloss.slice(0, MAX_GLOSS_CHARS) : null;
 
-    return finish(
+    const done = await finish(
       { verdict: verified.verdict, exitStage: changedAtStage8 ? 8 : 7, reason: verified.reason },
       { quote: verified.quote, page: verified.page, chunkId: verified.chunkId, fixSuggestion, quoteGloss },
     );
+    return reviewSkipped && done.outcome === "done" ? { ...done, reviewSkipped: true } : done;
   } catch (error) {
     if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) {
       return failOrRetry(stage, error.message, error instanceof LlmUnavailableError);

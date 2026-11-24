@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LlmOutputError, LlmUnavailableError, type GenerateJsonRequest, type Llm } from "../llm/adapter";
 import { translatorFor } from "../i18n";
 import { localizeReason } from "../i18n/reasons";
@@ -192,6 +192,27 @@ describe("reviewVerdict", () => {
         const { llm } = fakeLlm({ error });
         expect(await reviewVerdict(llm, args(verdict))).toBe(verdict);
       }
+    });
+
+    it("tells the caller when the review failed, and only then", async () => {
+      const verdict = partial();
+      const skipped = vi.fn();
+      await reviewVerdict(fakeLlm({ error: new LlmUnavailableError("The Gemini API request failed (HTTP 503).") }).llm, { ...args(verdict), onReviewSkipped: skipped });
+      expect(skipped).toHaveBeenCalledTimes(1);
+
+      const quiet = vi.fn();
+      await reviewVerdict(fakeLlm({ answer: { verdict: "partial", reason: "Part is stated." } }).llm, { ...args(verdict), onReviewSkipped: quiet });
+      await reviewVerdict(fakeLlm({ answer: { verdict: "contradicted", reason: "Opposite." } }).llm, { ...args(verdict), onReviewSkipped: quiet });
+      await reviewVerdict(fakeLlm({ reviewAvailable: false }).llm, { ...args(verdict), onReviewSkipped: quiet });
+      expect(quiet).not.toHaveBeenCalled();
+    });
+
+    it("tells the caller when the review of a number-guard verdict failed", async () => {
+      const skipped = vi.fn();
+      const wrongNumber = { ...args(supported("chunk-b", bnQuote)), claimText: "Batch Normalization needs 41 times fewer training steps (Ioffe & Szegedy, 2015).", onReviewSkipped: skipped };
+      const result = await reviewVerdict(fakeLlm({ error: new LlmUnavailableError("The Gemini API request failed (HTTP 503).") }).llm, wrongNumber);
+      expect(result.verdict).toBe("partial");
+      expect(skipped).toHaveBeenCalledTimes(1);
     });
   });
 });

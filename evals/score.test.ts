@@ -36,6 +36,18 @@ describe("scoreEval", () => {
     expect(report.lenient).toBeCloseTo(7 / 8);
   });
 
+  it("reports checks that needed a retry and checks whose second look failed", () => {
+    const report = scoreEval(claims, [
+      { ...out("A", 1, "supported"), retries: 2 },
+      { ...out("B", 1, "partial"), reviewSkipped: true },
+      { ...out("B", 2, "partial"), reviewSkipped: true },
+      { ...out("D", 1, "partial"), reviewSkipped: false },
+    ]);
+    expect(report.retried).toBe(1);
+    expect(report.reviewSkipped).toEqual({ count: 2, ids: ["B"] });
+    expect(scoreEval(claims, [out("A", 1, "supported")])).toMatchObject({ retried: 0, reviewSkipped: { count: 0, ids: [] } });
+  });
+
   it("counts a claim labelled unsupported but called Supported as a miss, against the 5% bar", () => {
     const report = scoreEval(claims, [out("A", 1, "supported"), out("B", 1, "contradicted"), out("C", 1, "supported"), out("D", 1, "partial")]);
     expect(report.missed).toEqual({ count: 1, of: 3, rate: 1 / 3, ids: ["C"] });

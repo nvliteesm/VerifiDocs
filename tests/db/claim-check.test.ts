@@ -329,10 +329,9 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
       await inTx(async (tx) => {
         const agrees = await seed(tx, survey("The survey had 300 respondents across all regions."));
         const a = fakeLlm({ judge: () => ({ ...supportedJudgment, verdict: "partial" }), review: () => ({ verdict: "partial", reason: "Three, not all." }), fix: () => "x", reviewAvailable: true });
-        expect(await checkClaim(tx, { llm: a.llm, resolve: async () => found(TITLE) }, { sessionId: agrees.sessionId, claimId: agrees.claimIds[0]! })).toMatchObject({
-          outcome: "done",
-          verdict: { verdict: "partial", exitStage: 7 },
-        });
+        const agreed = await checkClaim(tx, { llm: a.llm, resolve: async () => found(TITLE) }, { sessionId: agrees.sessionId, claimId: agrees.claimIds[0]! });
+        expect(agreed).toMatchObject({ outcome: "done", verdict: { verdict: "partial", exitStage: 7 } });
+        expect(agreed).not.toHaveProperty("reviewSkipped");
 
         const fails = await seed(tx, survey("The survey had 300 respondents across all regions."));
         const b = fakeLlm({
@@ -341,10 +340,9 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
           fix: () => "x",
           reviewAvailable: true,
         });
-        expect(await checkClaim(tx, { llm: b.llm, resolve: async () => found(TITLE) }, { sessionId: fails.sessionId, claimId: fails.claimIds[0]! })).toMatchObject({
-          outcome: "done",
-          verdict: { verdict: "partial", exitStage: 7 },
-        });
+        const failed = await checkClaim(tx, { llm: b.llm, resolve: async () => found(TITLE) }, { sessionId: fails.sessionId, claimId: fails.claimIds[0]! });
+        // The saved verdict is unchanged; only the result carries the flag, so the eval can see the review never ran.
+        expect(failed).toMatchObject({ outcome: "done", reviewSkipped: true, verdict: { verdict: "partial", exitStage: 7 } });
       });
     });
 
