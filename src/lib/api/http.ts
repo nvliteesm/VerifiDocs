@@ -4,7 +4,7 @@
 // echoed to the client, because an error message can carry user text.
 import { ZodError } from "zod";
 import { isWakingError } from "../db";
-import { LlmOutputError, LlmUnavailableError } from "../llm/adapter";
+import { LlmOutputError, LlmUnavailableError, isOutOfCredit } from "../llm/adapter";
 import { DraftError } from "../pipeline/parse-draft";
 import { ImportError } from "../pipeline/import-draft";
 import { IngestError, type IngestErrorCode } from "../pipeline/ingest";
@@ -50,6 +50,10 @@ export function errorResponse(error: unknown): Response {
   if (error instanceof ZodError) return failure(400, "invalid_request", "The request is not in the expected shape.");
   if (error instanceof RateLimitError) {
     return failure(429, "rate_limited", error.message, false, { "retry-after": String(error.retryAfterSeconds) });
+  }
+  // Out of credit is not a blip: no retry hint, so the browser does not loop, and a different message.
+  if (isOutOfCredit(error)) {
+    return failure(503, "model_quota", "The AI service has reached its limit. Try again later.");
   }
   if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) {
     return failure(503, "model_unavailable", "The AI service is busy. Try again in a moment.", true, { "retry-after": "2" });

@@ -12,7 +12,7 @@
 // keeps giving unusable answers ends the claim as Can't tell after MAX_CLAIM_ATTEMPTS attempts.
 // The function is idempotent: a claim that already has a verdict returns it without any lookup or model call.
 import type postgres from "postgres";
-import { LlmOutputError, LlmUnavailableError, type Llm } from "../llm/adapter";
+import { LlmOutputError, LlmUnavailableError, isOutOfCredit, type Llm } from "../llm/adapter";
 import { embedQuery } from "../rag/embed";
 import { retrieveTopChunks, type SqlLike } from "../rag/retrieve";
 import { findSourceDocument, findSourceForEntry } from "./find-source";
@@ -194,7 +194,8 @@ export async function checkClaim(
         raw = again;
         checkedQuote = verifyJudgment(again, passages);
       } catch (error) {
-        if (!(error instanceof LlmUnavailableError || error instanceof LlmOutputError)) throw error;
+        // Out of credit is not "the second ask failed": saving Can't tell now would be a wrong verdict, so stop.
+        if (isOutOfCredit(error) || !(error instanceof LlmUnavailableError || error instanceof LlmOutputError)) throw error;
       }
     }
     // A Supported verdict gets its numbers checked and a second look (review.ts); any other verdict passes through.
@@ -232,6 +233,8 @@ export async function checkClaim(
     if (done.outcome !== "done") return done;
     return { ...done, ...(reviewSkipped ? { reviewSkipped: true as const } : {}), ...(quoteRetried ? { quoteRetried: true as const } : {}) };
   } catch (error) {
+    // Credits used up (HTTP 402): retrying cannot help, so let the API say so instead of looping the browser.
+    if (isOutOfCredit(error)) throw error;
     if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) {
       return failOrRetry(stage, error.message, error instanceof LlmUnavailableError);
     }

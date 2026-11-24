@@ -92,6 +92,14 @@ export class LlmUnavailableError extends Error {
   }
 }
 
+/**
+ * True when Gemini answered HTTP 402: the prepaid credits are used up (24 Nov 2026). Trying again cannot help until
+ * someone tops up, so callers stop and say so instead of retrying as they do for a busy or slow model.
+ */
+export function isOutOfCredit(error: unknown): boolean {
+  return error instanceof LlmUnavailableError && error.status === 402;
+}
+
 /** The model answered, but not in a usable shape (malformed JSON, schema mismatch, wrong size). */
 export class LlmOutputError extends Error {
   override name = "LlmOutputError";

@@ -14,7 +14,7 @@
 // times out, the error goes up and the claim is tried again. A Partly supported verdict is already flagged, so if its
 // review fails, it stays Partly supported and the check goes on.
 import { z } from "zod";
-import { LlmOutputError, LlmUnavailableError, type Llm } from "../llm/adapter";
+import { LlmOutputError, LlmUnavailableError, isOutOfCredit, type Llm } from "../llm/adapter";
 import { UNREADABLE } from "../rag/normalize";
 import { escapeDelimiters, type JudgePassage } from "./judge";
 import { explanationLanguage } from "./language";
@@ -167,6 +167,8 @@ async function escalatePartial(
   } catch (error) {
     // Already flagged for the student: do not fail the whole check over a second look at how serious it is.
     // The caller is told, so the eval can tell "the review said Partly supported" from "the review never ran".
+    // Out of credit is the exception: every later call would fail too, so stop the check and say why.
+    if (isOutOfCredit(error)) throw error;
     if (error instanceof LlmUnavailableError || error instanceof LlmOutputError) {
       onReviewSkipped?.();
       return verified;

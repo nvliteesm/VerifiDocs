@@ -207,6 +207,11 @@ describe("reviewVerdict", () => {
       expect(quiet).not.toHaveBeenCalled();
     });
 
+    it("does not hide an out-of-credit error: it stops the check instead of keeping Partly supported", async () => {
+      const { llm } = fakeLlm({ error: new LlmUnavailableError("The Gemini API request failed (HTTP 402).", 402) });
+      await expect(reviewVerdict(llm, args(partial()))).rejects.toMatchObject({ status: 402 });
+    });
+
     it("tells the caller when the review of a number-guard verdict failed", async () => {
       const skipped = vi.fn();
       const wrongNumber = { ...args(supported("chunk-b", bnQuote)), claimText: "Batch Normalization needs 41 times fewer training steps (Ioffe & Szegedy, 2015).", onReviewSkipped: skipped };

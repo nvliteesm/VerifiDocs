@@ -6,6 +6,7 @@ import {
   LlmOutputError,
   LlmUnavailableError,
   createLlm,
+  isOutOfCredit,
   loadLlmConfig,
   parseModelJson,
   type GeminiClientLike,
@@ -327,5 +328,28 @@ describe("timeouts (hard rule 6: no request may run long)", () => {
     expect(result).toEqual({ verdict: "supported", page: 1 });
     expect(signal).toBeInstanceOf(AbortSignal);
     expect(signal!.aborted).toBe(false);
+  });
+});
+
+describe("isOutOfCredit", () => {
+  it("is true only for an HTTP 402 from the model: other statuses and other errors are not", () => {
+    expect(isOutOfCredit(new LlmUnavailableError("x", 402))).toBe(true);
+    for (const status of [429, 500, 503, undefined]) expect(isOutOfCredit(new LlmUnavailableError("x", status))).toBe(false);
+    expect(isOutOfCredit(new LlmOutputError("x"))).toBe(false);
+    expect(isOutOfCredit(new Error("402"))).toBe(false);
+    expect(isOutOfCredit(null)).toBe(false);
+  });
+
+  it("sees a 402 that came through the adapter as its status", async () => {
+    const gemini: GeminiClientLike = {
+      models: {
+        generateContent: async () => {
+          throw Object.assign(new Error("credits"), { status: 402 });
+        },
+        embedContent: async () => ({ embeddings: [] }),
+      },
+    };
+    const attempt = createLlm(config, gemini).generateJson({ prompt: "p", schema: z.object({}) });
+    await expect(attempt).rejects.toSatisfy(isOutOfCredit);
   });
 });

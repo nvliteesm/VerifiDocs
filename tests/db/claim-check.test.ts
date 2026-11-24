@@ -463,6 +463,31 @@ describe.skipIf(!enabled)("checkClaim (dev branch)", () => {
       });
     });
 
+    it("stops when the credits run out during the second ask: no Can't tell is saved", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, claim);
+        const { llm } = fakeLlm({
+          judge: (call) => {
+            if (call === 1) return tidied;
+            throw new LlmUnavailableError("The Gemini API request failed (HTTP 402).", 402);
+          },
+        });
+        await expect(checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! })).rejects.toMatchObject({ status: 402 });
+        expect(await tx`select 1 from verdicts where claim_id = ${claimIds[0]!}`).toHaveLength(0);
+      });
+    });
+
+    it("lets an out-of-credit error through, instead of asking the browser to retry", async () => {
+      await inTx(async (tx) => {
+        const { sessionId, claimIds } = await seed(tx, claim);
+        const { llm } = fakeLlm({ judge: () => { throw new LlmUnavailableError("The Gemini API request failed (HTTP 402).", 402); } });
+        await expect(checkClaim(tx, { llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! })).rejects.toMatchObject({ status: 402 });
+        // A busy model (503) still asks the browser to retry, as before.
+        const busy = fakeLlm({ judge: () => { throw new LlmUnavailableError("The Gemini API request failed (HTTP 503).", 503); } });
+        expect(await checkClaim(tx, { llm: busy.llm, resolve: async () => found(TITLE) }, { sessionId, claimId: claimIds[0]! })).toMatchObject({ outcome: "retry" });
+      });
+    });
+
     it("does not ask again for a missing or too short quote, or when the quote verified", async () => {
       await inTx(async (tx) => {
         for (const quote of [null, "The survey", supportedJudgment.quote]) {

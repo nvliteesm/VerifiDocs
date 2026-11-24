@@ -127,6 +127,19 @@ describe("errorResponse", () => {
     }
   });
 
+  it("answers 503 with its own code and no retry hint when the credits are used up (HTTP 402)", async () => {
+    const response = errorResponse(new LlmUnavailableError("The Gemini API request failed (HTTP 402).", 402));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBeNull();
+    const body = await bodyOf(response);
+    expect(body.error.code).toBe("model_quota");
+    expect(body.error).not.toHaveProperty("retry");
+    // A busy model (429, 503) or a timeout (no status) is still worth another try.
+    for (const status of [429, 503, undefined]) {
+      expect(await bodyOf(errorResponse(new LlmUnavailableError("x", status)))).toMatchObject({ error: { code: "model_unavailable", retry: true } });
+    }
+  });
+
   it("answers 503 with a retry hint while the database is waking up", async () => {
     for (const code of ["CONNECT_TIMEOUT", "ECONNREFUSED", "57P03", "CONNECTION_CLOSED"]) {
       const response = errorResponse(Object.assign(new Error("x"), { code }));
