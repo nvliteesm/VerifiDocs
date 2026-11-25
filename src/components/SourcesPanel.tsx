@@ -15,6 +15,8 @@ interface Props {
   onRemove: (row: SourceRow) => void;
   /** True until the student has pressed "Got it" on the privacy note: an upload sends text to other services. */
   locked?: boolean;
+  /** The slim version for the workspace's left pane: a title, an add button and the list. */
+  compact?: boolean;
 }
 
 function statusText(row: SourceRow, t: Translate, locale: Locale): string {
@@ -34,20 +36,28 @@ function statusText(row: SourceRow, t: Translate, locale: Locale): string {
   }
 }
 
-export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, locked = false }: Props) {
+export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, locked = false, compact = false }: Props) {
   const { t, locale } = useT();
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
   return (
-    <section className="panel panel-tray" aria-labelledby="sources-title">
+    <section className={compact ? "side-sources" : "panel panel-tray"} aria-labelledby="sources-title">
       <div className="panel-head">
-        <h2 id="sources-title">{t("src.title")}</h2>
-        <p className="hint">{t("src.hint", { max: MAX_SOURCES, size: megabytes(MAX_PDF_BYTES) })}</p>
+        {compact ? (
+          <h2 id="sources-title" className="pane-title">
+            {t("src.title")}
+          </h2>
+        ) : (
+          <>
+            <h2 id="sources-title">{t("src.title")}</h2>
+            <p className="hint">{t("src.hint", { max: MAX_SOURCES, size: megabytes(MAX_PDF_BYTES) })}</p>
+          </>
+        )}
       </div>
 
       <div
-        className={`drop${dragging ? " drop-active" : ""}`}
+        className={`drop${dragging ? " drop-active" : ""}${compact ? " drop-compact" : ""}`}
         onDragOver={(event) => {
           event.preventDefault();
           setDragging(true);
@@ -60,9 +70,9 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
         }}
       >
         <button type="button" className="btn" disabled={locked} onClick={() => input.current?.click()}>
-          {t("src.choose")}
+          {compact ? t("ws.addSource") : t("src.choose")}
         </button>
-        <span className="hint">{t("src.drop")}</span>
+        {!compact && <span className="hint">{t("src.drop")}</span>}
         <input
           ref={input}
           type="file"
@@ -90,7 +100,14 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
           {rows.map((row) => (
             <li key={row.key} className={`source source-${row.phase}`}>
               <div className="source-main">
-                <span className="source-name">{row.filename}</span>
+                <span className="source-name">
+                  {compact && (
+                    <svg className="file-icon" width="14" height="16" viewBox="0 0 14 16" aria-hidden="true" focusable="false">
+                      <path d="M2 1h6l4 4v10H2z M8 1v4h4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                  {row.filename}
+                </span>
                 <span className="source-status" aria-live="polite">
                   {statusText(row, t, locale)}
                 </span>

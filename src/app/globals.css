@@ -1,7 +1,9 @@
 /*
-  Design Read: a self-check tool for final-year students, calm scholarly style, ENERGY 1 / RHYTHM 2 / MOTION 1.
-  Why paper and ink: the product is about reading and citing, so the light theme is warm paper and the dark theme is
-  deep ink, not a "tech" black. Why serif headings: the same reason, the page should feel like a study desk.
+  Design Read: a review workspace for final-year students checking their own draft, muted editorial style,
+  ENERGY 1 / RHYTHM 2 / MOTION 1. The brief (25 Nov 2026) asks for soft cool-gray surfaces and 1px borders, with red,
+  amber and green kept for small badges, underlines and dots.
+  Why cool gray: the draft is the hero, and a quiet neutral ground lets the underlines be the only colour on the page.
+  Why a serif draft: the student is reading prose, so the draft is set like an editorial page; the chrome stays sans.
   One accent (teal ink) is used only for the primary action, focus rings and the selected state. Verdict colours are
   status colours, not accents, and every verdict also carries a symbol and a text label.
 */
@@ -12,16 +14,16 @@
 */
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#f5f0e6, #14171a);
-  --surface: light-dark(#fffdf8, #1b2024);
-  --sunken: light-dark(#ece5d6, #101316);
-  --text: light-dark(#211e17, #e9e6dc);
-  --muted: light-dark(#5a5547, #a9a89c);
-  --line: light-dark(#d8cfba, #333a40);
-  --line-strong: light-dark(#b9ad90, #4b545b);
+  --bg: light-dark(#eef0f3, #14171a);
+  --surface: light-dark(#fafbfc, #1b2024);
+  --sunken: light-dark(#e3e6ea, #101316);
+  --text: light-dark(#1d2127, #e6e8ea);
+  --muted: light-dark(#4d5560, #a3a9b0);
+  --line: light-dark(#d0d5db, #333a40);
+  --line-strong: light-dark(#a3abb5, #4b545b);
   --accent: light-dark(#0e5a61, #7cc7cc);
   --accent-text: light-dark(#ffffff, #06272a);
-  --accent-soft: light-dark(#dcebea, #16312f);
+  --accent-soft: light-dark(#d9e8ea, #16312f);
   --good: light-dark(#1b5e34, #84dca3);
   --good-bg: light-dark(#e0efe1, #163021);
   --warn: light-dark(#7a4a00, #f0c36b);
@@ -31,7 +33,7 @@
   --info: light-dark(#1d4a7a, #9cc6f5);
   --info-bg: light-dark(#e0ebf4, #172637);
   /* A shadow is not a colour, so only its colour switches: a hairline in light, invisible in dark. */
-  --shadow: 0 1px 0 light-dark(rgb(33 30 23 / 6%), transparent);
+  --shadow: 0 1px 0 light-dark(rgb(29 33 39 / 6%), transparent);
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -1047,4 +1049,458 @@ details[open] > summary > .evidence-preview {
   *::after {
     transition: none !important;
   }
+}
+
+
+/* ===== Workspace: three panes ===== */
+.shell-wide {
+  max-width: none;
+  padding: 0 16px 24px;
+}
+.ws {
+  display: grid;
+  gap: 12px;
+}
+.run-status {
+  display: grid;
+  gap: 8px;
+}
+.run-line {
+  font-weight: 600;
+}
+.ws-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.ws-progress {
+  color: var(--muted);
+  font-weight: 600;
+}
+.ws-after {
+  display: grid;
+  gap: 12px;
+}
+.ws-grid {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+.pane {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 0;
+}
+.pane-title {
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.pane-side {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+.sub-title {
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Narrow screens show one pane at a time, chosen by the row of buttons above; wide screens show all three. */
+.ws-panes {
+  display: flex;
+  gap: 4px;
+}
+.ws-pane-btn {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+.ws-pane-btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+@media (max-width: 1023px) {
+  .pane {
+    display: none;
+  }
+  .ws[data-pane="draft"] .pane-draft,
+  .ws[data-pane="claim"] .pane-insp,
+  .ws[data-pane="sources"] .pane-side {
+    display: block;
+  }
+  .ws[data-pane="sources"] .pane-side {
+    display: grid;
+  }
+  .ws-toggle {
+    display: none;
+  }
+  .ws .btn-small,
+  .filter {
+    min-height: 44px;
+  }
+}
+@media (min-width: 1024px) {
+  .ws-panes {
+    display: none;
+  }
+  .ws-grid {
+    align-items: stretch;
+    grid-template-columns: 250px minmax(0, 1fr) 400px;
+    height: calc(100dvh - 190px);
+    min-height: 520px;
+  }
+  .ws-grid[data-inspector="closed"] {
+    grid-template-columns: 250px minmax(0, 1fr);
+  }
+  .ws-grid[data-side="closed"] {
+    grid-template-columns: minmax(0, 1fr) 400px;
+  }
+  .ws-grid[data-side="closed"][data-inspector="closed"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ws-grid[data-inspector="closed"] .pane-insp,
+  .ws-grid[data-side="closed"] .pane-side {
+    display: none;
+  }
+  .pane {
+    overflow: auto;
+    max-height: 100%;
+  }
+}
+
+/* Left pane */
+.filters {
+  display: grid;
+  gap: 2px;
+}
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.filter:hover {
+  background: var(--sunken);
+}
+.filter[aria-pressed="true"] {
+  background: var(--sunken);
+  border-color: var(--line-strong);
+  font-weight: 600;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.dot-all {
+  background: var(--muted);
+}
+.dot-fix {
+  background: var(--bad);
+}
+.dot-source {
+  background: var(--warn);
+}
+.dot-ok {
+  background: var(--good);
+}
+.dot-waiting {
+  background: var(--line-strong);
+}
+.side-sources {
+  display: grid;
+  gap: 10px;
+}
+.drop-compact {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* Centre pane: the draft */
+.canvas {
+  display: grid;
+  gap: 12px;
+}
+.canvas-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.canvas-title {
+  font-size: 1.35rem;
+}
+.draft {
+  max-width: 68ch;
+  font-family: var(--serif);
+  font-size: 1.08rem;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.draft-heading {
+  margin: 1.2em 0 0.3em;
+  font-size: 1.15rem;
+  white-space: normal;
+}
+/* A claim sentence. The underline's colour is its status; its style differs too, so colour is not the only cue. */
+.hl {
+  --hl: var(--line-strong);
+  --hl-ink: var(--muted);
+  --hl-bg: var(--sunken);
+  margin: 0 -2px;
+  padding: 1px 2px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  white-space: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--hl);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+.hl:hover {
+  background: var(--sunken);
+}
+.hl-fix {
+  --hl: var(--bad);
+  --hl-ink: var(--bad);
+  --hl-bg: var(--bad-bg);
+}
+.hl-source {
+  --hl: var(--warn);
+  --hl-ink: var(--warn);
+  --hl-bg: var(--warn-bg);
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1.5px;
+}
+.hl-ok {
+  --hl: var(--good);
+  --hl-ink: var(--good);
+  --hl-bg: var(--good-bg);
+  text-decoration-thickness: 1px;
+}
+.hl-waiting {
+  text-decoration-style: dotted;
+}
+.hl-ignored {
+  text-decoration-style: dashed;
+  text-decoration-thickness: 1px;
+}
+.hl-applied {
+  --hl: var(--good);
+  --hl-ink: var(--good);
+  --hl-bg: var(--good-bg);
+}
+.hl-muted {
+  text-decoration-color: transparent;
+}
+/* The selected sentence is boxed in its own status colour, as in the design, and tinted so it reads without it. */
+.hl-active {
+  background: var(--hl-bg);
+  outline: 2px solid var(--hl-ink);
+  outline-offset: 2px;
+}
+/* [C-n]: a small chip in the claim's status colour. Inline in the draft, and leading the inspector's headline. */
+.tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--hl-ink, var(--line-strong));
+  border-radius: 4px;
+  background: var(--hl-bg, var(--sunken));
+  color: var(--hl-ink, var(--text));
+  font: 600 0.72rem/1.4 var(--sans);
+  letter-spacing: 0;
+  text-decoration: none;
+  vertical-align: 0.1em;
+  white-space: nowrap;
+}
+.diff-old {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.diff-new {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--good-bg);
+  color: var(--good);
+  text-decoration: none;
+}
+.unplaced ul {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--serif);
+}
+
+/* Right pane: the inspector */
+.insp {
+  display: grid;
+  gap: 14px;
+}
+.insp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.insp-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.insp-claim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.insp-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+.insp-title .tag {
+  flex: none;
+  margin: 0;
+}
+.insp-title-text {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.insp-title[data-group="fix"] {
+  --hl-ink: var(--bad);
+  --hl-bg: var(--bad-bg);
+}
+.insp-title[data-group="source"] {
+  --hl-ink: var(--warn);
+  --hl-bg: var(--warn-bg);
+}
+.insp-title[data-group="ok"],
+.insp-title[data-group="applied"] {
+  --hl-ink: var(--good);
+  --hl-bg: var(--good-bg);
+}
+.insp-title[data-group="waiting"],
+.insp-title[data-group="ignored"] {
+  --hl-ink: var(--muted);
+  --hl-bg: var(--sunken);
+}
+.compare {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sunken);
+}
+.compare-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .compare-pair {
+    grid-template-columns: 1fr;
+  }
+}
+.compare-box {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.compare[data-group="fix"] .compare-box-draft {
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}
+.compare-box .compare-text,
+.compare-box .compare-quote {
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+.compare-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.compare-text {
+  font-family: var(--serif);
+}
+.compare-solo {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sunken);
+}
+.compare-quote {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--serif);
+}
+.remedy {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.remedy-change {
+  font-weight: 600;
+}
+.remedy-sentence {
+  font-family: var(--serif);
+}
+
+.side-filters {
+  display: grid;
+  gap: 8px;
+}
+.file-icon {
+  flex: none;
+  margin-right: 8px;
+  color: var(--muted);
+  vertical-align: -2px;
 }

@@ -10,17 +10,18 @@ import type { ClientEventName, VerifyInput } from "@/lib/client/types";
 import { DraftPanel } from "./DraftPanel";
 import { LanguageToggle } from "./LanguageToggle";
 import { useT } from "./LocaleProvider";
-import { ResultsView, type AttachStage } from "./ResultsView";
+import type { AttachStage } from "./FoundSources";
 import { SourcesPanel } from "./SourcesPanel";
 import { CONSENT_KEY, readStored, writeStored } from "./storage";
 import { ThemeToggle } from "./ThemeToggle";
 import { useSources } from "./useSources";
 import { useVerification } from "./useVerification";
+import { Workspace } from "./Workspace";
 
-function Frame({ children, busy }: { children?: React.ReactNode; busy?: boolean }) {
+function Frame({ children, busy, wide }: { children?: React.ReactNode; busy?: boolean; wide?: boolean }) {
   const { t } = useT();
   return (
-    <div className="shell">
+    <div className={`shell${wide ? " shell-wide" : ""}`}>
       <a className="skip" href="#main">
         {t("skip")}
       </a>
@@ -203,7 +204,7 @@ export function VerifierApp() {
   const readySources = sources.rows.filter((row) => row.phase === "ready").length;
 
   return (
-    <Frame>
+    <Frame wide={!idle}>
       {/* Once a check exists the results come first; the heading stays for screen readers (one h1 per page). */}
       {idle ? (
         <div className="intro">
@@ -260,9 +261,9 @@ export function VerifierApp() {
         </p>
       )}
 
-      <div className={`workspace${idle ? "" : " has-run"}`}>
-        <div className="main-col">
-          {idle ? (
+      {idle ? (
+        <div className="workspace">
+          <div className="main-col">
             <DraftPanel
               key={seedKey}
               importer={importer}
@@ -277,20 +278,40 @@ export function VerifierApp() {
               onTryExample={tryExample}
               exampleNote={exampleNote}
             />
-          ) : (
+          </div>
+          <div className="rail">
+          <SourcesPanel
+            rows={sources.rows}
+            loaded={sources.loaded}
+            notice={sources.notice}
+            locked={!consent}
+            onAdd={sources.addFiles}
+            onRetry={sources.retryRow}
+            onRemove={sources.remove}
+          />
+          </div>
+        </div>
+      ) : (
+        <Workspace
+          key={state.runId ?? "new"}
+          state={state}
+          draftText={lastInput?.draft.kind === "paste" ? lastInput.draft.text : null}
+          draftLabel={lastInput?.label ?? null}
+          focusWhenDone={lastInput !== null}
+          sources={
+            <SourcesPanel
+              compact
+              rows={sources.rows}
+              loaded={sources.loaded}
+              notice={sources.notice}
+              locked={!consent}
+              onAdd={sources.addFiles}
+              onRetry={sources.retryRow}
+              onRemove={sources.remove}
+            />
+          }
+          actions={
             <>
-              <ResultsView
-                state={state}
-                draftLabel={lastInput?.label ?? null}
-                focusWhenDone={lastInput !== null}
-                onRetryClaim={verification.retry}
-                onReadPart={verification.readPart}
-                onFindSources={verification.findSources}
-                onFindWebSources={verification.findWebSources}
-                onAttachSource={attachSource}
-                onEvent={event}
-              />
-              <div className="actions">
                 {state.phase === "scanned" && (
                   <>
                     <button type="button" className="btn btn-primary" disabled={sources.busy} onClick={verification.check}>
@@ -356,7 +377,10 @@ export function VerifierApp() {
                   {copied === "copied" ? t("act.copiedSr") : copied === "failed" ? t("act.copyFailSr") : ""}
                 </span>
                 {copied === "failed" && <span className="hint hint-bad">{t("act.copyFail")}</span>}
-              </div>
+            </>
+          }
+          after={
+            <>
               {/* Starting over and deleting sit apart from the main actions: one is rare, the other cannot be undone. */}
               <div className="actions actions-quiet">
                 <button
@@ -405,7 +429,6 @@ export function VerifierApp() {
                   </span>
                 )}
               </div>
-
               {state.phase === "done" && (
                 <div className="survey">
                   {!answered && (
@@ -436,22 +459,15 @@ export function VerifierApp() {
                 </div>
               )}
             </>
-          )}
-        </div>
-
-        {/* After the draft in the page order, so a phone shows the draft first. On a wide screen it is the right-hand column. */}
-        <div className="rail">
-          <SourcesPanel
-            rows={sources.rows}
-            loaded={sources.loaded}
-            notice={sources.notice}
-            locked={!consent}
-            onAdd={sources.addFiles}
-            onRetry={sources.retryRow}
-            onRemove={sources.remove}
-          />
-        </div>
-      </div>
+          }
+          onRetryClaim={verification.retry}
+          onReadPart={verification.readPart}
+          onFindSources={verification.findSources}
+          onFindWebSources={verification.findWebSources}
+          onAttachSource={attachSource}
+          onEvent={event}
+        />
+      )}
 
       <footer className="hint" style={{ marginTop: 40 }}>
         {t("footer")}
