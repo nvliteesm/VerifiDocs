@@ -1,6 +1,6 @@
 # Eval
 
-Status (24 Nov 2026): the harness exists (`npm run eval`, `evals/run.eval.ts`) with a public set of 51 claims, all labels approved by Steven on 24 Nov 2026 (the first 40, then 11 fresh held-out claims, E41 to E51, drafted afterwards and not yet run). Steven's Sheet set below joins once it is exported with its PDFs.
+Status (24 Nov 2026): the harness exists (`npm run eval`, `evals/run.eval.ts`) with a public set of 51 claims, all labels approved by Steven on 24 Nov 2026 (the first 40, then 11 fresh held-out claims, E41 to E51, drafted afterwards and run once, on 25 Nov 2026, in the final eval: 94.8% strict and 100% lenient over all 51, so the 90% bar was met; E41 to E51 are no longer clean). Steven's Sheet set below joins once it is exported with its PDFs.
 
 ## Quality bar
 
