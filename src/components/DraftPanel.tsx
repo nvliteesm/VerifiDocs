@@ -192,7 +192,7 @@ export function DraftPanel({
 
       {onTryExample && !loaded && text.trim() === "" && (
         <div className="example">
-          <button type="button" className="btn btn-quiet" disabled={locked} onClick={onTryExample}>
+          <button type="button" className="btn btn-small" disabled={locked} onClick={onTryExample}>
             {t("example.button")}
           </button>
           <span className="hint">{t("example.hint")}</span>
@@ -325,7 +325,8 @@ export function DraftPanel({
         </div>
       </details>
 
-      {noReadySources && (
+      {/* Only once there is a draft: before that it warns about a mistake the student has not made. */}
+      {noReadySources && hasDraft && (
         <p className="notice notice-info">
           {t("nosrc.notice", { label: verdictLabel(t, "cant_check") })}
         </p>

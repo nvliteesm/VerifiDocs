@@ -41,6 +41,16 @@ export async function checkClaimHandler(context: ApiContext, claimId: string): P
     where c.id = ${claimId} and c.session_id = ${context.sessionId}
       and exists (select 1 from reference_entries x where x.run_id = c.run_id and x.year_mismatch)
     order by r.position`;
+  // The file this verdict's quote came from (verdict, then its passage, then that passage's document), so the card
+  // can name it. Only when there is a quote. Null if the document was deleted since.
+  const [source] = verdict.quote
+    ? await sql<{ filename: string }[]>`
+        select d.filename
+        from verdicts v
+        join chunks ch on ch.id = v.chunk_id
+        join documents d on d.id = ch.document_id
+        where v.claim_id = ${claimId} and v.session_id = ${context.sessionId}`
+    : [];
   const yearNotes = yearNotesFor(
     references[0]?.citation_text ?? null,
     references.map((ref) => ({
@@ -64,6 +74,7 @@ export async function checkClaimHandler(context: ApiContext, claimId: string): P
       exitStage: verdict.exitStage,
       fixSuggestion: verdict.fixSuggestion,
       quoteGloss: verdict.quoteGloss,
+      sourceFile: source?.filename ?? null,
       yearNotes,
     },
   });

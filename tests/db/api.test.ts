@@ -1030,10 +1030,13 @@ describe.skipIf(!enabled)("checking claims, end to end", () => {
       expect(checked.body).toMatchObject({
         outcome: "done",
         runCompleted: true,
-        verdict: { verdict: "supported", page: 1, exitStage: 7, quote: "The dominant sequence transduction models are based on complex recurrent networks" },
+        verdict: { verdict: "supported", page: 1, exitStage: 7, quote: "The dominant sequence transduction models are based on complex recurrent networks", sourceFile: "paper.pdf" },
       });
 
       const after = await client.getRun(created.runId);
+      // The card names the file the quote came from; before any check there is no quote, so no file.
+      expect(before.body.claims[0].sourceFile).toBeNull();
+      expect(after.body.claims[0]).toMatchObject({ verdict: "supported", sourceFile: "paper.pdf" });
       expect(after.body.run.status).toBe("completed");
       expect(after.body.counts).toEqual({ supported: 1 });
       expect(after.body.progress).toEqual({ checked: 1, total: 1 });

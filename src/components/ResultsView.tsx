@@ -6,6 +6,7 @@ import { pluralKey, type MessageKey } from "@/lib/i18n";
 import { localizeReason } from "@/lib/i18n/reasons";
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
 import { inTextCitation, referenceEntry, webInTextCitation, webReferenceEntry } from "@/lib/client/cite";
+import { markDifferences, type Piece } from "@/lib/client/numbers";
 import type { ClaimView, FoundSourceView, Verdict } from "@/lib/client/types";
 import { SUMMARY_ORDER, VERDICT_INFO, verdictAdvice, verdictLabel } from "@/lib/client/verdict-info";
 import { isOptional } from "@/lib/fix-list";
@@ -59,6 +60,32 @@ function Badge({ verdict, optional = false }: { verdict: Verdict; optional?: boo
       <span aria-hidden="true">{info.symbol}</span> {optional ? t("claim.optional") : verdictLabel(t, verdict)}
     </span>
   );
+}
+
+/** Text split by `markDifferences`: the numbers that differ are marked, with weight and underline as well as colour. */
+function Pieces({ pieces }: { pieces: Piece[] }) {
+  return (
+    <>
+      {pieces.map((piece, index) =>
+        piece.marked ? (
+          <mark key={index} className="num">
+            {piece.text}
+          </mark>
+        ) : (
+          piece.text
+        ),
+      )}
+    </>
+  );
+}
+
+/** The first words of a quote, for the closed evidence line: about 110 characters, cut at a word. */
+const PREVIEW_CHARS = 110;
+export function previewOf(quote: string): string {
+  const flat = quote.replace(/\s+/g, " ").trim();
+  if (flat.length <= PREVIEW_CHARS) return flat;
+  const cut = flat.slice(0, PREVIEW_CHARS);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), PREVIEW_CHARS / 2)).replace(/[\s,;:]+$/, "")}…`;
 }
 
 interface CardProps {
@@ -464,6 +491,9 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
   const listMissing = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NO_REFERENCE_LIST));
   const notInList = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NOT_IN_REFERENCE_LIST));
   const optional = isOptional(claim);
+  // Numbers that differ between the sentence and the quote are marked in both. A fact from the numbers, not a verdict.
+  const marks = claim.quote ? markDifferences(claim.text, claim.citation, claim.quote) : null;
+  const numberMarks = marks?.any ? marks : null;
 
   return (
     <li className="claim" id={`claim-${claim.id}`}>
@@ -476,7 +506,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
           </span>
         )}
       </div>
-      <p className="claim-text">{claim.text}</p>
+      <p className="claim-text">{numberMarks ? <Pieces pieces={numberMarks.claim} /> : claim.text}</p>
       {/* The audit trail (PRD guard rule 2): this citation was attached here, after the claim was written. */}
       {claim.citationSource === "found" && <p className="found-tag">{t("claim.found")}</p>}
       {/* The reference exists but its year in the list is off. A separate fix: the verdict stands. */}
@@ -508,9 +538,23 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
               if (!details.open && verdict) onEvent("evidence_opened", { verdict });
             }}
           >
-            {claim.page !== null ? t("evidence.page", { n: claim.page }) : t("evidence.summary")}
+            <span>{claim.page !== null ? t("evidence.page", { n: claim.page }) : t("evidence.summary")}</span>
+            {/* The first words of the quote, only while it is closed: a pass shows why it passed. */}
+            <span className="evidence-preview">{previewOf(claim.quote)}</span>
           </summary>
-          <blockquote>{claim.quote}</blockquote>
+          <div className="quote">
+            <blockquote>
+              {/* The page is named in the line above; this tab is the same fact, drawn on the quote. */}
+              {claim.page !== null && (
+                <span className="page-tag" aria-hidden="true">
+                  {t("evidence.tag", { n: claim.page })}
+                </span>
+              )}
+              {numberMarks ? <Pieces pieces={numberMarks.quote} /> : claim.quote}
+            </blockquote>
+          </div>
+          {claim.sourceFile && <p className="hint quote-source">{t("evidence.file", { file: claim.sourceFile })}</p>}
+          {numberMarks && <p className="hint quote-source">{t("evidence.numbers")}</p>}
           {/* Help to read an English quote. The quote above stays the evidence; this line is never checked. */}
           {claim.quoteGloss && (
             <p className="gloss">
@@ -550,11 +594,11 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
 
       {verdict &&
         (flagged ? (
-          <p className="hint" role="status" ref={thanks} tabIndex={-1}>
+          <p className="hint claim-foot" role="status" ref={thanks} tabIndex={-1}>
             {t("flag.thanks")}
           </p>
         ) : asking ? (
-          <div className="flag-reasons" role="group" aria-label={t("flag.group")}>
+          <div className="flag-reasons claim-foot" role="group" aria-label={t("flag.group")}>
             <p className="hint">{t("flag.ask")}</p>
             <div className="chips">
               {reasonsFor(claim).map((reason, index) => (
@@ -585,7 +629,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
             </div>
           </div>
         ) : (
-          <div>
+          <div className="claim-foot">
             <button type="button" className="link" ref={flagButton} onClick={() => setAsking(true)}>
               {t("flag.button")}
             </button>
@@ -656,12 +700,22 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
     (claim) => claim.verdict !== null && claim.verdict !== "no_citation_given" && claim.verdict !== "reference_not_found",
   );
   const scanView = scanned || (finished && !state.stopped && !sourceChecked);
+  // Lead with the problem. "No sentence is missing a source" would read as an all-clear beside a citation not in the list.
   const scanHeadline =
-    needSource > 0 ? t(pluralKey(locale, "scan.need", needSource), { n: needSource }) : t("scan.noneNeeded");
+    needSource > 0
+      ? t(pluralKey(locale, "scan.need", needSource), { n: needSource })
+      : notListed > 0
+        ? t(pluralKey(locale, "scan.missingHead", notListed), { n: notListed })
+        : t("scan.noneNeeded");
   const waiting = state.claims.filter((claim) => claim.verdict === null).length;
   // When nothing needs attention, an empty "Needs attention" list would contradict the tally, so show everything.
   const filter = chosen === "attention" && finished && attention === 0 ? "all" : chosen;
+  // "Needs attention" lists the fix list and every claim still waiting for its check (see `shown`), so its count
+  // is those two together. Counting only the fix list read "(1)" above five cards.
+  const attentionCards = state.claims.filter((claim) => state.fixList.includes(claim.id) || claim.verdict === null).length;
   const isStopped = state.stopped;
+  // "Check complete" and "Scan complete" repeat what the headline and the buttons say, so they are for screen readers only.
+  const eyebrowHidden = scanView || (finished && !isStopped);
   const tally = isStopped
     ? checked === 0
       ? t("tally.stoppedNone")
@@ -695,6 +749,17 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
     wasFinished.current = finished;
     wasScanned.current = scanned;
   }, [finished, scanned, focusWhenDone]);
+
+  // When a scan or check starts, the progress line is at the top of the results; the button that started it was at
+  // the bottom, so on a long page the student is left looking at the cards. Bring the top into view, once per start.
+  const phase = state.phase;
+  useEffect(() => {
+    if (phase !== "extracting" && phase !== "checking") return;
+    const top = heading.current;
+    if (!top) return;
+    const { y } = top.getBoundingClientRect();
+    if (y < 0 || y > window.innerHeight * 0.5) top.scrollIntoView?.({ block: "start" });
+  }, [phase]);
 
   const shown = useMemo(() => {
     const ranked = new Map(state.fixList.map((id, index) => [id, index]));
@@ -774,7 +839,7 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
   return (
     <section className="panel" aria-labelledby="results-title">
       <div className="panel-head">
-        <p className="eyebrow">
+        <p className={eyebrowHidden ? "eyebrow sr-only" : "eyebrow"}>
           {finished && !scanView
             ? isStopped
               ? t("results.eyebrow.stopped")
@@ -785,7 +850,8 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
                 ? t("results.eyebrow.error")
                 : t("results.eyebrow.running")}
         </p>
-        <h2 id="results-title" ref={heading} tabIndex={-1}>
+        {/* Read by screen readers and shown when a keyboard user lands on it; the headline below says it for everyone else. */}
+        <h2 id="results-title" className="results-title" ref={heading} tabIndex={-1}>
           {t("results.title")}
         </h2>
         {draftLabel && <p className="hint">{t("results.draft", { label: draftLabel })}</p>}
@@ -856,6 +922,12 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
           {finished && !scanView && (
             <div className="tally">
               <p className="tally-number">{tally}</p>
+              {/* The shape of the draft at a glance. Decorative: the headline and the filter counts carry the numbers. */}
+              <div className="tally-bar" aria-hidden="true">
+                {SUMMARY_ORDER.filter((verdict) => (state.counts[verdict] ?? 0) > 0).map((verdict) => (
+                  <span key={verdict} className={`tally-seg tally-${VERDICT_INFO[verdict].tone}`} style={{ flexGrow: state.counts[verdict] }} />
+                ))}
+              </div>
               {yearItems.size > 0 && <p className="year-tag">{t("tally.years", { list: [...yearItems.values()].join("; ") })}</p>}
             </div>
           )}
@@ -865,15 +937,15 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
               <p className="tally-number">{scanHeadline}</p>
               <ul className="scan-list">
                 {couldUseSource > 0 && <li>{t("scan.optional", { n: couldUseSource })}</li>}
-                {notListed > 0 && <li>{t("scan.missing", { n: notListed })}</li>}
+                {notListed > 0 && needSource > 0 && <li>{t("scan.missing", { n: notListed })}</li>}
                 {waiting > 0 && <li>{t("scan.ready", { n: waiting })}</li>}
               </ul>
             </div>
           )}
 
-          <div className="chips" role="group" aria-label={t("filter.group")}>
+          <div className="chips chips-filter" role="group" aria-label={t("filter.group")}>
             <button type="button" className="chip" aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>
-              {t("filter.attention", { n: attention })}
+              {t("filter.attention", { n: attentionCards })}
             </button>
             {SUMMARY_ORDER.filter((verdict) => (chipCounts[verdict] ?? 0) > 0).map((verdict) => (
               <button key={verdict} type="button" className="chip" aria-pressed={filter === verdict} onClick={() => setFilter(verdict)}>

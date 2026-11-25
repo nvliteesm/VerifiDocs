@@ -129,6 +129,7 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
               exitStage: verdict.exitStage,
               fixSuggestion: verdict.fixSuggestion,
               quoteGloss: verdict.quoteGloss ?? null,
+              sourceFile: verdict.sourceFile ?? null,
               yearNotes: verdict.yearNotes ?? [],
             }
           : claim,

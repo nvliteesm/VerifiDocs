@@ -351,6 +351,14 @@ export function VerifierApp() {
                     {t("act.stop")}
                   </button>
                 )}
+                {state.phase === "done" && !lastInput && <span className="hint">{t("recheck.hint")}</span>}
+                <span className="sr-only" role="status">
+                  {copied === "copied" ? t("act.copiedSr") : copied === "failed" ? t("act.copyFailSr") : ""}
+                </span>
+                {copied === "failed" && <span className="hint hint-bad">{t("act.copyFail")}</span>}
+              </div>
+              {/* Starting over and deleting sit apart from the main actions: one is rare, the other cannot be undone. */}
+              <div className="actions actions-quiet">
                 <button
                   type="button"
                   className="btn btn-quiet"
@@ -396,11 +404,6 @@ export function VerifierApp() {
                     {t("delete.failed")}
                   </span>
                 )}
-                {state.phase === "done" && !lastInput && <span className="hint">{t("recheck.hint")}</span>}
-                <span className="sr-only" role="status">
-                  {copied === "copied" ? t("act.copiedSr") : copied === "failed" ? t("act.copyFailSr") : ""}
-                </span>
-                {copied === "failed" && <span className="hint hint-bad">{t("act.copyFail")}</span>}
               </div>
 
               {state.phase === "done" && (

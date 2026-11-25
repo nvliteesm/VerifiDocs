@@ -118,6 +118,14 @@ describe("reduce: claims, counts and the fix list", () => {
     expect(state.claims[0]).toMatchObject({ quote: "The text.", quoteGloss: "Teksnya." });
   });
 
+  it("keeps the name of the file the quote came from, and null when the verdict names none", () => {
+    let state = reduce(initialState, { type: "loaded", run: runResponse([claim("a", 1), claim("b", 2)]) });
+    state = reduce(state, { type: "claim", verdict: verdictFor("a", "supported", { quote: "The text.", page: 2, sourceFile: "report.pdf" }) });
+    state = reduce(state, { type: "claim", verdict: verdictFor("b", "supported", { quote: "Other text.", page: 1 }) });
+    expect(state.claims[0]!.sourceFile).toBe("report.pdf");
+    expect(state.claims[1]!.sourceFile).toBeNull();
+  });
+
   it("ignores a verdict for a claim it does not know", () => {
     const state = reduce(initialState, { type: "loaded", run: runResponse([claim("a", 1)]) });
     const after = reduce(state, { type: "claim", verdict: verdictFor("zzz", "supported") });

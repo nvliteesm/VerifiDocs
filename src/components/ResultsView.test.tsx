@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { rankFixList } from "@/lib/fix-list";
 import type { ClaimView, Verdict } from "@/lib/client/types";
 import { countVerdicts, initialState, type Phase, type VerifierState } from "@/lib/client/verifier-state";
-import { ResultsView, shortQuote } from "./ResultsView";
+import { previewOf, ResultsView, shortQuote } from "./ResultsView";
 
 afterEach(() => {
   cleanup();
@@ -48,6 +48,97 @@ function stateOf(claims: ClaimView[], phase: Phase = "done"): VerifierState {
 const noop = () => {};
 const view = (state: VerifierState, onEvent = vi.fn()) =>
   render(<ResultsView state={state} onRetryClaim={noop} onEvent={onEvent} />);
+
+describe("ResultsView after UI audit 002 (25 Nov 2026)", () => {
+  it("leads the scan with the citation that is not in the list, not with an all-clear", () => {
+    view(stateOf([claim("reference_not_found", { reason: '"Brown 2017" is not in your reference list.' }), claim(null)], "scanned"));
+    expect(screen.getByText("1 citation is not in your reference list.")).toBeTruthy();
+    expect(screen.queryByText("No sentence is missing a source it needs.")).toBeNull();
+    expect(screen.queryByText(/cite something that is not in your reference list/)).toBeNull(); // said once, as the headline
+    expect(screen.getByText("1 cited and ready to check")).toBeTruthy();
+  });
+
+  it("still says nothing is missing when nothing is", () => {
+    view(stateOf([claim(null), claim(null)], "scanned"));
+    expect(screen.getByText("No sentence is missing a source it needs.")).toBeTruthy();
+  });
+
+  it("counts on 'Needs attention' every card the filter lists, including claims waiting for their check", () => {
+    view(stateOf([claim("reference_not_found", { reason: "r" }), claim(null), claim(null), claim(null), claim(null)], "scanned"));
+    expect(screen.getByRole("button", { name: "Needs attention (5)" })).toBeTruthy();
+    expect(document.querySelectorAll(".claims > li")).toHaveLength(5);
+  });
+
+  it("keeps 'Check complete' and 'Scan complete' for screen readers, and shows the eyebrow when the check stopped", () => {
+    const { unmount } = view(stateOf([claim("contradicted", { quote: "q", reason: "r" })]));
+    expect(screen.getByText("Check complete").className).toContain("sr-only");
+    unmount();
+    view({ ...stateOf([claim("contradicted", { quote: "q", reason: "r" })]), stopped: true });
+    expect(screen.getByText("Check stopped by you").className).not.toContain("sr-only");
+  });
+
+  it("draws the shape of the checked draft as one slice per verdict, and not after the scan", () => {
+    const { unmount } = view(stateOf([claim("contradicted", { reason: "r" }), claim("contradicted", { reason: "r" }), claim("supported")]));
+    const bar = document.querySelector(".tally-bar");
+    expect(bar?.getAttribute("aria-hidden")).toBe("true");
+    expect(bar?.querySelectorAll(".tally-seg")).toHaveLength(2);
+    unmount();
+    view(stateOf([claim("reference_not_found", { reason: "r" }), claim(null)], "scanned"));
+    expect(document.querySelector(".tally-bar")).toBeNull();
+  });
+
+  it("shows the first words of the quote on a closed pass, with the page tab and the file name inside", () => {
+    const quote = "Household spending in Kota Contoh rose by 4.2 percent in 2023.";
+    view(stateOf([claim("supported", { quote, page: 1, reason: "r", sourceFile: "Contoh-Statistics-Office-2024.pdf" })]));
+    expect(document.querySelector(".evidence-preview")?.textContent).toBe(quote);
+    expect(document.querySelector("details")?.hasAttribute("open")).toBe(false);
+    const tab = document.querySelector(".page-tag");
+    expect(tab?.textContent).toBe("p. 1");
+    expect(tab?.getAttribute("aria-hidden")).toBe("true"); // the page is already named in the evidence line
+    expect(screen.getByText("Source: Contoh-Statistics-Office-2024.pdf")).toBeTruthy();
+  });
+
+  it("names no file when the server sent none", () => {
+    view(stateOf([claim("supported", { quote: "Prices rose.", page: 2, reason: "r" })]));
+    expect(screen.queryByText(/^Source:/)).toBeNull();
+  });
+
+  it("cuts a long quote at a word for the closed line", () => {
+    const long = `${"word ".repeat(60)}end`;
+    const cut = previewOf(long);
+    expect(cut.length).toBeLessThanOrEqual(111);
+    expect(cut.endsWith("…")).toBe(true);
+    expect(previewOf("A short quote.")).toBe("A short quote.");
+  });
+
+  it("marks the numbers that differ between the sentence and the quote, with a line that says so", () => {
+    view(
+      stateOf([
+        claim("contradicted", {
+          citation: "(Office, 2024)",
+          text: "Spending rose by 4.2 percent",
+          quote: "Spending rose by 7.1 percent.",
+          page: 2,
+          reason: "r",
+        }),
+      ]),
+    );
+    expect([...document.querySelectorAll("mark.num")].map((mark) => mark.textContent)).toEqual(["4.2", "7.1"]);
+    expect(screen.getByText("Marked numbers differ between your sentence and the source.")).toBeTruthy();
+  });
+
+  it("marks nothing when the numbers agree", () => {
+    view(stateOf([claim("supported", { text: "Spending rose by 4.2 percent", quote: "Spending rose by 4.2 percent.", page: 2, reason: "r" })]));
+    expect(document.querySelector("mark.num")).toBeNull();
+    expect(screen.queryByText(/Marked numbers differ/)).toBeNull();
+  });
+
+  it("puts 'This verdict is wrong' in a footer row of its own", () => {
+    view(stateOf([claim("contradicted", { quote: "q", reason: "r" })]));
+    const foot = screen.getByRole("button", { name: "This verdict is wrong" }).closest(".claim-foot");
+    expect(foot).toBeTruthy();
+  });
+});
 
 describe("ResultsView translation of an English quote (24 Nov 2026)", () => {
   it("shows it under the quote, labelled as a machine translation, with the quote first", () => {

@@ -55,6 +55,8 @@ export interface ClaimView {
   fixSuggestion: string | null;
   /** For an Indonesian claim with an English quote: a machine translation to show under the quote. Not evidence. */
   quoteGloss?: string | null;
+  /** The file the quote came from, when there is a quote. Shown on the card so the page number has a document. */
+  sourceFile?: string | null;
   /** Cited references whose year in the student's list is off. Never changes the verdict. */
   yearNotes?: YearNoteView[];
 }
@@ -198,6 +200,7 @@ export interface CheckedVerdict {
   exitStage: number;
   fixSuggestion: string | null;
   quoteGloss?: string | null;
+  sourceFile?: string | null;
   yearNotes?: YearNoteView[];
 }
 
