@@ -22,6 +22,7 @@ import {
 } from "../pipeline/parse-draft";
 import { containsQuote } from "../rag/normalize";
 import { sourcesForRun } from "./sources-found";
+import { webSourcesForRun } from "./web-sources";
 import { saveEarlyVerdicts } from "../pipeline/scan";
 import { completeRunIfFinished } from "../pipeline/save-verdict";
 import type { Verdict } from "../pipeline/types";
@@ -246,6 +247,7 @@ interface ClaimRow {
   section: string | null;
   need: "must" | "should";
   sources_searched: boolean;
+  web_searched: boolean;
   citation_source: "draft" | "found";
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
@@ -296,7 +298,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     }));
   }
   const claimRows = await sql<ClaimRow[]>`
-    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.need, c.citation_source, c.sources_searched_at is not null as sources_searched, c.status,
+    select c.id, c.position, c.text, c.citation_text, c.citation_inherited, c.section, c.need, c.citation_source, c.sources_searched_at is not null as sources_searched, c.web_searched_at is not null as web_searched, c.status,
            v.verdict, v.quote, v.page, v.reason, v.exit_stage, v.fix_suggestion, v.quote_gloss
     from claims c left join verdicts v on v.claim_id = c.id
     where c.run_id = ${run.id} order by c.position`;
@@ -324,6 +326,7 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
   }));
 
   const found = await sourcesForRun(sql, run.id);
+  const webFound = await webSourcesForRun(sql, run.id);
   const claims = claimRows.map((row) => ({
     id: row.id,
     position: row.position,
@@ -333,6 +336,8 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     section: row.section,
     need: row.need,
     sourcesSearched: row.sources_searched,
+    webSearched: row.web_searched,
+    webSources: webFound.get(row.id) ?? [],
     citationSource: row.citation_source,
     sources: found.get(row.id) ?? [],
     status: row.status,
@@ -363,6 +368,8 @@ export async function getRun(context: ApiContext, runId: string): Promise<Respon
     counts,
     fixList: rankFixList(claims).map((claim) => claim.id),
     failedParts,
+    /** True when web search is set up on the server, so the browser may offer the button. */
+    webSearch: Boolean(context.deps.discoverWeb),
     claims,
     references: references.map((ref) => ({
       position: ref.position,

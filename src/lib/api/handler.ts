@@ -6,6 +6,8 @@
 import { getSql } from "../db";
 import { getLlm, type Llm } from "../llm/adapter";
 import { discoverSources, type DiscoverResult } from "../pipeline/discover-sources";
+import { discoverWeb, type DiscoverWebResult } from "../pipeline/discover-web";
+import { createWebSearch, loadWebSearchConfig } from "../web/adapter";
 import { resolveReference, type ReferenceResolution } from "../pipeline/resolve-reference";
 import { limitImports, limitModelUse, type Limits } from "../rate-limit";
 import type { SqlLike } from "../rag/retrieve";
@@ -25,6 +27,11 @@ export interface ApiDeps {
   fetch?: typeof fetch;
   /** Find a source for one claim's text. Defaults to OpenAlex with OPENALEX_API_KEY; tests pass a fake. */
   discover?: (claimText: string) => Promise<DiscoverResult>;
+  /**
+   * Search the web for one claim's text, as a second step after Find a source. Present only when TAVILY_API_KEY is set:
+   * without it the feature is off and the browser is not offered the button. Tests pass a fake.
+   */
+  discoverWeb?: (claimText: string) => Promise<DiscoverWebResult>;
   /** Fetches an open-access PDF under the safe-fetch rules. Tests pass a fake, so no test reaches the network. */
   fetchPdf?: (link: string) => Promise<Uint8Array>;
 }
@@ -36,7 +43,9 @@ export interface ApiContext {
 
 /** The real dependencies. The model client is built only when a handler first uses it. */
 export function defaultDeps(): ApiDeps {
+  const web = loadWebSearchConfig();
   return {
+    ...(web ? { discoverWeb: (claimText: string) => discoverWeb(getLlm(), createWebSearch(web), claimText) } : {}),
     sql: getSql(),
     get llm(): Llm {
       return getLlm();

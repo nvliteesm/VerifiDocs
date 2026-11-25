@@ -70,6 +70,9 @@ export const EVENT_SCHEMAS = {
   // A found paper was attached to a claim to check it: fetched from its open-access link, or uploaded.
   source_attached: z.strictObject({ how: z.enum(["open_access", "upload"]) }),
   sources_suggested: z.strictObject({ count: z.number().int().min(0).max(3), latency_ms: ms, outcome: z.enum(["found", "nothing_relevant"]) }),
+  // Search the web ran for one uncited claim after Find a source found no paper: how many pages it kept, how long it
+  // took, and the outcome. Never the claim, the search words, a title or an address (hard rule 11).
+  web_sources_suggested: z.strictObject({ count: z.number().int().min(0).max(3), latency_ms: ms, outcome: z.enum(["found", "nothing_relevant"]) }),
 } as const;
 
 export type EventName = keyof typeof EVENT_SCHEMAS;

@@ -5,6 +5,7 @@
 import { ZodError } from "zod";
 import { isWakingError } from "../db";
 import { LlmOutputError, LlmUnavailableError, isOutOfCredit } from "../llm/adapter";
+import { WebSearchUnavailableError } from "../web/adapter";
 import { DraftError } from "../pipeline/parse-draft";
 import { ImportError } from "../pipeline/import-draft";
 import { IngestError, type IngestErrorCode } from "../pipeline/ingest";
@@ -50,6 +51,12 @@ export function errorResponse(error: unknown): Response {
   if (error instanceof ZodError) return failure(400, "invalid_request", "The request is not in the expected shape.");
   if (error instanceof RateLimitError) {
     return failure(429, "rate_limited", error.message, false, { "retry-after": String(error.retryAfterSeconds) });
+  }
+  // The web search service: busy is worth another try; out of credits or not set up is not, so no retry hint.
+  if (error instanceof WebSearchUnavailableError) {
+    if (error.reason === "busy") return failure(503, "web_busy", "The web search is busy. Try again in a moment.", true, { "retry-after": "2" });
+    if (error.reason === "quota") return failure(503, "web_quota", "Web search has reached its limit for now. Try again later.");
+    return failure(503, "web_unavailable", "Web search is not available right now.");
   }
   // Out of credit is not a blip: no retry hint, so the browser does not loop, and a different message.
   if (isOutOfCredit(error)) {

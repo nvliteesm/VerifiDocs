@@ -23,6 +23,7 @@ One row per event in the `events` table: `session_id`, `name`, `props` (JSON), `
 | `source_copied` | A found paper's reference or in-text citation was copied | `kind` (reference, in_text) |
 | `source_attached` | A found paper was attached to a claim to check it (server) | `how` (open_access, upload) |
 | `sources_suggested` | Find a source ran for an uncited claim (not on a repeat press) | `count` (0 to 3), `latency_ms`, `outcome` (found, nothing_relevant). Never the claim, the search words or a title. |
+| `web_sources_suggested` | Search the web ran for an uncited claim, after Find a source found no paper (not on a repeat press) | `count` (0 to 3), `latency_ms`, `outcome` (found, nothing_relevant). Never the claim, the search words, a title or an address. |
 
 ## What each metric needs
 

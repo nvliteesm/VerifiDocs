@@ -12,6 +12,9 @@ import { importDraft } from "../../src/lib/api/imports";
 import { attachSourceHandler, findSourcesHandler } from "../../src/lib/api/sources-found";
 import { PdfFetchError } from "../../src/lib/pipeline/fetch-pdf";
 import type { DiscoverResult } from "../../src/lib/pipeline/discover-sources";
+import type { DiscoverWebResult } from "../../src/lib/pipeline/discover-web";
+import { findWebSourcesHandler } from "../../src/lib/api/web-sources";
+import { WebSearchUnavailableError } from "../../src/lib/web/adapter";
 import { deleteSource, ingestSource, listSources, uploadSource } from "../../src/lib/api/sources";
 import {
   EMBEDDING_DIMENSIONS,
@@ -91,6 +94,7 @@ function newClient(
   fetchImpl?: typeof fetch,
   discover?: ApiDeps["discover"],
   fetchPdfImpl?: ApiDeps["fetchPdf"],
+  discoverWebImpl?: ApiDeps["discoverWeb"],
 ) {
   const deps: ApiDeps = {
     sql: tx,
@@ -100,6 +104,7 @@ function newClient(
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
     ...(discover ? { discover } : {}),
     ...(fetchPdfImpl ? { fetchPdf: fetchPdfImpl } : {}),
+    ...(discoverWebImpl ? { discoverWeb: discoverWebImpl } : {}),
   };
   const client = {
     cookie: null as string | null,
@@ -153,6 +158,8 @@ function newClient(
       }),
     findSources: (claimId: string) =>
       client.send("POST", `/api/claims/${claimId}/sources`, (c) => findSourcesHandler(c, claimId), { model: true }),
+    findWebSources: (claimId: string) =>
+      client.send("POST", `/api/claims/${claimId}/web-sources`, (c) => findWebSourcesHandler(c, claimId), { model: true }),
     check: (claimId: string) =>
       client.send("POST", `/api/claims/${claimId}/check`, (c) => checkClaimHandler(c, claimId), { model: true }),
     event: (json: unknown) => client.send("POST", "/api/events", (c, r) => postEvent(c, r), { json }),
@@ -1296,6 +1303,140 @@ describe.skipIf(!enabled)("Find a source", () => {
       const own = await setup(tx, async () => FOUND);
       expect((await own.client.findSources(own.cited)).body.error.code).toBe("not_uncited");
       expect(uncited).not.toBe(own.uncited);
+    });
+  });
+});
+
+describe.skipIf(!enabled)("Search the web", () => {
+  const UNCITED = "Casual employment in small firms grew sharply between 2015 and 2020.";
+  const CITED = "Rent was the largest expense for the lowest income group (Smith, 2020).";
+  const REFS = "Smith, J. (2020). A study of household budgets. Journal of Things.";
+  const extract = () => ({ claims: [{ text: UNCITED, citation: null }, { text: CITED, citation: "(Smith, 2020)" }] });
+  const NO_PAPER: DiscoverResult = { exit: "nothing_relevant", sources: [], considered: 4, dropped: { notInAbstract: 0, notRelevant: 4, badPick: 0 } };
+  const A_PAPER: DiscoverResult = {
+    exit: "found",
+    considered: 4,
+    dropped: { notInAbstract: 0, notRelevant: 0, badPick: 0 },
+    sources: [
+      {
+        openalexId: "https://openalex.org/W1",
+        doi: null,
+        title: "Flexible work in small firms",
+        year: 2021,
+        authors: ["Kim Lee"],
+        venue: null,
+        openAccessPdf: null,
+        sentence: "Casual employment grew 18% between 2015 and 2020.",
+        relevance: "direct",
+      },
+    ],
+  };
+  const PAGES: DiscoverWebResult = {
+    exit: "found",
+    considered: 6,
+    dropped: { notInSnippet: 0, notRelevant: 1, badPick: 0 },
+    sources: [
+      { url: "https://stats.example.gov/labour", site: "stats.example.gov", title: "Labour force survey", sentence: "Casual jobs rose by 18 percent between 2015 and 2020.", relevance: "direct" },
+    ],
+  };
+
+  async function setup(tx: postgres.TransactionSql, discoverWeb: ApiDeps["discoverWeb"], papers: DiscoverResult = NO_PAPER) {
+    const client = newClient(tx, fakeLlm({ extract }).llm, undefined, undefined, undefined, async () => papers, undefined, discoverWeb);
+    const { body: created } = await client.createRun({ draft: `${UNCITED}\n\n${CITED}`, references: REFS });
+    await client.extract(created.runId, 0);
+    const run = (await client.getRun(created.runId)).body;
+    const id = (text: string) => run.claims.find((c: any) => c.text === text).id as string;
+    return { client, runId: created.runId as string, uncited: id(UNCITED), cited: id(CITED) };
+  }
+  const claimOf = async (client: Awaited<ReturnType<typeof setup>>["client"], runId: string, id: string) =>
+    (await client.getRun(runId)).body.claims.find((c: any) => c.id === id);
+
+  it("searches once after the paper search found nothing, saves the pages, and logs only counts", async () => {
+    await inTx(async (tx) => {
+      const calls: string[] = [];
+      const { client, runId, uncited } = await setup(tx, async (text) => (calls.push(text), PAGES));
+      await client.findSources(uncited);
+
+      const first = await client.findWebSources(uncited);
+      expect(first.status).toBe(200);
+      expect(first.body.sources).toEqual([{ rank: 1, ...PAGES.sources[0], retrievedAt: expect.any(String) }]);
+      expect(calls).toEqual([UNCITED]);
+
+      // A second press returns what was saved, with no new search.
+      expect((await client.findWebSources(uncited)).body.sources).toHaveLength(1);
+      expect(calls).toHaveLength(1);
+
+      const run = (await client.getRun(runId)).body;
+      expect(run.webSearch).toBe(true);
+      expect(await claimOf(client, runId, uncited)).toMatchObject({
+        webSearched: true,
+        webSources: [{ rank: 1, site: "stats.example.gov", title: "Labour force survey", url: "https://stats.example.gov/labour" }],
+      });
+
+      const logged = (await events(tx, await client.sessionId())).filter((e) => e.name === "web_sources_suggested");
+      expect(logged).toHaveLength(1);
+      expect(logged[0]!.props).toEqual({ count: 1, latency_ms: expect.any(Number), outcome: "found" });
+      expect(JSON.stringify(logged)).not.toMatch(/Casual|stats\.example|Labour|small firms/);
+    });
+  });
+
+  it("remembers that nothing was found, so a reload says so and a repeat makes no search", async () => {
+    await inTx(async (tx) => {
+      let calls = 0;
+      const nothing: DiscoverWebResult = { exit: "nothing_relevant", sources: [], considered: 5, dropped: { notInSnippet: 0, notRelevant: 5, badPick: 0 } };
+      const { client, runId, uncited } = await setup(tx, async () => (calls += 1, nothing));
+      await client.findSources(uncited);
+      expect((await client.findWebSources(uncited)).body.sources).toEqual([]);
+      await client.findWebSources(uncited);
+      expect(calls).toBe(1);
+      expect(await claimOf(client, runId, uncited)).toMatchObject({ webSearched: true, webSources: [] });
+    });
+  });
+
+  it("is only for an uncited claim of your own whose paper search found nothing, and only when it is set up", async () => {
+    await inTx(async (tx) => {
+      const early = await setup(tx, async () => PAGES);
+      expect((await early.client.findWebSources(early.uncited)).body.error.code).toBe("papers_first"); // no paper search yet
+
+      const hasPaper = await setup(tx, async () => PAGES, A_PAPER);
+      await hasPaper.client.findSources(hasPaper.uncited);
+      expect((await hasPaper.client.findWebSources(hasPaper.uncited)).body.error.code).toBe("papers_first"); // a paper was found
+
+      const cited = await setup(tx, async () => PAGES);
+      expect((await cited.client.findWebSources(cited.cited)).body.error.code).toBe("not_uncited");
+
+      const other = await setup(tx, async () => PAGES);
+      expect((await early.client.findWebSources(other.uncited)).status).toBe(404); // another session's claim
+
+      const off = await setup(tx, undefined);
+      await off.client.findSources(off.uncited);
+      const reply = await off.client.findWebSources(off.uncited);
+      expect(reply.status).toBe(404);
+      expect(reply.body.error.code).toBe("web_search_off");
+      expect((await off.client.getRun(off.runId)).body.webSearch).toBe(false);
+    });
+  });
+
+  it("reports a service failure with its own code, retries only a busy one, and saves nothing", async () => {
+    await inTx(async (tx) => {
+      const cases = [
+        ["busy", 429, "web_busy", true],
+        ["quota", 432, "web_quota", false],
+        ["auth", 401, "web_unavailable", false],
+        ["failed", 500, "web_unavailable", false],
+      ] as const;
+      for (const [reason, status, code, retry] of cases) {
+        const { client, runId, uncited } = await setup(tx, async () => {
+          throw new WebSearchUnavailableError("The web search service failed.", reason, status);
+        });
+        await client.findSources(uncited);
+        const reply = await client.findWebSources(uncited);
+        expect(reply.status, reason).toBe(503);
+        expect(reply.body.error.code, reason).toBe(code);
+        if (retry) expect(reply.body.error.retry).toBe(true);
+        else expect(reply.body.error).not.toHaveProperty("retry");
+        expect(await claimOf(client, runId, uncited), reason).toMatchObject({ webSearched: false, webSources: [] });
+      }
     });
   });
 });

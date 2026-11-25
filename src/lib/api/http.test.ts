@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ZodError, z } from "zod";
 import { LlmOutputError, LlmUnavailableError } from "../llm/adapter";
+import { WebSearchUnavailableError } from "../web/adapter";
 import { DraftError } from "../pipeline/parse-draft";
 import { IngestError } from "../pipeline/ingest";
 import { ApiError, assertId, assertSameOrigin, errorResponse, readJson, readUpload } from "./http";
@@ -137,6 +138,29 @@ describe("errorResponse", () => {
     // A busy model (429, 503) or a timeout (no status) is still worth another try.
     for (const status of [429, 503, undefined]) {
       expect(await bodyOf(errorResponse(new LlmUnavailableError("x", status)))).toMatchObject({ error: { code: "model_unavailable", retry: true } });
+    }
+  });
+
+  it("answers a web search failure with its own code: a busy one is retried, an exhausted or unavailable one is not", async () => {
+    const cases = [
+      ["busy", "web_busy", true],
+      ["quota", "web_quota", false],
+      ["auth", "web_unavailable", false],
+      ["failed", "web_unavailable", false],
+    ] as const;
+    for (const [reason, code, retry] of cases) {
+      const response = errorResponse(new WebSearchUnavailableError("The web search service failed.", reason, 500));
+      expect(response.status, reason).toBe(503);
+      const body = await bodyOf(response);
+      expect(body.error.code, reason).toBe(code);
+      if (retry) {
+        expect(response.headers.get("retry-after")).toBe("2");
+        expect(body.error.retry).toBe(true);
+      } else {
+        expect(response.headers.get("retry-after")).toBeNull();
+        expect(body.error).not.toHaveProperty("retry");
+      }
+      expect(JSON.stringify(body)).not.toContain("The web search service failed.");
     }
   });
 
