@@ -128,7 +128,7 @@ describe("what the verdict says", () => {
 
   it("says when a claim takes the citation at the end of its paragraph", () => {
     inspect(claim("supported", { citation: "(Lee & Park, 2021)", citationInherited: true, quote: "q", page: 2 }));
-    expect(screen.getByText("(Lee & Park, 2021) · from the end of its paragraph")).toBeTruthy();
+    expect(screen.getByText("(Lee & Park, 2021), from the end of its paragraph")).toBeTruthy();
   });
 
   it("marks a claim checked against a paper found here, so the student knows the draft still lacks it", () => {
@@ -326,7 +326,7 @@ describe("Find a source", () => {
     expect(link.getAttribute("href")).toBe("https://doi.org/10.1/w1");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.textContent).toContain("(opens in a new tab)");
-    expect(screen.getByText("Lee & Tan · 2021 · Journal of Work")).toBeTruthy();
+    expect(screen.getByText("Lee & Tan, 2021, Journal of Work")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Find a source" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Copy in-text" }));
@@ -430,7 +430,8 @@ describe("Search the web", () => {
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toContain("noopener");
     expect(link.textContent).toContain("(opens in a new tab)");
-    expect(screen.getByText("stats.example.gov · Retrieved 25 November 2026")).toBeTruthy();
+    expect(screen.getByText("stats.example.gov")).toBeTruthy();
+    expect(screen.getByText("Retrieved 25 November 2026")).toBeTruthy();
     expect(screen.getByText(/Casual jobs rose by 18 percent/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Search the web" })).toBeNull();
 

@@ -1,0 +1,213 @@
+{
+  "linear": {
+    "title": "Linear – The system for product development",
+    "body": {
+      "font": "\"Inter Variable\"",
+      "size": "16px",
+      "bg": "rgb(8, 9, 10)",
+      "color": "rgb(247, 248, 248)"
+    },
+    "h1": {
+      "text": "The product development\nsystem for teams and agents\nThe product development syst",
+      "font": "\"Inter Variable\"",
+      "size": "64px",
+      "weight": "510",
+      "color": "rgb(247, 248, 248)"
+    },
+    "button": {
+      "text": "Product",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(138, 143, 152)",
+      "radius": "9999px"
+    },
+    "fonts": [
+      [
+        "Inter Variable",
+        4151
+      ],
+      [
+        "Berkeley Mono",
+        307
+      ]
+    ]
+  },
+  "zotero": {
+    "title": "Zotero | Your personal research assistant",
+    "body": {
+      "font": "AvenirNextLTPro",
+      "size": "16px",
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(34, 34, 34)"
+    },
+    "h1": {
+      "text": "Your personal\nresearch assistant",
+      "font": "AvenirNextLTPro",
+      "size": "60px",
+      "weight": "300",
+      "color": "rgb(255, 255, 255)"
+    },
+    "button": {
+      "text": "Upgrade Storage",
+      "bg": "rgb(0, 105, 224)",
+      "color": "rgb(255, 255, 255)",
+      "radius": "3px"
+    },
+    "fonts": [
+      [
+        "AvenirNextLTPro",
+        388
+      ]
+    ]
+  },
+  "scite": {
+    "title": "ERROR: The request could not be satisfied",
+    "body": {
+      "font": "Times",
+      "size": "16px",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "h1": {
+      "text": "403 ERROR",
+      "font": "Times",
+      "size": "32px",
+      "weight": "700",
+      "color": "rgb(0, 0, 0)"
+    },
+    "button": null,
+    "fonts": [
+      [
+        "Times",
+        7
+      ],
+      [
+        "monospace",
+        1
+      ]
+    ]
+  },
+  "hypothesis": {
+    "title": "Hypothesis | The #1 Social Annotation Tool for Higher Education",
+    "body": {
+      "font": "Inter",
+      "size": "18px",
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(41, 48, 65)"
+    },
+    "h1": {
+      "text": "Hypothesis: The Social Annotation Platform\nThat Gets Students Reading Again",
+      "font": "VisbyCf",
+      "size": "52px",
+      "weight": "700",
+      "color": "rgb(41, 48, 65)"
+    },
+    "button": {
+      "text": "  ",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)",
+      "radius": "0px"
+    },
+    "fonts": [
+      [
+        "Inter",
+        825
+      ],
+      [
+        "VisbyCf",
+        64
+      ],
+      [
+        "Font Awesome 5 Pro",
+        6
+      ],
+      [
+        "Font Awesome 5 Brands",
+        5
+      ]
+    ]
+  },
+  "grammarly": {
+    "title": "Grammarly: Free AI Writing Assistance",
+    "body": {
+      "font": "sans-serif",
+      "size": "16px",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(31, 36, 60)"
+    },
+    "h1": {
+      "text": "Think big. We’ll take care of the details.\n",
+      "font": "matter",
+      "size": "46px",
+      "weight": "670",
+      "color": "rgb(14, 16, 26)"
+    },
+    "button": {
+      "text": "Product",
+      "bg": "rgba(255, 255, 255, 0)",
+      "color": "rgb(28, 28, 28)",
+      "radius": "4px"
+    },
+    "fonts": [
+      [
+        "Glyph",
+        1323
+      ],
+      [
+        "glyph",
+        107
+      ],
+      [
+        "Arial",
+        52
+      ],
+      [
+        "matter",
+        34
+      ]
+    ]
+  },
+  "turnitin": {
+    "title": "ERROR: The request could not be satisfied",
+    "body": {
+      "font": "Times",
+      "size": "16px",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "h1": {
+      "text": "403 ERROR",
+      "font": "Times",
+      "size": "32px",
+      "weight": "700",
+      "color": "rgb(0, 0, 0)"
+    },
+    "button": null,
+    "fonts": [
+      [
+        "Times",
+        7
+      ],
+      [
+        "monospace",
+        1
+      ]
+    ]
+  },
+  "chatgpt": {
+    "title": "Just a moment...",
+    "body": {
+      "font": "Arial",
+      "size": "16px",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "h1": null,
+    "button": null,
+    "fonts": [
+      [
+        "Arial",
+        24
+      ]
+    ]
+  }
+}

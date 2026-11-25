@@ -101,18 +101,20 @@ export function ClaimInspector(props: Props) {
         {nav}
       </div>
 
-      <div className="insp-verdict">
-        {verdict ? <Badge verdict={verdict} optional={optional} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
-        {verdict && !optional && <p className="meaning">{verdictMeaning(t, verdict)}</p>}
-        {claim.citation && (
-          <p className="mono citation">
-            {claim.citation}
-            {claim.citationInherited ? ` · ${t("claim.inherited")}` : ""}
-          </p>
-        )}
-      </div>
-
       <blockquote className="insp-sentence">{numberMarks ? <Pieces pieces={numberMarks.claim} /> : claim.text}</blockquote>
+
+      <div className="insp-props">
+        {verdict ? <Badge verdict={verdict} optional={optional} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
+        {claim.citation && (
+          <span className="mono citation">
+            {claim.citation}
+            {claim.citationInherited ? `, ${t("claim.inherited")}` : ""}
+          </span>
+        )}
+        {claim.sourceFile && <span className="mono">{claim.sourceFile}</span>}
+        {claim.page !== null && <span className="mono">{t("ws.page", { n: claim.page })}</span>}
+      </div>
+      {verdict && !optional && <p className="meaning">{verdictMeaning(t, verdict)}</p>}
 
       {/* The audit trail (PRD guard rule 2): this citation was attached here, after the claim was written. */}
       {claim.citationSource === "found" && <p className="found-tag">{t("claim.found")}</p>}

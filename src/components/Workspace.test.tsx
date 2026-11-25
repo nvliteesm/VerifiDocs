@@ -43,7 +43,8 @@ function view(state: VerifierState, draftText: string | null, onEvent = vi.fn())
   render(<Workspace state={state} draftText={draftText} draftLabel="brief.txt" focusWhenDone={false} sources={null} actions={null} onRetryClaim={noop} onEvent={onEvent} />);
   return onEvent;
 }
-const sentence = (text: RegExp | string) => screen.getByRole("button", { name: text });
+/** The sentence in the draft (the claim list has a row with the same words). */
+const sentence = (text: RegExp | string) => screen.getAllByRole("button", { name: text }).find((button) => button.classList.contains("hl"))!;
 
 /** Two claims in one pasted draft: a wrong number (with a fix), and a supported one. */
 function twoClaims() {
@@ -96,8 +97,8 @@ describe("the claim inspector", () => {
     expect(within(inspector).getByText("Subsidies dropped by 18% in 2023.")).toBeTruthy(); // the sentence, as the headline
     expect(within(inspector).getByText("The source says something different.")).toBeTruthy(); // what the verdict means
     expect(within(inspector).getByText(/Subsidy reduction remains at/)).toBeTruthy();
-    expect(within(inspector).getByText("Stats-Office-2024.pdf")).toBeTruthy();
-    expect(within(inspector).getByText("p. 4")).toBeTruthy();
+    expect(within(inspector).getAllByText("Stats-Office-2024.pdf").length).toBeGreaterThan(0); // in the properties row and the evidence header
+    expect(within(inspector).getAllByText("p. 4").length).toBeGreaterThan(0);
     expect(sentence(/Subsidies dropped by 18%/).getAttribute("aria-current")).toBe("true");
     expect(onEvent).toHaveBeenCalledWith("evidence_opened", { verdict: "contradicted" });
   });
@@ -107,7 +108,7 @@ describe("the claim inspector", () => {
     const user = userEvent.setup();
     view(stateOf([wrong, fine]), draft);
     await user.click(sentence(/Subsidies dropped by 18%/));
-    expect(screen.getAllByText("Change 18% to 8%").length).toBeGreaterThan(0); // in the fix block, and as the fix list row
+    expect(screen.getByText("Change 18% to 8%")).toBeTruthy();
   });
 
   it("offers no fix on a supported claim", async () => {
@@ -274,30 +275,35 @@ describe("the stats line", () => {
   });
 });
 
-describe("the fix list", () => {
+describe("the claim list", () => {
   function pair() {
-    const partial = claim("Gamma is 5%.", "partial", { fixSuggestion: "Gamma is 6%." });
-    const contradicted = claim("Alpha is 1%.", "contradicted", { fixSuggestion: "Alpha is 2%." });
+    const partial = claim("Gamma is 5%.", "partial", { page: 3, fixSuggestion: "Gamma is 6%." });
+    const contradicted = claim("Alpha is 1%.", "contradicted", { page: 2, fixSuggestion: "Alpha is 2%." });
     return { partial, contradicted, draft: `${partial.text} ${contradicted.text}` };
   }
+  const rows = () => [...document.querySelectorAll(".cl-row")] as HTMLElement[];
 
-  it("ranks the open issues most serious first, with a count on the tab, and a press opens that claim", async () => {
+  it("groups the claims by verdict, most serious group first, each group with its count", () => {
+    const { partial, contradicted, draft } = pair();
+    const fine = claim("Beta holds.", "supported");
+    view(stateOf([partial, fine, contradicted]), `${draft} ${fine.text}`);
+    const heads = [...document.querySelectorAll(".cl-head")].map((head) => head.textContent);
+    expect(heads).toEqual(["Contradicted1", "Partly supported1", "Supported1"]);
+    expect(rows().map((row) => row.querySelector(".cl-id")?.textContent)).toEqual(["C-2", "C-1", "C-3"]);
+    expect(rows()[0]!.querySelector(".cl-page")?.textContent).toBe("p.\u00a02");
+  });
+
+  it("selects the claim when a row is pressed, in the draft and below", async () => {
     const { partial, contradicted, draft } = pair();
     const user = userEvent.setup();
     view(stateOf([partial, contradicted]), draft);
-    await user.click(screen.getByRole("button", { name: /^Fix list\s*2$/ }));
-    const rows = screen.getAllByRole("button").filter((button) => button.className.includes("fixrow"));
-    expect(rows).toHaveLength(2);
-    expect(rows[0]!.textContent).toContain("Change 1% to 2%"); // contradicted outranks partly supported
-    expect(rows[0]!.textContent).toContain("Contradicted");
-    expect(rows[1]!.textContent).toContain("Partly supported");
-
-    await user.click(rows[1]!);
+    await user.click(rows()[1]!); // the partly supported one
     expect(sentence(/Gamma is 5%/).getAttribute("aria-current")).toBe("true");
-    expect(screen.getByRole("button", { name: "Apply fix" })).toBeTruthy(); // back on the Claim tab
+    expect(rows()[1]!.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("button", { name: "Apply fix" })).toBeTruthy();
   });
 
-  it("drops a claim from the list once its fix is applied, and says when nothing is left", async () => {
+  it("keeps a claim in the list once it is resolved, shown as done, and drops it from the count", async () => {
     const { partial, contradicted, draft } = pair();
     const user = userEvent.setup();
     view(stateOf([partial, contradicted]), draft);
@@ -305,8 +311,18 @@ describe("the fix list", () => {
       await user.click(sentence(text));
       await user.click(screen.getByRole("button", { name: "Apply fix" }));
     }
-    await user.click(screen.getByRole("button", { name: /^Fix list\s*0$/ }));
-    expect(screen.getByText("Nothing left to fix.")).toBeTruthy();
+    expect(document.querySelectorAll(".cl-done")).toHaveLength(2);
+    expect(document.querySelector(".stats-line")?.textContent).toContain("0 need attention");
+  });
+
+  it("lists only what the filter keeps, and says so when nothing matches", async () => {
+    const { partial, contradicted, draft } = pair();
+    const user = userEvent.setup();
+    view(stateOf([partial, contradicted]), draft);
+    const filters = within(screen.getByRole("group", { name: "Filter claims" }));
+    await user.click(filters.getByRole("button", { name: /^Contradicted/ }));
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]!.querySelector(".cl-id")?.textContent).toBe("C-2");
   });
 });
 

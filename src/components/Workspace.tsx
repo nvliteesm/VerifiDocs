@@ -12,7 +12,7 @@ import { ClaimFilters, FILTER_ORDER, type Filter } from "./ClaimFilters";
 import { ClaimInspector, type Resolution } from "./ClaimInspector";
 import { copy } from "./claim-bits";
 import { DraftCanvas } from "./DraftCanvas";
-import { FixList } from "./FixList";
+import { ClaimList } from "./ClaimList";
 import type { AttachFn, EventFn, FindFn } from "./FoundSources";
 import { pluralKey } from "@/lib/i18n";
 import { useT } from "./LocaleProvider";
@@ -42,7 +42,6 @@ interface Props {
 
 export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources, actions, after, onRetryClaim, onReadPart, onEvent, onFindSources, onFindWebSources, onAttachSource }: Props) {
   const { t, locale } = useT();
-  const [tab, setTab] = useState<"claim" | "fix">("claim");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [applied, setApplied] = useState<Readonly<Record<string, string>>>({});
@@ -50,7 +49,8 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
   const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set());
   const [pane, setPane] = useState<Pane>("draft");
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [sideOpen, setSideOpen] = useState(true);
+  // Under 1280px the rail starts hidden (a toggle brings it back); Workspace only mounts in the browser, after a check exists.
+  const [sideOpen, setSideOpen] = useState(() => typeof window === "undefined" || window.innerWidth >= 1280);
   const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,11 +78,8 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
     () => (filter === "all" ? null : new Set(state.claims.filter((claim) => (filter === "waiting" ? claim.verdict === null : claim.verdict === filter)).map((claim) => claim.id))),
     [filter, state.claims],
   );
-  // The fix list is ranked by severity (the server's order); the previous and next buttons walk the draft in order.
-  const ranked = useMemo(() => {
-    const byId = new Map(state.claims.map((claim) => [claim.id, claim]));
-    return state.fixList.flatMap((id) => (byId.has(id) && !resolvedIds.has(id) ? [byId.get(id)!] : []));
-  }, [state.claims, state.fixList, resolvedIds]);
+  // The list shows what the left rail's filter keeps; the draft mutes the rest.
+  const listed = useMemo(() => (shown ? state.claims.filter((claim) => shown.has(claim.id)) : state.claims), [shown, state.claims]);
   const checked = state.claims.filter((claim) => claim.verdict !== null).length;
 
   const active = state.claims.find((claim) => claim.id === activeId) ?? null;
@@ -90,7 +87,6 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
 
   const select = useCallback((id: string) => {
     setActiveId(id);
-    setTab("claim");
     setPane("claim");
     setInspectorOpen(true);
     // Bring the sentence into view in the draft; the inspector already shows the claim.
@@ -138,12 +134,11 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
         {state.claims.length > 0 && (
           <div className="stats">
             <p className="stats-line">
-              <strong>{checked}</strong> {t(pluralKey(locale, "ws.s.checked", checked))} · <strong className="stat-ok">{counts.supported}</strong> {t("ws.s.ok")} ·{" "}
+              <strong>{checked}</strong> {t(pluralKey(locale, "ws.s.checked", checked))}, <strong className="stat-ok">{counts.supported}</strong> {t("ws.s.ok")},{" "}
               <strong className="stat-attn">{issues.length}</strong> {t("ws.s.attn")}
               {resolutions.size > 0 && (
                 <>
-                  {" "}
-                  · <strong>{resolutions.size}</strong> {t("ws.s.resolved")}
+                  , <strong>{resolutions.size}</strong> {t("ws.s.resolved")}
                 </>
               )}
             </p>
@@ -207,18 +202,13 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
           )}
         </section>
 
-        <aside className="pane pane-insp" id="inspector" aria-label={t("ws.insp.title")}>
+        <div className="pane pane-review" id="inspector">
           {state.claims.length > 0 && (
             <>
-              <div className="tabs" role="group" aria-label={t("ws.tabs")}>
-                <button type="button" className="tab" aria-pressed={tab === "claim"} onClick={() => setTab("claim")}>
-                  {t("ws.tab.claim")}
-                </button>
-                <button type="button" className="tab" aria-pressed={tab === "fix"} onClick={() => setTab("fix")}>
-                  {t("ws.tab.fix")} <span className="mono tab-count">{issues.length}</span>
-                </button>
-              </div>
-              <div className="insp-body" hidden={tab !== "claim"}>
+              <section className="review-list" aria-label={t("ws.list")}>
+                <ClaimList claims={listed} labels={working.labels} activeId={activeId} resolved={resolvedIds} onSelect={select} />
+              </section>
+              <aside className="review-claim" aria-label={t("ws.insp.title")}>
                 <ClaimInspector
                   key={activeId ?? "none"}
                   claim={active}
@@ -242,13 +232,10 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
                   onFindWebSources={state.webSearch ? onFindWebSources : undefined}
                   onAttachSource={onAttachSource}
                 />
-              </div>
-              <div className="insp-body" hidden={tab !== "fix"}>
-                <FixList claims={ranked} labels={working.labels} onPick={select} />
-              </div>
+              </aside>
             </>
           )}
-        </aside>
+        </div>
       </div>
 
       {after && <div className="ws-after">{after}</div>}

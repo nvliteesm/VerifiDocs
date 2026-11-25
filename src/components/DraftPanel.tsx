@@ -378,14 +378,11 @@ export function DraftPanel({
         </div>
         <div>
           <h3 className="sub-title">{t("start.get.title")}</h3>
-          <ol className="get-list">
+          <ul className="get-list">
             {(["1", "2", "3"] as const).map((n) => (
-              <li key={n}>
-                <span className="mono">{`0${n}`}</span>
-                <span>{t(`start.get.${n}` as MessageKey)}</span>
-              </li>
+              <li key={n}>{t(`start.get.${n}` as MessageKey)}</li>
             ))}
-          </ol>
+          </ul>
         </div>
         <div className="actions start-actions">
         <button

@@ -246,7 +246,7 @@ describe("a finished check", () => {
   it("shows the verdict, the quote disclosure and the small pay question", async () => {
     await finishedCheck();
     expect(screen.getAllByText("Every checked claim is supported.").length).toBeGreaterThan(0);
-    expect(screen.getByText("International trade rose 5 percent")).toBeTruthy();
+    expect(screen.getAllByText("International trade rose 5 percent").length).toBeGreaterThan(0); // in the draft and in the claim list
     expect(screen.getByText("Would you pay for this if it were not free?")).toBeTruthy();
   });
 
@@ -318,7 +318,7 @@ describe("stopping a check", () => {
     expect(await screen.findByText("Check stopped by you")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Stop checking" })).toBeNull();
     // The claim that was never judged says so once the student selects its sentence in the draft.
-    await user.click(screen.getByRole("button", { name: /International trade rose 5 percent/ }));
+    await user.click(screen.getAllByRole("button", { name: /International trade rose 5 percent/ }).find((b) => b.classList.contains("hl"))!);
     expect(screen.getByText("Not checked")).toBeTruthy();
     expect(screen.getAllByText("Stopped before any claim was checked.").length).toBeGreaterThan(0);
     // The student can move on straight away.
@@ -512,7 +512,7 @@ describe("the scan, then the check", () => {
     expect(await screen.findByText("Scan complete")).toBeTruthy();
     expect(screen.getByText("1 cited and ready to check")).toBeTruthy();
     // A cited claim with no verdict says "Not checked yet" once its sentence is selected in the draft.
-    await user.click(screen.getByRole("button", { name: /International trade rose 5 percent/ }));
+    await user.click(screen.getAllByRole("button", { name: /International trade rose 5 percent/ }).find((b) => b.classList.contains("hl"))!);
     expect(within(screen.getByRole("complementary", { name: "Claim inspector" })).getByText("Not checked yet")).toBeTruthy();
     expect(server.count("POST /api/claims/claim-1/check")).toBe(0);
     expect(server.log.some((line) => line.includes("/check"))).toBe(false);

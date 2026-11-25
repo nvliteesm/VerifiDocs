@@ -14,18 +14,20 @@
 */
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#f6f3ec, #14171a);
-  --surface: light-dark(#ffffff, #1b2024);
-  --side: light-dark(#fbf9f4, #171b1f);
-  --sunken: light-dark(#efebe2, #101316);
-  --text: light-dark(#1b1d22, #e6e8ea);
-  --muted: light-dark(#4a4e57, #a3a9b0);
-  --line: light-dark(#ddd7ca, #333a40);
-  --line-strong: light-dark(#c9c2b2, #4b545b);
-  --accent: light-dark(#2a4fd6, #8ea6ff);
-  --accent-text: light-dark(#ffffff, #0b1030);
-  --accent-soft: light-dark(#f3f5fe, #1a2243);
-  --accent-line: light-dark(#c9d2f5, #2d3a6b);
+  /* Ground, Panel, Raised, Line, Text, Muted: DESIGN.md section 3. There is no accent colour. */
+  --bg: light-dark(#f7f8f8, #08090a);
+  --surface: light-dark(#ffffff, #0e0f11);
+  --side: light-dark(#ffffff, #0e0f11);
+  --sunken: light-dark(#eef0f2, #16171a);
+  --text: light-dark(#08090a, #f7f8f8);
+  --muted: light-dark(#5c616a, #8a8f98);
+  --line: light-dark(rgb(8 9 10 / 10%), rgb(255 255 255 / 8%));
+  --line-strong: light-dark(rgb(8 9 10 / 22%), rgb(255 255 255 / 16%));
+  /* "Accent" now means the primary action: Text on Ground, so a white pill on dark and a black one on light. */
+  --accent: light-dark(#08090a, #f7f8f8);
+  --accent-text: light-dark(#f7f8f8, #08090a);
+  --accent-soft: light-dark(#eef0f2, #16171a);
+  --accent-line: light-dark(rgb(8 9 10 / 22%), rgb(255 255 255 / 16%));
   --good: light-dark(#14693f, #84dca3);
   --good-bg: light-dark(#e3f3ea, #163021);
   --warn: light-dark(#8a5a00, #f0c36b);
@@ -35,7 +37,7 @@
   --info: light-dark(#0c5e73, #8fd3e6);
   --info-bg: light-dark(#ddf0f5, #10303a);
   /* A shadow is not a colour, so only its colour switches: a hairline in light, invisible in dark. */
-  --shadow: 0 1px 0 light-dark(rgb(29 33 39 / 6%), transparent);
+  --shadow: none;
   --serif: var(--font-serif), "Iowan Old Style", Georgia, serif;
   --sans: var(--font-sans), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
@@ -1003,7 +1005,7 @@ mark.num {
   border: 0;
   background: transparent;
 }
-.pane-insp {
+.pane-review {
   padding: 0;
 }
 .pane-title,
@@ -1012,7 +1014,6 @@ mark.num {
   color: var(--muted);
   font: 600 0.72rem/1.3 var(--sans);
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .side-filters {
   display: grid;
@@ -1043,7 +1044,7 @@ mark.num {
     display: none;
   }
   .ws[data-pane="draft"] .pane-draft,
-  .ws[data-pane="claim"] .pane-insp,
+  .ws[data-pane="claim"] .pane-review,
   .ws[data-pane="sources"] .pane-side {
     display: block;
   }
@@ -1079,7 +1080,7 @@ mark.num {
   .ws-grid[data-side="closed"][data-inspector="closed"] {
     grid-template-columns: minmax(0, 1fr);
   }
-  .ws-grid[data-inspector="closed"] .pane-insp,
+  .ws-grid[data-inspector="closed"] .pane-review,
   .ws-grid[data-side="closed"] .pane-side {
     display: none;
   }
@@ -1166,15 +1167,6 @@ mark.num {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px 16px;
-}
-.canvas .eyebrow {
-  margin: 0;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 .canvas-title {
   margin: 6px 0;
@@ -1419,7 +1411,6 @@ mark.num {
   color: var(--muted);
   font: 600 0.68rem var(--sans);
   letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 .ba-label-after {
   color: var(--good);
@@ -1606,5 +1597,236 @@ mark.num {
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot {
     animation: none;
+  }
+}
+
+
+/* ===== DESIGN.md (25 Nov 2026): quiet instrument ===== */
+/* Interface base is 13px on a laptop, with the rest of the type in rem so it follows. Under 1024px it stays at the
+   browser's 16px: a phone is a fallback, and inputs under 16px make iOS zoom. */
+@media (min-width: 1024px) {
+  html {
+    font-size: 13px;
+  }
+}
+.btn,
+.filter,
+.cl-row,
+.hl,
+.tab,
+.ws-pane-btn,
+.source,
+.theme {
+  transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .filter,
+  .cl-row,
+  .hl,
+  .ws-pane-btn,
+  .source,
+  .theme {
+    transition: none;
+  }
+}
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.panel,
+.start-card,
+.start-ready,
+.start-side,
+.pane {
+  border-radius: 8px;
+  box-shadow: none;
+}
+.btn,
+.chip,
+.status-card {
+  border-radius: 6px;
+}
+/* Sentence case everywhere: no tracked small caps. */
+.pane-title,
+.sub-title,
+.ba-label {
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.get-list {
+  gap: 8px;
+  padding-left: 18px;
+  list-style: disc;
+}
+.get-list li {
+  display: list-item;
+}
+.web-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+/* The draft is the student's text on the ground: serif, no card. */
+.draft {
+  max-width: 68ch;
+  padding: 4px 2px 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 1.3rem;
+  line-height: 1.75;
+}
+.canvas-title {
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+/* The review column: the claim list on top, the selected claim below. */
+.pane-review {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+}
+.review-list {
+  border-bottom: 1px solid var(--line);
+}
+.review-claim {
+  padding: 20px 20px 28px;
+}
+.claim-list {
+  display: grid;
+}
+.cl-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--sunken);
+  color: var(--v-fg);
+  font: 500 0.92rem var(--sans);
+}
+.cl-name {
+  color: var(--text);
+}
+.cl-count {
+  color: var(--muted);
+}
+.cl-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cl-row {
+  display: grid;
+  grid-template-columns: 18px 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.cl-row:hover {
+  background: var(--sunken);
+}
+.cl-row[aria-current="true"] {
+  background: var(--sunken);
+}
+.cl-icon {
+  display: inline-flex;
+  color: var(--v-fg);
+}
+.cl-id,
+.cl-page {
+  color: var(--muted);
+}
+.cl-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cl-done .cl-text {
+  color: var(--muted);
+}
+.review-empty {
+  margin: 16px;
+}
+
+/* The selected claim: sentence as the title, properties as one row beneath it. */
+.insp-sentence {
+  font-style: normal;
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.insp-props {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.insp-props .mono {
+  color: var(--muted);
+}
+
+@media (min-width: 1024px) {
+  .ws-grid {
+    --rail: 232px;
+    --review: 420px;
+    grid-template-columns: var(--rail) minmax(0, 1fr) var(--review);
+  }
+  .ws-grid[data-inspector="closed"] {
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+  }
+  .ws-grid[data-side="closed"] {
+    grid-template-columns: minmax(0, 1fr) var(--review);
+  }
+  .ws-grid[data-side="closed"][data-inspector="closed"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pane-review {
+    overflow: hidden;
+  }
+  .review-list {
+    flex: 0 1 40%;
+    min-height: 0;
+    overflow: auto;
+  }
+  .review-claim {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  /* Under 1280px the list collapses to the stepper alone. */
+  .review-list {
+    display: none;
+  }
+}
+@media (min-width: 1280px) {
+  .ws-grid {
+    --review: 640px;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* One pane at a time: the Claim pane shows the claim, not the whole list. The stepper and the draft move between claims. */
+  .review-list {
+    display: none;
   }
 }

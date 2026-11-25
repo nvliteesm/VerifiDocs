@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VerifiDocs, direction C: quiet instrument (preview)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Tokens. Near-black ground and no accent colour: only the eight verdict colours carry colour. */
+:root {
+  --bg: #08090a;
+  --panel: #0e0f11;
+  --raised: #16171a;
+  --hover: #1b1d21;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --text: #f7f8f8;
+  --muted: #8a8f98;
+  --soft: #c3c7cd;
+  --supported: #84dca3;
+  --partial: #f0c36b;
+  --contradicted: #ff9f98;
+  --not_in_sources: #cfb0f0;
+  --cant_tell: #b4bbc6;
+  --reference_not_found: #8fd3e6;
+  --cant_check: #aeb3bb;
+  --no_citation_given: #e6e8ea;
+  --sans: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 450 13px/1.5 var(--sans); }
+button { font: inherit; color: inherit; cursor: pointer; }
+.app { display: grid; grid-template-columns: 232px 468px minmax(0, 1fr); height: 900px; }
+.side { background: var(--panel); border-right: 1px solid var(--line); padding: 12px 10px; display: flex; flex-direction: column; gap: 18px; }
+.brand { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-weight: 600; font-size: 14px; }
+.brand svg { flex: none; }
+.group-title { padding: 0 8px 4px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.row { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: none; text-align: left; color: var(--soft); }
+.row:hover { background: var(--hover); }
+.row[aria-current="true"] { background: var(--raised); color: var(--text); }
+.row .count { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.row svg { flex: none; }
+.file { align-items: flex-start; min-height: 44px; padding: 7px 8px; }
+.file small { display: block; color: var(--muted); font-size: 12px; }
+.privacy { margin-top: auto; padding: 0 8px; color: var(--muted); font-size: 12px; }
+
+.list { border-right: 1px solid var(--line); overflow: hidden; display: flex; flex-direction: column; }
+.bar { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+.bar h1 { margin: 0; font-size: 13px; font-weight: 600; }
+.seg { display: flex; margin-left: 4px; padding: 2px; border: 1px solid var(--line); border-radius: 7px; }
+.seg button { height: 24px; padding: 0 10px; border: 0; border-radius: 5px; background: none; color: var(--muted); font-size: 12px; font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--text); }
+.stats { margin-left: auto; color: var(--muted); font-size: 12px; }
+.stats b { color: var(--text); font-weight: 500; }
+.heading { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 500; }
+.heading span { color: var(--muted); font-family: var(--mono); font-weight: 400; }
+.claim { display: grid; grid-template-columns: 18px 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; }
+.claim:hover { background: var(--hover); }
+.claim[aria-current="true"] { background: var(--raised); }
+.claim .id { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.claim .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.claim .file-tag { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) 236px; overflow: hidden; background: var(--bg); }
+.detail-main { padding: 0 28px 24px; overflow: hidden; }
+.detail-head { display: flex; align-items: center; gap: 10px; height: 44px; margin: 0 -28px 18px; padding: 0 28px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.detail-head .step { margin-left: auto; display: flex; align-items: center; gap: 4px; font-family: var(--mono); }
+.step button { width: 24px; height: 24px; border: 1px solid var(--line); border-radius: 6px; background: none; color: var(--soft); }
+.step button:hover { background: var(--hover); }
+h2 { margin: 0 0 6px; font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+.meaning { margin: 0 0 20px; color: var(--muted); }
+h3 { margin: 22px 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.evidence { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.evidence-head { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.evidence p { margin: 0; padding: 12px; font-size: 14px; line-height: 1.6; }
+mark { background: #ffe58a; color: #08090a; padding: 0 2px; border-radius: 3px; }
+.fix { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--panel); }
+.fix .ba { display: grid; gap: 10px; margin: 8px 0 14px; font-size: 14px; }
+.fix .label { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }
+.before { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--contradicted); }
+.actions { display: flex; gap: 8px; }
+.btn { height: 30px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 7px; background: none; font-size: 13px; font-weight: 500; }
+.btn:hover { background: var(--hover); }
+.btn.primary { border-color: var(--text); background: var(--text); color: var(--bg); }
+.btn.primary:hover { background: #dfe1e3; }
+.link { margin-top: 18px; border: 0; background: none; padding: 0; color: var(--muted); font-size: 12px; text-decoration: underline; }
+
+.props { border-left: 1px solid var(--line); padding: 14px 16px; background: var(--bg); }
+.props h3 { margin-top: 0; }
+.prop { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.prop dt { color: var(--muted); font-size: 12px; }
+.prop dd { margin: 2px 0 0; display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px 0 7px; border: 1px solid currentColor; border-radius: 999px; font-size: 12px; font-weight: 500; }
+:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="side" aria-label="Sources and filters">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="7" fill="#f7f8f8"/><path d="M8.5 15.5l4.2 4.2L21.5 10.5" fill="none" stroke="#08090a" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      VerifiDocs
+    </div>
+
+    <div>
+      <div class="group-title">Verdicts</div>
+      <button class="row" aria-current="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a8f98" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg>All claims<span class="count">5</span></button>
+      <button class="row" style="color:var(--supported)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg><span style="color:var(--soft)">Supported</span><span class="count">1</span></button>
+      <button class="row" style="color:var(--contradicted)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span style="color:var(--soft)">Contradicted</span><span class="count">2</span></button>
+      <button class="row" style="color:var(--not_in_sources)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a8 8 0 1 0 0 16a8 8 0 0 0 0-16zM8 12h8"/></svg><span style="color:var(--soft)">Not in your sources</span><span class="count">1</span></button>
+      <button class="row" style="color:var(--reference_not_found)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7l-.9.9M14 10a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7l.9-.9M4 4l16 16"/></svg><span style="color:var(--soft)">Reference not found</span><span class="count">1</span></button>
+    </div>
+
+    <div>
+      <div class="group-title">Sources</div>
+      <div class="row file">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--supported)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-top:2px"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+        <span>Contoh-Statistics-Office-2024.pdf<small>Ready, 3 pages</small></span>
+      </div>
+      <button class="row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a8f98" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add PDF</button>
+    </div>
+
+    <p class="privacy">Deleted 30 days after upload, or sooner if you delete them.</p>
+  </aside>
+
+  <main class="list" aria-label="Claims">
+    <div class="bar">
+      <h1>Claims</h1>
+      <div class="seg" role="group" aria-label="View">
+        <button aria-pressed="true">List</button>
+        <button aria-pressed="false">Draft</button>
+      </div>
+      <span class="stats"><b>5</b> checked, <b>1</b> supported, <b>4</b> need attention</span>
+    </div>
+
+    <div class="heading" style="color:var(--contradicted)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span style="font-family:var(--sans);color:var(--text)">Contradicted</span><span>2</span></div>
+    <button class="claim" aria-current="true">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--contradicted)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      <span class="id">C-2</span><span class="text">Food prices fell during the same year</span><span class="file-tag">p. 2</span>
+    </button>
+    <button class="claim">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--contradicted)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      <span class="id">C-3</span><span class="text">Rent was the largest expense for every income group</span><span class="file-tag">p. 2</span>
+    </button>
+
+    <div class="heading" style="color:var(--reference_not_found)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7l-.9.9M14 10a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7l.9-.9M4 4l16 16"/></svg><span style="font-family:var(--sans);color:var(--text)">Reference not found</span><span>1</span></div>
+    <button class="claim">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--reference_not_found)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7l-.9.9M14 10a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7l.9-.9M4 4l16 16"/></svg>
+      <span class="id">C-5</span><span class="text">Public transport use doubled after the new bus lines opened</span><span class="file-tag"></span>
+    </button>
+
+    <div class="heading" style="color:var(--not_in_sources)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 4a8 8 0 1 0 0 16a8 8 0 0 0 0-16zM8 12h8"/></svg><span style="font-family:var(--sans);color:var(--text)">Not in your sources</span><span>1</span></div>
+    <button class="claim">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--not_in_sources)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 4a8 8 0 1 0 0 16a8 8 0 0 0 0-16zM8 12h8"/></svg>
+      <span class="id">C-4</span><span class="text">Online shopping made up a third of all household purchases</span><span class="file-tag"></span>
+    </button>
+
+    <div class="heading" style="color:var(--supported)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg><span style="font-family:var(--sans);color:var(--text)">Supported</span><span>1</span></div>
+    <button class="claim">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--supported)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+      <span class="id">C-1</span><span class="text">Household spending in Kota Contoh rose by 4.2 percent in 2023</span><span class="file-tag">p. 1</span>
+    </button>
+  </main>
+
+  <section class="detail" aria-label="Claim C-2">
+    <div class="detail-main">
+      <div class="detail-head">
+        <span class="mono">C-2</span>
+        <div class="step" role="group" aria-label="Step through issues"><button aria-label="Previous issue">‹</button>1 of 4<button aria-label="Next issue">›</button></div>
+      </div>
+      <h2>Food prices fell during the same year</h2>
+      <p class="meaning">The source says something different.</p>
+
+      <h3>Evidence</h3>
+      <div class="evidence">
+        <div class="evidence-head"><span>Contoh-Statistics-Office-2024.pdf</span><span>p. 2</span></div>
+        <p>“Food prices rose by <mark>7.1 percent</mark> in 2023, the fastest increase of any category.”</p>
+      </div>
+
+      <h3>Suggested fix</h3>
+      <div class="fix">
+        <span class="label">Written using only what the source says.</span>
+        <div class="ba">
+          <div><span class="label">Before</span><span class="before">Food prices fell during the same year</span></div>
+          <div><span class="label">After</span>Food prices rose by 7.1 percent in 2023</div>
+        </div>
+        <div class="actions"><button class="btn primary">Apply fix</button><button class="btn">Ignore</button></div>
+      </div>
+      <button class="link">This verdict is wrong</button>
+    </div>
+
+    <aside class="props" aria-label="Properties">
+      <h3>Properties</h3>
+      <dl style="margin:0">
+        <div class="prop"><dt>Verdict</dt><dd><span class="pill" style="color:var(--contradicted)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>Contradicted</span></dd></div>
+        <div class="prop"><dt>Citation</dt><dd class="mono">(Contoh Statistics Office, 2024)</dd></div>
+        <div class="prop"><dt>Source</dt><dd class="mono">Contoh-Statistics-Office-2024.pdf</dd></div>
+        <div class="prop"><dt>Page</dt><dd class="mono">2</dd></div>
+        <div class="prop"><dt>Status</dt><dd>Open</dd></div>
+      </dl>
+    </aside>
+  </section>
+
+</div>
+</body>
+</html>

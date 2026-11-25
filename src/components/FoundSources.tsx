@@ -19,11 +19,11 @@ export type FindFn = (claimId: string) => Promise<string | null>;
  */
 export type AttachFn = (claimId: string, rank: number, title: string, file: File | null, stage: (stage: AttachStage) => void) => Promise<string | null>;
 
-/** "Lee & Tan · 2024 · Journal" (the first two surnames, or the first and "et al."). */
+/** "Lee & Tan, 2024, Journal" (the first two surnames, or the first and "et al."). */
 function paperMeta(source: FoundSourceView): string {
   const names = source.authors.map((name) => name.trim().split(/\s+/).pop() ?? name);
   const who = names.length === 0 ? "" : names.length <= 2 ? names.join(" & ") : `${names[0]} et al.`;
-  return [who, source.year ? String(source.year) : "n.d.", source.venue ?? ""].filter(Boolean).join(" · ");
+  return [who, source.year ? String(source.year) : "n.d.", source.venue ?? ""].filter(Boolean).join(", ");
 }
 
 /**
@@ -327,7 +327,10 @@ export function WebSources({
               ) : (
                 <span className="found-paper">{title}</span>
               )}
-              <span className="hint">{date ? `${page.site} · ${t("web.retrieved", { date })}` : page.site}</span>
+              <span className="hint web-meta">
+                <span>{page.site}</span>
+                {date && <span>{t("web.retrieved", { date })}</span>}
+              </span>
               {page.relevance === "related" && <span className="hint">{t("found.related")}</span>}
               <p className="found-quote">
                 <span className="hint">{t("web.snippet")}</span> “{shortQuote(page.sentence)}”

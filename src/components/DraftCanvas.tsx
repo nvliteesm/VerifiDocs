@@ -75,7 +75,6 @@ export function DraftCanvas({ working, applied, resolutions, activeId, shown, dr
     <div className="canvas">
       <div className="canvas-head">
         <div>
-          <p className="eyebrow mono">{t("ws.draftPane")}</p>
           <h2 className="canvas-title">{draftLabel ?? t("ws.draftPlain")}</h2>
           <p className="hint">{t("ws.hint")}</p>
         </div>
