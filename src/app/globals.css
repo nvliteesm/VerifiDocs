@@ -184,26 +184,10 @@ select:disabled {
 }
 
 /* Two-column workspace: sources stay in view while the draft or results change. */
-.workspace {
-  display: grid;
-  gap: 28px;
-  align-items: start;
-}
+
 @media (min-width: 920px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr) 340px;
-    gap: 40px;
-  }
-  .rail {
-    position: sticky;
-    top: 20px;
-  }
-}
-.rail,
-.main-col {
-  display: grid;
-  gap: 20px;
-  min-width: 0;
+  
+  
 }
 
 /* Panels: the sources rail is a sunken tray, the main column sits on paper. */
@@ -562,12 +546,7 @@ progress {
 }
 
 /* Results */
-.tally {
-  display: grid;
-  gap: 4px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--line);
-}
+
 .scan-list {
   margin: 4px 0 0;
   padding-left: 20px;
@@ -637,60 +616,7 @@ progress {
   Results by section: one row per heading of the draft, so a long thesis reads as its own table of contents.
   The count is the row's one strong signal; a section with work in it shows it in the warning colour.
 */
-.sections {
-  display: grid;
-  border-top: 1px solid var(--line);
-}
-.section {
-  border-bottom: 1px solid var(--line);
-}
-.section-head {
-  font-family: var(--sans);
-  font-size: 1rem;
-}
-.section-head button {
-  width: 100%;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 4px;
-  background: transparent;
-  border: 0;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-}
-.section-head button:hover {
-  background: var(--accent-soft);
-}
-.section-arrow {
-  width: 1em;
-  color: var(--muted);
-}
-.section-name {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--serif);
-  font-size: 1.05rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.section-count {
-  color: var(--muted);
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
-.section-count-work {
-  color: var(--warn);
-  font-weight: 600;
-}
-.section > div {
-  padding: 4px 0 16px;
-}
-.section-more {
-  margin-top: 12px;
-}
+
 /* Parts of the draft the AI could not read: one line per part, the button beside its name. */
 .unread {
   display: grid;
@@ -712,31 +638,7 @@ progress {
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-.tally-number {
-  font-family: var(--serif);
-  font-size: clamp(1.5rem, 3.5vw, 2rem);
-  font-weight: 600;
-  line-height: 1.2;
-}
-.claim {
-  display: grid;
-  gap: 10px;
-  padding: 18px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.claim-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: center;
-}
-.claim-text {
-  font-family: var(--serif);
-  font-size: 1.1rem;
-  line-height: 1.45;
-}
+
 .citation {
   color: var(--muted);
   font-size: 0.9rem;
@@ -955,45 +857,11 @@ blockquote {
   white-space: normal;
 }
 /* The shape of the draft: one slice per verdict, wider for more claims. Decorative; the numbers are in the text. */
-.tally-bar {
-  display: flex;
-  gap: 2px;
-  height: 8px;
-  margin-top: 8px;
-  border-radius: 4px;
-  overflow: hidden;
-}
-.tally-seg {
-  min-width: 6px;
-}
-.tally-good {
-  background: var(--good);
-}
-.tally-warn {
-  background: var(--warn);
-}
-.tally-bad {
-  background: var(--bad);
-}
-.tally-info {
-  background: var(--info);
-}
-.tally-muted {
-  background: var(--line-strong);
-}
+
 /* Six filters would take five rows on a phone: one row that scrolls sideways instead. */
 @media (max-width: 600px) {
-  .chips-filter {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 6px;
-    scroll-snap-type: x proximity;
-  }
-  .chips-filter .chip {
-    flex: none;
-    white-space: nowrap;
-    scroll-snap-align: start;
-  }
+  
+  
 }
 /* A number that differs between the sentence and the source. Weight and underline as well as colour. */
 mark.num {
@@ -1008,36 +876,9 @@ mark.num {
   text-underline-offset: 3px;
 }
 /* The closed evidence line shows the first words of the quote; opened, the quote itself is there. */
-.evidence-preview {
-  flex: 1 1 100%;
-  padding-left: 18px;
-  font-family: var(--serif);
-  font-style: italic;
-  font-weight: 400;
-  color: var(--muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-details[open] > summary > .evidence-preview {
-  display: none;
-}
+
 /* The page, drawn as a paper tab in the quote's top corner. Not a stripe: it is the one mark that belongs to this product. */
-.page-tag {
-  float: right;
-  margin: -12px -14px 6px 10px;
-  padding: 3px 10px;
-  background: var(--line);
-  color: var(--text);
-  font: 600 0.8rem/1.4 var(--sans);
-  font-style: normal;
-  border-radius: 0 6px 0 6px;
-}
-.quote-source {
-  margin: 0 0 8px;
-  overflow-wrap: anywhere;
-}
+
 /* The feedback link sits in its own footer row under the card, apart from the fix. */
 .claim-foot {
   border-top: 1px solid var(--line);
@@ -1072,7 +913,6 @@ details[open] > summary > .evidence-preview {
     transition: none !important;
   }
 }
-
 
 /* ===== Workspace: three panes ===== */
 .shell-wide {
@@ -1641,4 +1481,130 @@ mark.num {
 .fixrow-action {
   font-weight: 600;
   line-height: 1.4;
+}
+
+/* ===== Start screen: sources, the draft, and what is ready ===== */
+.start {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+  grid-template-areas: "main" "ready" "side";
+}
+.start-main {
+  display: grid;
+  grid-area: main;
+  gap: 16px;
+  min-width: 0;
+}
+.start-main .intro h1 {
+  font-size: 2rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.start-card {
+  border-radius: 14px;
+  padding: 24px 28px;
+}
+.start-ready,
+.start-side {
+  display: grid;
+  gap: 20px;
+  align-content: start;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.start-ready {
+  grid-area: ready;
+  background: var(--surface);
+}
+.start-side {
+  grid-area: side;
+  background: var(--side);
+}
+@media (min-width: 1024px) {
+  .start {
+    grid-template-columns: 260px minmax(0, 1fr) 380px;
+    grid-template-areas: "side main ready";
+  }
+}
+.start-ready-title {
+  font: 600 0.95rem var(--sans);
+}
+.status-cards {
+  display: grid;
+  gap: 10px;
+}
+.status-card {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.status-card strong {
+  font-size: 0.95rem;
+}
+.status-good {
+  border: 1px solid var(--good);
+  background: var(--good-bg);
+}
+.status-good strong {
+  color: var(--good);
+}
+.status-dashed {
+  border: 1px dashed var(--muted);
+  background: var(--sunken);
+}
+.get-list {
+  display: grid;
+  gap: 12px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.get-list li {
+  display: flex;
+  gap: 12px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.get-list .mono {
+  padding-top: 2px;
+  color: var(--muted);
+}
+.start-actions {
+  display: grid;
+  gap: 8px;
+}
+.start-actions .btn-primary {
+  width: 100%;
+  min-height: 52px;
+}
+
+/* "Warming up": the database sleeps when idle and takes a few seconds to wake. A calm pulse, never an error. */
+.pulse-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: vdpulse 1.4s ease-in-out infinite;
+}
+@keyframes vdpulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot {
+    animation: none;
+  }
 }

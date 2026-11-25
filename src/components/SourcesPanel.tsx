@@ -17,6 +17,8 @@ interface Props {
   locked?: boolean;
   /** The slim version for the workspace's left pane: a title, an add button and the list. */
   compact?: boolean;
+  /** In the compact list, also show how many files and how large (the start screen has the room). */
+  showHint?: boolean;
 }
 
 function statusText(row: SourceRow, t: Translate, locale: Locale): string {
@@ -36,7 +38,7 @@ function statusText(row: SourceRow, t: Translate, locale: Locale): string {
   }
 }
 
-export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, locked = false, compact = false }: Props) {
+export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, locked = false, compact = false, showHint = false }: Props) {
   const { t, locale } = useT();
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -45,9 +47,12 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
     <section className={compact ? "side-sources" : "panel panel-tray"} aria-labelledby="sources-title">
       <div className="panel-head">
         {compact ? (
-          <h2 id="sources-title" className="pane-title">
-            {t("src.title")}
-          </h2>
+          <>
+            <h2 id="sources-title" className="pane-title">
+              {t("src.title")}
+            </h2>
+            {showHint && <p className="hint">{t("src.hint", { max: MAX_SOURCES, size: megabytes(MAX_PDF_BYTES) })}</p>}
+          </>
         ) : (
           <>
             <h2 id="sources-title">{t("src.title")}</h2>

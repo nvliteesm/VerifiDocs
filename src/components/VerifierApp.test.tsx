@@ -183,14 +183,14 @@ describe("privacy note", () => {
     expect(await screen.findByText("Before you start")).toBeTruthy();
     expect(await screen.findByLabelText(/Text or Google Docs link/)).toBeTruthy(); // the product is not hidden behind the note
     expect(screen.getByRole("button", { name: "Try an example" })).toHaveProperty("disabled", true); // hidden once a draft is typed
-    expect(screen.getByRole("button", { name: "Choose PDFs" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Add PDF" })).toHaveProperty("disabled", true);
     fill();
     expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", true);
 
     await user.click(screen.getByRole("button", { name: "Got it" }));
     expect(screen.queryByText("Before you start")).toBeNull();
     expect(screen.getByRole("button", { name: "Scan my draft" })).toHaveProperty("disabled", false);
-    expect(screen.getByRole("button", { name: "Choose PDFs" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Add PDF" })).toHaveProperty("disabled", false);
     expect(window.localStorage.getItem(CONSENT_KEY)).toBe("yes");
   });
 

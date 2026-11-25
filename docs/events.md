@@ -12,7 +12,7 @@ One row per event in the `events` table: `session_id`, `name`, `props` (JSON), `
 | `run_started` | Claims extracted | `claim_count` |
 | `claim_checked` | A claim reaches a verdict | `verdict`, `exit_stage`, `latency_ms`, `retries` |
 | `run_completed` | All claims have verdicts | `duration_ms`, `verdict_counts` |
-| `evidence_opened` | User opens a quote and page | `verdict` |
+| `evidence_opened` | User selects a claim that has a quote and page (the inspector shows the evidence). Once per claim selection. Before 25 Nov 2026 this fired when a disclosure was opened by hand. | `verdict` |
 | `verdict_flagged_wrong` | "This verdict is wrong" pressed and a reason chosen | `verdict`, `reason` (quote_does_not_support, wrong_page, source_says_otherwise, claim_misread, source_was_uploaded, other; a fixed list, no free text) |
 | `fix_suggested` | Fix this claim shown | `verdict` |
 | `fix_accepted` | User applies the suggested sentence | none |

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MAX_DOCX_BYTES, MAX_DRAFT_CHARS, MAX_PDF_BYTES, MAX_TXT_BYTES, megabytes } from "@/lib/client/limits";
 import { messageOf } from "@/lib/client/run-verification";
 import type { ImportResponse, Importer, VerifyInput } from "@/lib/client/types";
 import { verdictLabel } from "@/lib/client/verdict-info";
 import { looksLikeGoogleDocLink } from "@/lib/import/google-link";
-import { pluralKey } from "@/lib/i18n";
+import { pluralKey, type MessageKey } from "@/lib/i18n";
 import { useT } from "./LocaleProvider";
 
 interface Props {
@@ -26,6 +26,12 @@ interface Props {
   locked?: boolean;
   /** Reads a Google Docs link or a PDF draft. Without it only pasting, .docx and .txt are offered. */
   importer?: Importer;
+  /** The heading and one line above the draft card. */
+  intro?: ReactNode;
+  /** The sources list, shown beside the draft. It has its own upload handlers, which belong to the app. */
+  sources?: ReactNode;
+  /** What the sources list holds, for the "Ready to check" cards. */
+  sourceSummary?: { total: number; ready: number; scans: number; reading: boolean };
 }
 
 /**
@@ -70,6 +76,9 @@ export function DraftPanel({
   exampleNote = null,
   locked = false,
   importer,
+  intro,
+  sources,
+  sourceSummary = { total: 0, ready: 0, scans: 0, reading: false },
 }: Props) {
   const { t, locale } = useT();
   const [loaded, setLoaded] = useState<Loaded | null>(() => loadedFrom(initial));
@@ -183,8 +192,26 @@ export function DraftPanel({
     requestAnimationFrame(() => document.getElementById("draft-text")?.focus());
   }
 
+  const draftName = loaded ? loaded.label : t("start.pasted");
+  const sourceCard =
+    sourceSummary.total === 0
+      ? { tone: "dashed", title: t("start.src.none"), body: t("start.src.noneBody") }
+      : {
+          tone: sourceSummary.ready === sourceSummary.total && !sourceSummary.reading ? "good" : "dashed",
+          title: t("start.src.some", { ready: sourceSummary.ready, total: sourceSummary.total }),
+          body:
+            sourceSummary.scans > 0
+              ? t(pluralKey(locale, "start.src.scan", sourceSummary.scans), { n: sourceSummary.scans, label: verdictLabel(t, "cant_check") })
+              : sourceSummary.reading
+                ? t("start.src.reading")
+                : "",
+        };
+
   return (
-    <section className="panel" aria-labelledby="draft-title">
+    <div className="start">
+      <section className="start-main" aria-labelledby="draft-title">
+      {intro}
+      <div className="panel start-card">
       <div className="panel-head">
         <h2 id="draft-title">{t("draft.title")}</h2>
         <p className="hint">{importer ? t("draft.hint") : t("draft.hintNoLink")}</p>
@@ -332,7 +359,35 @@ export function DraftPanel({
         </p>
       )}
 
-      <div className="actions">
+      </div>
+      </section>
+
+      <aside className="start-ready" aria-labelledby="ready-title">
+        <h2 id="ready-title" className="start-ready-title">
+          {t("start.ready")}
+        </h2>
+        <div className="status-cards">
+          <div className={`status-card ${hasDraft ? "status-good" : "status-dashed"}`}>
+            <strong>{hasDraft ? t("start.draft.yes") : t("start.draft.no")}</strong>
+            <span>{hasDraft ? t("start.draft.yesBody", { label: draftName }) : t("start.draft.noBody")}</span>
+          </div>
+          <div className={`status-card status-${sourceCard.tone}`}>
+            <strong>{sourceCard.title}</strong>
+            {sourceCard.body && <span>{sourceCard.body}</span>}
+          </div>
+        </div>
+        <div>
+          <h3 className="sub-title">{t("start.get.title")}</h3>
+          <ol className="get-list">
+            {(["1", "2", "3"] as const).map((n) => (
+              <li key={n}>
+                <span className="mono">{`0${n}`}</span>
+                <span>{t(`start.get.${n}` as MessageKey)}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <div className="actions start-actions">
         <button
           type="button"
           className="btn btn-primary"
@@ -357,6 +412,11 @@ export function DraftPanel({
           </span>
         )}
       </div>
-    </section>
+      </aside>
+
+      <aside className="start-side" aria-label={t("ws.side")}>
+        {sources}
+      </aside>
+    </div>
   );
 }

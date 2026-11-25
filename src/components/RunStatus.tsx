@@ -1,7 +1,7 @@
 "use client";
 
 // The strip above the panes: how far the check is, what it found in one line, and anything that went wrong. Ported
-// from ResultsView (its tally, scan headline, unread parts and focus handling) so none of that behaviour is lost.
+// from the old card list (its tally, scan headline, unread parts and focus handling) so none of that behaviour is lost.
 import { useEffect, useRef, useState } from "react";
 import { pluralKey } from "@/lib/i18n";
 import { isOptional } from "@/lib/fix-list";

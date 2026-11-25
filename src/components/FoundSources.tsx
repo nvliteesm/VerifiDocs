@@ -1,6 +1,6 @@
 "use client";
 
-// "Find a source" and "Search the web" on a claim with no citation. Moved out of ResultsView unchanged (25 Nov 2026).
+// "Find a source" and "Search the web" on a claim with no citation. Moved out of the old card list unchanged (25 Nov 2026); the claim inspector renders them.
 import { useEffect, useRef, useState } from "react";
 import { inTextCitation, referenceEntry, webInTextCitation, webReferenceEntry } from "@/lib/client/cite";
 import type { ClaimView, FoundSourceView } from "@/lib/client/types";
@@ -348,4 +348,4 @@ export function WebSources({
   );
 }
 
-// `flagged` and `copied` live in ResultsView, because a card unmounts whenever the filter changes.
+// `flagged` lives in Workspace, because the inspector remounts whenever another claim is selected.

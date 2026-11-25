@@ -208,16 +208,10 @@ export function VerifierApp() {
   const readySources = sources.rows.filter((row) => row.phase === "ready").length;
 
   return (
-    <Frame wide={!idle}>
+    <Frame wide>
       {/* Once a check exists the results come first; the heading stays for screen readers (one h1 per page). */}
-      {idle ? (
-        <div className="intro">
-          <h1>{t("app.title")}</h1>
-          <p className="lede">{t("app.lede")}</p>
-        </div>
-      ) : (
-        <h1 className="sr-only">{t("app.title")}</h1>
-      )}
+      {/* Once a check exists the results come first; the heading stays for screen readers (one h1 per page). */}
+      {!idle && <h1 className="sr-only">{t("app.title")}</h1>}
 
       {/* The product is visible at once. Until the student presses "Got it", checking and uploading stay locked,
           because both send text to other services. */}
@@ -261,14 +255,13 @@ export function VerifierApp() {
 
       {waking && (
         <p role="status" className="notice notice-info" style={{ marginBottom: 20 }}>
+          <span className="pulse-dot" aria-hidden="true" />
           {t("waking")}
         </p>
       )}
 
       {idle ? (
-        <div className="workspace">
-          <div className="main-col">
-            <DraftPanel
+        <DraftPanel
               key={seedKey}
               importer={importer}
               locked={!consent}
@@ -281,20 +274,32 @@ export function VerifierApp() {
               onStart={start}
               onTryExample={tryExample}
               exampleNote={exampleNote}
+              intro={
+                <div className="intro">
+                  <h1>{t("app.title")}</h1>
+                  <p className="lede">{t("app.lede")}</p>
+                </div>
+              }
+              sourceSummary={{
+                total: sources.rows.length,
+                ready: readySources,
+                scans: sources.rows.filter((row) => row.phase === "no_text").length,
+                reading: sources.busy,
+              }}
+              sources={
+                <SourcesPanel
+                  compact
+                  showHint
+                  rows={sources.rows}
+                  loaded={sources.loaded}
+                  notice={sources.notice}
+                  locked={!consent}
+                  onAdd={sources.addFiles}
+                  onRetry={sources.retryRow}
+                  onRemove={sources.remove}
+                />
+              }
             />
-          </div>
-          <div className="rail">
-          <SourcesPanel
-            rows={sources.rows}
-            loaded={sources.loaded}
-            notice={sources.notice}
-            locked={!consent}
-            onAdd={sources.addFiles}
-            onRetry={sources.retryRow}
-            onRemove={sources.remove}
-          />
-          </div>
-        </div>
       ) : (
         <Workspace
           key={state.runId ?? "new"}

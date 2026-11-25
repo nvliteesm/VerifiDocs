@@ -52,15 +52,6 @@ export function Pieces({ pieces }: { pieces: Piece[] }) {
   );
 }
 
-/** The first words of a quote, for a closed evidence line: about 110 characters, cut at a word. */
-const PREVIEW_CHARS = 110;
-export function previewOf(quote: string): string {
-  const flat = quote.replace(/\s+/g, " ").trim();
-  if (flat.length <= PREVIEW_CHARS) return flat;
-  const cut = flat.slice(0, PREVIEW_CHARS);
-  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), PREVIEW_CHARS / 2)).replace(/[\s,;:]+$/, "")}…`;
-}
-
 /**
  * An abstract sentence can run to 60 words (seen on a real search), which buries the paper under it on a phone. The
  * view shows about 240 characters, cut at a word with "…"; the whole sentence is what was verified and stored.
