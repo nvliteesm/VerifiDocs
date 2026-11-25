@@ -42,6 +42,10 @@ export interface ClaimView {
   sourcesSearched?: boolean;
   /** Papers Find a source kept, best first. Not read yet: they never count as support. */
   sources?: FoundSourceView[];
+  /** True once Search the web has run for this claim (even when it found nothing). */
+  webSearched?: boolean;
+  /** Web pages Search the web kept, best first. Not read yet and not peer reviewed: they never count as support. */
+  webSources?: WebSourceView[];
   status: "pending" | "checking" | "done";
   verdict: Verdict | null;
   quote: string | null;
@@ -76,6 +80,25 @@ export interface FoundSourceView {
   /** One sentence from the abstract, verified to be in it. */
   sentence: string;
   relevance: "direct" | "related";
+}
+
+/** A web page Search the web found for an uncited claim (docs/web-sources.md). */
+export interface WebSourceView {
+  rank: number;
+  url: string;
+  /** The page's site without "www.", taken from its address. */
+  site: string;
+  title: string;
+  /** One sentence from the page's snippet, verified to be in it. */
+  sentence: string;
+  relevance: "direct" | "related";
+  /** When the page was found, as an ISO date-time: the reference format needs the day it was retrieved. */
+  retrievedAt: string;
+}
+
+export interface FindWebSourcesResponse {
+  claimId: string;
+  sources: WebSourceView[];
 }
 
 export interface AttachSourceResponse {
@@ -119,6 +142,8 @@ export interface RunResponse {
   fixList: string[];
   /** Parts of the draft the AI could not read (wholly or half), named by the heading they start under. */
   failedParts: FailedPart[];
+  /** True when web search is set up on the server, so a No-paper-found card may offer "Search the web". */
+  webSearch?: boolean;
   claims: ClaimView[];
   references: ReferenceView[];
 }

@@ -13,6 +13,7 @@ import type {
   ImportResponse,
   IngestResponse,
   RunResponse,
+  FindWebSourcesResponse,
   SourceView,
   UploadResponse,
   VerifyInput, FindSourcesResponse, AttachSourceResponse } from "./types";
@@ -138,6 +139,8 @@ export function createApi(options: ApiOptions = {}) {
     getRun: (runId: string) => send<RunResponse>("GET", `/api/runs/${runId}`),
     /** Find a source for one uncited claim. A repeat returns the saved result; a busy search is retried. */
     findSources: (claimId: string) => send<FindSourcesResponse>("POST", `/api/claims/${claimId}/sources`),
+    /** Search the web for an uncited claim after Find a source found no paper. A repeat returns the saved result; a busy search is retried. */
+    findWebSources: (claimId: string) => send<FindWebSourcesResponse>("POST", `/api/claims/${claimId}/web-sources`),
     /** Check a claim against found paper `rank`: its open-access PDF is fetched, or `file` is the student's upload. */
     attachSource: (claimId: string, rank: number, file?: File) => {
       const path = `/api/claims/${claimId}/sources/${rank}/attach`;

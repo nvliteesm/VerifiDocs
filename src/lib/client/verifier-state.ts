@@ -3,7 +3,7 @@
 // Verdict counts and the ranked fix list are DERIVED from the claims, never stored separately, so they cannot
 // disagree with the claim list on screen.
 import { rankFixList } from "../fix-list";
-import type { CheckedVerdict, ClaimView, FailedPart, FoundSourceView, ReferenceView, RunResponse, RunStatus, Verdict } from "./types";
+import type { CheckedVerdict, ClaimView, FailedPart, FoundSourceView, ReferenceView, RunResponse, RunStatus, Verdict, WebSourceView } from "./types";
 
 /**
  * "extracting" is the scan (reading the draft for claims). "scanned" is where it stops: the claims that need no
@@ -27,6 +27,8 @@ export interface VerifierState {
   claimErrors: Record<string, string>;
   /** Parts of the draft the AI could not read; the student can read each one again. */
   failedParts: FailedPart[];
+  /** True when the server has web search set up, so a No-paper-found card may offer "Search the web". */
+  webSearch: boolean;
   error: string | null;
   /** True when the student pressed Stop. The check then ends as "done" with some claims left unchecked. */
   stopped: boolean;
@@ -45,6 +47,7 @@ export const initialState: VerifierState = {
   fixList: [],
   claimErrors: {},
   failedParts: [],
+  webSearch: false,
   error: null,
   stopped: false,
 };
@@ -59,6 +62,7 @@ export type VerifyEvent =
   | { type: "claimError"; id: string; message: string }
   | { type: "claimRetry"; id: string }
   | { type: "sources"; claimId: string; sources: FoundSourceView[] }
+  | { type: "webSources"; claimId: string; sources: WebSourceView[] }
   | { type: "failed"; message: string }
   | { type: "stopped" };
 
@@ -107,6 +111,7 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
         unitsExtracted: run.run.unitsExtracted,
         references: run.references,
         failedParts: run.failedParts ?? [],
+        webSearch: run.webSearch ?? false,
       };
     }
 
@@ -139,6 +144,14 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
         ...state,
         claims: state.claims.map((claim) =>
           claim.id === event.claimId ? { ...claim, sourcesSearched: true, sources: event.sources } : claim,
+        ),
+      };
+
+    case "webSources":
+      return {
+        ...state,
+        claims: state.claims.map((claim) =>
+          claim.id === event.claimId ? { ...claim, webSearched: true, webSources: event.sources } : claim,
         ),
       };
 

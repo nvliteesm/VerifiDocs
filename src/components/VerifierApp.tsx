@@ -286,6 +286,7 @@ export function VerifierApp() {
                 onRetryClaim={verification.retry}
                 onReadPart={verification.readPart}
                 onFindSources={verification.findSources}
+                onFindWebSources={verification.findWebSources}
                 onAttachSource={attachSource}
                 onEvent={event}
               />

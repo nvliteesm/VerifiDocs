@@ -102,6 +102,28 @@ export function cleanUrl(raw: string): string | null {
   }
 }
 
+/**
+ * The service returns a snippet as markdown ("### Free", "- item", "**bold**", links, table rows). A student reads the
+ * sentence as plain text and the model copies it, so it is turned into plain text here: before the model sees it and
+ * before the quote check, so the check compares the very words that are shown. Text with no markup comes back as it was.
+ * Line breaks are kept, because the markers that matter sit at the start of a line; callers collapse spacing after.
+ */
+export function plainText(markdown: string): string {
+  return markdown
+    .replace(/<[^>]+>/g, " ")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/`{1,3}([^`]*)`{1,3}/g, "$1")
+    .replace(/^[ \t]*(?:[-*_][ \t]*){3,}$/gm, " ")
+    .replace(/^[ \t]*\|?[ \t:|-]+\|[ \t:|-]*$/gm, " ")
+    .replace(/\|/g, " ")
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, "")
+    .replace(/^[ \t]*>+[ \t]?/gm, "")
+    .replace(/^[ \t]*[-*+•][ \t]+/gm, "")
+    .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, "$1")
+    .replace(/(^|[\s(])\*(?=\S)([^*\n]*?\S)\*(?=$|[\s).,;:!?])/g, "$1$2");
+}
+
 function failureFor(status: number): WebFailure {
   if (status === 401) return "auth";
   if (status === 432 || status === 433) return "quota";
@@ -166,7 +188,7 @@ export function createWebSearch(config: WebSearchConfig, post: PostFn = defaultP
     for (const raw of parsed.data.results) {
       const url = cleanUrl(raw.url);
       const title = (raw.title ?? "").replace(/\s+/g, " ").trim();
-      const content = (raw.content ?? "").replace(/\s+/g, " ").trim();
+      const content = plainText(raw.content ?? "").replace(/\s+/g, " ").trim();
       if (!url || seen.has(url) || title === "" || content.length < MIN_SNIPPET_CHARS) continue;
       seen.add(url);
       results.push({ url, title, content: content.slice(0, MAX_SNIPPET_CHARS), score: raw.score ?? 0 });

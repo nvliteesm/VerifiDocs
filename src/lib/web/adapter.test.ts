@@ -6,6 +6,7 @@ import {
   cleanUrl,
   createWebSearch,
   loadWebSearchConfig,
+  plainText,
   type PostFn,
 } from "./adapter";
 
@@ -30,6 +31,37 @@ describe("loadWebSearchConfig", () => {
     expect(loadWebSearchConfig({})).toBeNull();
     expect(loadWebSearchConfig({ TAVILY_API_KEY: "  " })).toBeNull();
     expect(loadWebSearchConfig({ TAVILY_API_KEY: ` ${KEY} ` })).toEqual({ apiKey: KEY });
+  });
+});
+
+describe("plainText", () => {
+  const flat = (text: string) => plainText(text).replace(/\s+/g, " ").trim();
+
+  it("drops heading and list markers at the start of a line, and keeps the words", () => {
+    expect(plainText("### Free\n$0 per member / month\n\n- Plus\n* Business\n+ Enterprise")).toBe("Free\n$0 per member / month\n\nPlus\nBusiness\nEnterprise");
+    expect(flat("## The bottom line Notion is free for individuals")).toBe("The bottom line Notion is free for individuals");
+    expect(flat("> a quoted line")).toBe("a quoted line");
+  });
+
+  it("keeps the text of links and images, and of code", () => {
+    expect(plainText("See [the pricing page](https://x.example/p) and ![logo](https://x.example/l.png).")).toBe("See the pricing page and logo.");
+    expect(plainText("Run `npm test` now, or ```npm run build``` later.")).toBe("Run npm test now, or npm run build later.");
+  });
+
+  it("removes bold and simple italics, but not underscores, a lone asterisk or a minus sign", () => {
+    expect(plainText("**Free** for *individuals*, (*teams* extra)")).toBe("Free for individuals, (teams extra)");
+    expect(plainText("snake_case, __init__, 2*3*4 and -5% growth")).toBe("snake_case, __init__, 2*3*4 and -5% growth");
+  });
+
+  it("turns a table into its cells, and drops rules and html tags", () => {
+    expect(flat("| Plan | Price |\n| --- | :---: |\n| Free | $0 |")).toBe("Plan Price Free $0");
+    expect(flat("above\n---\nbelow\n***\nend")).toBe("above below end");
+    expect(flat("a<br>b <b>c</b>")).toBe("a b c");
+  });
+
+  it("leaves plain text exactly as it was", () => {
+    const plain = "Notion is free for individuals. Teams pay $10 per member a month (as of November 2026): see https://example.com/a.";
+    expect(plainText(plain)).toBe(plain);
   });
 });
 
@@ -80,6 +112,16 @@ describe("search", () => {
     expect(results.map((r) => r.url)).toEqual(["https://good.example/a", "https://other.example/b"]);
     expect(results[0]).toMatchObject({ title: "Good page", score: 0.9 });
     expect(results[1]!.score).toBe(0);
+  });
+
+  it("hands the model plain text: a markdown snippet comes back without its markup", async () => {
+    const { post } = fakePost(
+      json({
+        results: [{ url: "https://good.example/a", title: "Pricing", content: "## The bottom line\n\nNotion is free for **individuals**, and teams pay $10 per member a month on [Plus](https://x.example)." }],
+      }),
+    );
+    const [result] = await createWebSearch({ apiKey: KEY }, post).search("q");
+    expect(result!.content).toBe("The bottom line Notion is free for individuals, and teams pay $10 per member a month on Plus.");
   });
 
   it("caps a long snippet", async () => {

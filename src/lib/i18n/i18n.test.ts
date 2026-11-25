@@ -16,6 +16,15 @@ describe("messages", () => {
     for (const key of keys) expect(placeholdersOf(MESSAGES.id[key]), key).toEqual(placeholdersOf(MESSAGES.en[key]));
   });
 
+  it("names every outside service the draft's words go to in the privacy notice, in both languages", () => {
+    // A trust statement that leaves one out is wrong (antislop audit 001, finding 1): Search the web sends search words
+    // to Tavily, so Tavily is named, as Gemini, Crossref and OpenAlex are.
+    for (const locale of LOCALES) {
+      const notice = MESSAGES[locale]["note.sent.body"];
+      for (const service of ["Gemini", "Crossref", "OpenAlex", "Tavily"]) expect(notice, `${locale} ${service}`).toContain(service);
+    }
+  });
+
   it("has no empty text, except the advice for Supported", () => {
     for (const locale of LOCALES) {
       for (const key of keys) {

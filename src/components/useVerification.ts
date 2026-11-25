@@ -96,6 +96,23 @@ export function useVerification(api: Api) {
     [api],
   );
 
+  /**
+   * Search the web for one uncited claim, after Find a source found no paper. Resolves with null when it worked (the
+   * pages, or "none found", are now on the claim), or with a message to show on the card when it failed.
+   */
+  const findWebSources = useCallback(
+    async (claimId: string): Promise<string | null> => {
+      try {
+        const found = await api.findWebSources(claimId);
+        dispatch({ type: "webSources", claimId, sources: found.sources });
+        return null;
+      } catch (error) {
+        return messageOf(error, latest.current.t, latest.current.locale);
+      }
+    },
+    [api],
+  );
+
   const reset = useCallback(() => {
     controller.current?.abort();
     writeStored(LAST_RUN_KEY, null);
@@ -140,5 +157,5 @@ export function useVerification(api: Api) {
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  return { state, start, check, resume, retry, readPart, findSources, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
+  return { state, start, check, resume, retry, readPart, findSources, findWebSources, reset, stop, deleteCheck, lastRunId: () => readStored(LAST_RUN_KEY) };
 }

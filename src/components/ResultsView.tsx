@@ -5,7 +5,7 @@ import type { FlagReason } from "@/lib/flag-reasons";
 import { pluralKey, type MessageKey } from "@/lib/i18n";
 import { localizeReason } from "@/lib/i18n/reasons";
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
-import { inTextCitation, referenceEntry } from "@/lib/client/cite";
+import { inTextCitation, referenceEntry, webInTextCitation, webReferenceEntry } from "@/lib/client/cite";
 import type { ClaimView, FoundSourceView, Verdict } from "@/lib/client/types";
 import { SUMMARY_ORDER, VERDICT_INFO, verdictAdvice, verdictLabel } from "@/lib/client/verdict-info";
 import { isOptional } from "@/lib/fix-list";
@@ -32,6 +32,8 @@ interface Props {
   onEvent: (name: "evidence_opened" | "verdict_flagged_wrong" | "fix_accepted" | "source_copied", props?: Record<string, unknown>) => void;
   /** Find a source for an uncited claim: null when it worked, else a message for the card. */
   onFindSources?: (claimId: string) => Promise<string | null>;
+  /** Search the web for an uncited claim after Find a source found no paper: null when it worked, else a message for the card. */
+  onFindWebSources?: (claimId: string) => Promise<string | null>;
   /**
    * Check a claim against found paper `rank`: its free PDF (file null) or the student's upload. Reports each stage,
    * and resolves with null when the check ran, else a message for the card.
@@ -70,6 +72,7 @@ interface CardProps {
   onRetry: () => void;
   onEvent: Props["onEvent"];
   onFindSources?: Props["onFindSources"];
+  onFindWebSources?: Props["onFindWebSources"];
   onAttachSource?: Props["onAttachSource"];
   /** The check has ended, so a claim with no verdict was not checked rather than waiting. */
   ended: boolean;
@@ -118,11 +121,14 @@ function FoundSources({
   claim,
   onFind,
   onAttach,
+  onFindWeb,
   onEvent,
 }: {
   claim: ClaimView;
   onFind: (claimId: string) => Promise<string | null>;
   onAttach?: Props["onAttachSource"];
+  /** Offered under "No paper found" when web search is set up on the server. */
+  onFindWeb?: Props["onFindWebSources"];
   onEvent: Props["onEvent"];
 }) {
   const { t } = useT();
@@ -145,11 +151,13 @@ function FoundSources({
     if (failed) setAttachError({ rank, message: failed });
   };
   const answer = useRef<HTMLParagraphElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const justFound = useRef(false);
   useEffect(() => {
     if (claim.sourcesSearched && justFound.current) {
       justFound.current = false;
-      answer.current?.focus();
+      // The answer is either the "No paper found" line or the list's heading: only one is on the page.
+      (answer.current ?? titleRef.current)?.focus();
     }
   }, [claim.sourcesSearched]);
 
@@ -189,9 +197,12 @@ function FoundSources({
   const sources = claim.sources ?? [];
   if (sources.length === 0) {
     return (
-      <p className="hint found-none" ref={answer} tabIndex={-1}>
-        {t("found.none")}
-      </p>
+      <>
+        <p className="hint found-none" ref={answer} tabIndex={-1}>
+          {t("found.none")}
+        </p>
+        {onFindWeb && <WebSources claim={claim} onFind={onFindWeb} onEvent={onEvent} />}
+      </>
     );
   }
 
@@ -203,9 +214,9 @@ function FoundSources({
 
   return (
     <section className="found" aria-labelledby={`found-${claim.id}`}>
-      <p className="found-title" id={`found-${claim.id}`} ref={answer} tabIndex={-1}>
+      <h4 className="found-title" id={`found-${claim.id}`} ref={titleRef} tabIndex={-1}>
         {t("found.title")}
-      </p>
+      </h4>
       <p className="found-note">{t("found.unread")}</p>
       <ol className="found-list">
         {sources.map((source) => (
@@ -285,8 +296,146 @@ function FoundSources({
   );
 }
 
+/** A page's address as a link target only when it is http(s); anything else is shown as plain text. */
+function webHref(url: string): string | null {
+  return /^https?:\/\//i.test(url) ? url : null;
+}
+
+/** "25 November 2026", in the interface language. A date that cannot be read gives an empty string. */
+function retrievedOn(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(locale === "id" ? "id-ID" : "en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/**
+ * Search the web, under the "No paper found" line (docs/web-sources.md). The pages are "not read yet" and not peer
+ * reviewed: the note sits right above them, and nothing here changes the verdict. The button leaves the page when
+ * the answer arrives, so focus moves to the answer.
+ */
+function WebSources({
+  claim,
+  onFind,
+  onEvent,
+}: {
+  claim: ClaimView;
+  onFind: (claimId: string) => Promise<string | null>;
+  onEvent: Props["onEvent"];
+}) {
+  const { t, locale } = useT();
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const answer = useRef<HTMLParagraphElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const justFound = useRef(false);
+  useEffect(() => {
+    if (claim.webSearched && justFound.current) {
+      justFound.current = false;
+      (answer.current ?? titleRef.current)?.focus();
+    }
+  }, [claim.webSearched]);
+
+  if (!claim.webSearched) {
+    return (
+      <div className="find">
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={searching}
+          onClick={async () => {
+            setSearching(true);
+            setError(null);
+            justFound.current = true;
+            const failed = await onFind(claim.id);
+            setSearching(false);
+            if (failed) {
+              justFound.current = false;
+              setError(failed);
+            }
+          }}
+        >
+          {searching ? t("web.searching") : t("web.button")}
+        </button>
+        <span className="sr-only" role="status">
+          {searching ? t("web.searching") : ""}
+        </span>
+        {error && (
+          <p role="alert" className="hint hint-bad">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const pages = claim.webSources ?? [];
+  if (pages.length === 0) {
+    return (
+      <p className="hint found-none" ref={answer} tabIndex={-1}>
+        {t("web.none")}
+      </p>
+    );
+  }
+
+  const copyText = async (key: string, text: string, kind: "reference" | "in_text") => {
+    const ok = await copy(text);
+    setCopied(ok ? key : null);
+    if (ok) onEvent("source_copied", { kind });
+  };
+
+  return (
+    <section className="found" aria-labelledby={`web-${claim.id}`}>
+      <h4 className="found-title" id={`web-${claim.id}`} ref={titleRef} tabIndex={-1}>
+        {t("web.title")}
+      </h4>
+      <p className="found-note">{t("web.note")}</p>
+      <ol className="found-list">
+        {pages.map((page) => {
+          const href = webHref(page.url);
+          const date = retrievedOn(page.retrievedAt, locale);
+          // A title's own trailing period is dropped, and the arrow is held to the last word so it never sits alone.
+          const title = page.title.replace(/\.\s*$/, "");
+          const words = title.split(" ");
+          const last = words.pop() ?? "";
+          const head = words.length > 0 ? `${words.join(" ")} ` : "";
+          return (
+            <li key={page.rank}>
+              {href ? (
+                <a className="found-paper" href={href} target="_blank" rel="noopener noreferrer">
+                  {head}
+                  <span className="link-end">
+                    {last}
+                    <span aria-hidden="true">{" ↗"}</span>
+                  </span>
+                  <span className="sr-only"> {t("found.newTab")}</span>
+                </a>
+              ) : (
+                <span className="found-paper">{title}</span>
+              )}
+              <span className="hint">{date ? `${page.site} · ${t("web.retrieved", { date })}` : page.site}</span>
+              {page.relevance === "related" && <span className="hint">{t("found.related")}</span>}
+              <p className="found-quote">
+                <span className="hint">{t("web.snippet")}</span> “{shortQuote(page.sentence)}”
+              </p>
+              <div className="actions">
+                <button type="button" className="btn btn-small" onClick={() => void copyText(`${page.rank}:ref`, webReferenceEntry(page), "reference")}>
+                  {copied === `${page.rank}:ref` ? t("found.copied") : t("found.copyRef")}
+                </button>
+                <button type="button" className="btn btn-small" onClick={() => void copyText(`${page.rank}:in`, webInTextCitation(page), "in_text")}>
+                  {copied === `${page.rank}:in` ? t("found.copied") : t("found.copyInText")}
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
 // `flagged` and `copied` live in ResultsView, because a card unmounts whenever the filter changes.
-function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, onFindSources, onAttachSource, ended, scanned }: CardProps) {
+function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, onEvent, onFindSources, onFindWebSources, onAttachSource, ended, scanned }: CardProps) {
   const verdict = claim.verdict;
   const { t } = useT();
   // After "This verdict is wrong", the student picks a reason. The button they pressed has left the page, so focus
@@ -346,7 +495,7 @@ function ClaimCard({ claim, error, flagged, copied, onFlag, onCopied, onRetry, o
       )}
 
       {verdict === "no_citation_given" && onFindSources && (
-        <FoundSources claim={claim} onFind={onFindSources} onAttach={onAttachSource} onEvent={onEvent} />
+        <FoundSources claim={claim} onFind={onFindSources} onAttach={onAttachSource} onFindWeb={onFindWebSources} onEvent={onEvent} />
       )}
 
       {claim.quote && (
@@ -478,7 +627,7 @@ export function groupBySection(claims: ClaimView[], needsAttention: (claim: Clai
     .map(({ key, heading, claims: list, attention }) => ({ key, heading, claims: list, attention }));
 }
 
-export function ResultsView({ state, draftLabel = null, focusWhenDone = false, onRetryClaim, onReadPart, onEvent, onFindSources, onAttachSource }: Props) {
+export function ResultsView({ state, draftLabel = null, focusWhenDone = false, onRetryClaim, onReadPart, onEvent, onFindSources, onFindWebSources, onAttachSource }: Props) {
   const { t, locale } = useT();
   // The part being read again, if any (one at a time: each is one model request).
   const [readingPart, setReadingPart] = useState<number | null>(null);
@@ -598,6 +747,7 @@ export function ResultsView({ state, draftLabel = null, focusWhenDone = false, o
       onRetry={() => onRetryClaim(claim.id)}
       onEvent={onEvent}
       onFindSources={onFindSources}
+      onFindWebSources={state.webSearch ? onFindWebSources : undefined}
       onAttachSource={onAttachSource}
     />
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inTextCitation, referenceEntry } from "./cite";
+import { inTextCitation, referenceEntry, webInTextCitation, webReferenceEntry } from "./cite";
 
 const paper = (authors: string[], year: number | null = 2021) => ({
   authors,
@@ -7,6 +7,33 @@ const paper = (authors: string[], year: number | null = 2021) => ({
   title: "Flexible work in small firms",
   venue: "Journal of Work",
   doi: "https://doi.org/10.1/w1",
+});
+
+describe("web page citations", () => {
+  const page = {
+    site: "stats.example.gov",
+    title: "Labour force survey.",
+    url: "https://stats.example.gov/labour",
+    retrievedAt: "2026-11-25T12:00:00.000Z",
+  };
+
+  it("uses the site as the author and n.d. for the date, because the page's own are not known", () => {
+    expect(webInTextCitation(page)).toBe("(stats.example.gov, n.d.)");
+  });
+
+  it("builds an APA 7 reference with the day the page was retrieved, in English whatever the interface language", () => {
+    expect(webReferenceEntry(page)).toBe(
+      "stats.example.gov. (n.d.). Labour force survey. Retrieved November 25, 2026, from https://stats.example.gov/labour",
+    );
+  });
+
+  it("gives the retrieved day in UTC, so the same page is cited the same way anywhere", () => {
+    expect(webReferenceEntry({ ...page, retrievedAt: "2026-11-25T23:30:00.000Z" })).toContain("Retrieved November 25, 2026");
+  });
+
+  it("falls back to the address alone when the date cannot be read", () => {
+    expect(webReferenceEntry({ ...page, retrievedAt: "not a date" })).toBe("stats.example.gov. (n.d.). Labour force survey. https://stats.example.gov/labour");
+  });
 });
 
 describe("inTextCitation", () => {

@@ -659,6 +659,131 @@ describe("Find a source on a claim card", () => {
   });
 });
 
+describe("Search the web on a claim card", () => {
+  const PAGE = {
+    rank: 1,
+    url: "https://stats.example.gov/labour",
+    site: "stats.example.gov",
+    title: "Labour force survey",
+    sentence: "Casual jobs rose by 18 percent between 2015 and 2020.",
+    relevance: "direct" as const,
+    // Noon UTC, so the shown day is the same in every time zone the tests may run in.
+    retrievedAt: "2026-11-25T12:00:00.000Z",
+  };
+  const PAPER = {
+    rank: 1,
+    openalexId: "https://openalex.org/W1",
+    doi: "https://doi.org/10.1/w1",
+    title: "Flexible work in small firms",
+    year: 2021,
+    authors: ["Kim Lee"],
+    venue: null,
+    openAccessPdf: null,
+    sentence: "Casual employment grew 18% between 2015 and 2020.",
+    relevance: "direct" as const,
+  };
+  /** An uncited claim whose paper search ran and found nothing: the state that offers the web. */
+  const noPaper = (extra: Partial<ClaimView> = {}) => claim("no_citation_given", { citation: null, sourcesSearched: true, sources: [], ...extra });
+  const show = (claims: ClaimView[], webSearch = true, onFindWeb = vi.fn(), onEvent = vi.fn()) =>
+    render(
+      <ResultsView
+        state={{ ...stateOf(claims), webSearch }}
+        onRetryClaim={noop}
+        onEvent={onEvent}
+        onFindSources={vi.fn()}
+        onFindWebSources={onFindWeb}
+      />,
+    );
+
+  it("offers Search the web only under No paper found, and only when web search is set up", () => {
+    show([noPaper()]);
+    expect(screen.getByText("No paper found. A product or company fact is best cited from its official page.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Search the web" })).toBeTruthy();
+    cleanup();
+
+    // Not set up on the server: the same card, no button.
+    show([noPaper()], false);
+    expect(screen.queryByRole("button", { name: "Search the web" })).toBeNull();
+    cleanup();
+
+    // The paper search has not run, or found a paper: the web is not the next step.
+    show([claim("no_citation_given", { citation: null }), noPaper({ sources: [PAPER] })]);
+    expect(screen.queryByRole("button", { name: "Search the web" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Find a source" })).toHaveLength(1);
+  });
+
+  it("says it is searching while it waits, and shows the failure with the button back", async () => {
+    const user = userEvent.setup();
+    let finish: (value: string | null) => void = () => {};
+    const onFindWeb = vi.fn(() => new Promise<string | null>((resolve) => (finish = resolve)));
+    show([noPaper()], true, onFindWeb);
+    await user.click(screen.getByRole("button", { name: "Search the web" }));
+    expect(onFindWeb).toHaveBeenCalledWith("c" + n);
+    expect(screen.getByRole("button", { name: "Searching the web…" })).toHaveProperty("disabled", true);
+    finish("The web search is busy. Try again in a moment.");
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The web search is busy. Try again in a moment.");
+    expect(screen.getByRole("button", { name: "Search the web" })).toHaveProperty("disabled", false);
+  });
+
+  it("shows pages as unread leads: site and retrieved date, a link out, and copyable web citations", async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    const onEvent = vi.fn();
+    show([noPaper({ webSearched: true, webSources: [PAGE] })], true, vi.fn(), onEvent);
+
+    expect(screen.getByText("Not read yet, and not peer reviewed: open one and check it before you cite it.")).toBeTruthy();
+    const link = screen.getByRole("link", { name: /Labour force survey/ });
+    expect(link.getAttribute("href")).toBe("https://stats.example.gov/labour");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(link.textContent).toContain("(opens in a new tab)");
+    expect(screen.getByText("stats.example.gov · Retrieved 25 November 2026")).toBeTruthy();
+    expect(screen.getByText(/Casual jobs rose by 18 percent/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Search the web" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Copy in-text" }));
+    expect(write).toHaveBeenLastCalledWith("(stats.example.gov, n.d.)");
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Copy reference" }));
+    expect(write).toHaveBeenLastCalledWith("stats.example.gov. (n.d.). Labour force survey. Retrieved November 25, 2026, from https://stats.example.gov/labour");
+    expect(onEvent).toHaveBeenCalledWith("source_copied", { kind: "in_text" });
+    expect(onEvent).toHaveBeenCalledWith("source_copied", { kind: "reference" });
+  });
+
+  it("says plainly when no web page was found", () => {
+    show([noPaper({ webSearched: true, webSources: [] })]);
+    expect(screen.getByText("No web page found.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Search the web" })).toBeNull();
+  });
+
+  it("marks a page that is only on the same topic", () => {
+    show([noPaper({ webSearched: true, webSources: [PAGE, { ...PAGE, rank: 2, relevance: "related", title: "Wages in retail", url: "https://retail.example/wages" }] })]);
+    expect(screen.getAllByText("Same topic, not your exact claim")).toHaveLength(1);
+  });
+
+  it("makes both source blocks real headings, so a screen reader can jump to them", () => {
+    show([noPaper({ webSearched: true, webSources: [PAGE] }), noPaper({ sources: [PAPER] })]);
+    expect(screen.getByRole("heading", { level: 4, name: "Possible web pages" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 4, name: "Possible sources" })).toBeTruthy();
+  });
+
+  it("drops a title's trailing period and keeps the arrow with the last word, so it never sits alone", () => {
+    show([noPaper({ webSearched: true, webSources: [{ ...PAGE, title: "Labour force survey." }, { ...PAGE, rank: 2, title: "Pricing", url: "https://p.example/x" }] })]);
+    const links = screen.getAllByRole("link");
+    expect(links[0]!.textContent).toContain("Labour force survey");
+    expect(links[0]!.textContent).not.toContain("survey.");
+    expect(links[0]!.querySelector(".link-end")!.textContent).toBe("survey ↗");
+    // A one-word title has no earlier words to keep apart.
+    expect(links[1]!.querySelector(".link-end")!.textContent).toBe("Pricing ↗");
+  });
+
+  it("shows a page whose address is not http or https as plain text, never as a link", () => {
+    show([noPaper({ webSearched: true, webSources: [{ ...PAGE, url: "javascript:alert(1)" }] })]);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("Labour force survey")).toBeTruthy();
+  });
+});
+
 describe("shortQuote", () => {
   it("keeps a short sentence whole, and cuts a long one at a word with an ellipsis", () => {
     expect(shortQuote("Casual employment grew 18%.")).toBe("Casual employment grew 18%.");

@@ -188,6 +188,45 @@ describe("countVerdicts", () => {
   });
 });
 
+describe("web sources", () => {
+  const page = {
+    rank: 1,
+    url: "https://stats.example.gov/labour",
+    site: "stats.example.gov",
+    title: "Labour force survey",
+    sentence: "Casual jobs rose by 18 percent between 2015 and 2020.",
+    relevance: "direct" as const,
+    retrievedAt: "2026-11-25T12:00:00.000Z",
+  };
+
+  it("puts the pages on the claim and marks it searched, even when there are none", () => {
+    const start = { ...initialState, claims: [claim("a", 1), claim("b", 2)] };
+    const found = reduce(start, { type: "webSources", claimId: "b", sources: [page] });
+    expect(found.claims.map((c) => c.webSearched)).toEqual([undefined, true]);
+    expect(found.claims[1]!.webSources).toEqual([page]);
+    const none = reduce(start, { type: "webSources", claimId: "a", sources: [] });
+    expect(none.claims[0]).toMatchObject({ webSearched: true, webSources: [] });
+    expect(none.claims[1]!.webSearched).toBeUndefined();
+  });
+
+  it("learns from a loaded run whether web search is set up, and says no when the server does not say", () => {
+    const run = (extra: Partial<RunResponse>): RunResponse => ({
+      run: { id: "r1", status: "completed", unitCount: 1, unitsExtracted: 1, claimCount: 0, createdAt: "2026-11-25T00:00:00Z", completedAt: null },
+      progress: { checked: 0, total: 0 },
+      counts: {},
+      fixList: [],
+      failedParts: [],
+      claims: [],
+      references: [],
+      ...extra,
+    });
+    expect(initialState.webSearch).toBe(false);
+    expect(reduce(initialState, { type: "loaded", run: run({ webSearch: true }) }).webSearch).toBe(true);
+    expect(reduce(initialState, { type: "loaded", run: run({ webSearch: false }) }).webSearch).toBe(false);
+    expect(reduce({ ...initialState, webSearch: true }, { type: "loaded", run: run({}) }).webSearch).toBe(false);
+  });
+});
+
 describe("found sources", () => {
   it("puts the papers on the claim and marks it searched", () => {
     const state = reduce({ ...initialState, claims: [claim("a", 1), claim("b", 2)] }, {

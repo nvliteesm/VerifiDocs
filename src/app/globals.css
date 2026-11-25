@@ -849,6 +849,8 @@ blockquote {
   border-radius: 8px;
 }
 .found-title {
+  margin: 0;
+  font-family: inherit;
   font-weight: 600;
   font-size: 0.95rem;
 }
@@ -873,6 +875,10 @@ blockquote {
   color: var(--accent);
   text-underline-offset: 3px;
   overflow-wrap: anywhere;
+}
+/* The last word of a link title and its arrow stay together, so the arrow never sits alone on a line. */
+.link-end {
+  white-space: nowrap;
 }
 .found-quote {
   font-size: 0.95rem;
