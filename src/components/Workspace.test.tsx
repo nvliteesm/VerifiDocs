@@ -63,7 +63,7 @@ describe("the draft canvas", () => {
   it("shows the whole draft with each claim sentence as a button tagged C-n, and the title names the file", () => {
     const { wrong, fine, draft } = twoClaims();
     view(stateOf([wrong, fine]), draft);
-    expect(screen.getByRole("heading", { name: "Draft: brief.txt" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "brief.txt" })).toBeTruthy();
     expect(screen.getByText(/Intro\./)).toBeTruthy();
     expect(sentence(/Subsidies dropped by 18%/).textContent).toContain("C-1");
     expect(sentence(/Inflation was 3.2%/).textContent).toContain("C-2");
@@ -72,14 +72,14 @@ describe("the draft canvas", () => {
   it("starts with nothing selected, and says what to do", () => {
     const { wrong, fine, draft } = twoClaims();
     view(stateOf([wrong, fine]), draft);
-    expect(screen.getByText("Select a highlighted sentence to see its check.")).toBeTruthy();
+    expect(screen.getByText("Select a sentence in the draft to see its check.")).toBeTruthy();
   });
 
   it("underlines by status with a plain-text cue for screen readers, not colour alone", () => {
     const { wrong, fine, draft } = twoClaims();
     view(stateOf([wrong, fine]), draft);
-    expect(sentence(/Subsidies dropped by 18%/).className).toContain("hl-fix");
-    expect(sentence(/Inflation was 3.2%/).className).toContain("hl-ok");
+    expect(sentence(/Subsidies dropped by 18%/).className).toContain("v-contradicted");
+    expect(sentence(/Inflation was 3.2%/).className).toContain("v-supported");
     expect(within(sentence(/Subsidies dropped by 18%/)).getByText("(Contradicted)")).toBeTruthy();
   });
 });
@@ -91,11 +91,13 @@ describe("the claim inspector", () => {
     const onEvent = view(stateOf([wrong, fine]), draft);
     await user.click(sentence(/Subsidies dropped by 18%/));
     const inspector = screen.getByRole("complementary", { name: "Claim inspector" });
-    expect(within(inspector).getByText("Contradicted")).toBeTruthy();
+    expect(inspector.querySelector(".insp .badge")?.textContent).toBe("Contradicted"); // the pill: icon, label and colour
     expect(within(inspector).getByText("The source gives a different figure.")).toBeTruthy();
-    expect(within(inspector).getByText("Source says")).toBeTruthy();
+    expect(within(inspector).getByText("Subsidies dropped by 18% in 2023.")).toBeTruthy(); // the sentence, as the headline
+    expect(within(inspector).getByText("The source says something different.")).toBeTruthy(); // what the verdict means
     expect(within(inspector).getByText(/Subsidy reduction remains at/)).toBeTruthy();
-    expect(within(inspector).getByText("Stats-Office-2024.pdf · Page 4")).toBeTruthy();
+    expect(within(inspector).getByText("Stats-Office-2024.pdf")).toBeTruthy();
+    expect(within(inspector).getByText("p. 4")).toBeTruthy();
     expect(sentence(/Subsidies dropped by 18%/).getAttribute("aria-current")).toBe("true");
     expect(onEvent).toHaveBeenCalledWith("evidence_opened", { verdict: "contradicted" });
   });
@@ -105,7 +107,7 @@ describe("the claim inspector", () => {
     const user = userEvent.setup();
     view(stateOf([wrong, fine]), draft);
     await user.click(sentence(/Subsidies dropped by 18%/));
-    expect(screen.getByText("Change 18% to 8%")).toBeTruthy();
+    expect(screen.getAllByText("Change 18% to 8%").length).toBeGreaterThan(0); // in the fix block, and as the fix list row
   });
 
   it("offers no fix on a supported claim", async () => {
@@ -145,7 +147,7 @@ describe("applying a fix", () => {
     expect(screen.queryByRole("button", { name: "Apply fix" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Undo" }));
-    expect(sentence(/Subsidies dropped by 18%/).className).toContain("hl-fix");
+    expect(sentence(/Subsidies dropped by 18%/).className).toContain("v-contradicted");
     expect(screen.getByRole("button", { name: "Apply fix" })).toBeTruthy();
   });
 
@@ -189,7 +191,7 @@ describe("applying a fix", () => {
     expect(screen.getByText("Ignored.")).toBeTruthy();
     expect(sentence(/Subsidies dropped by 18%/).className).toContain("hl-ignored");
     await user.click(screen.getByRole("button", { name: "Undo" }));
-    expect(sentence(/Subsidies dropped by 18%/).className).toContain("hl-fix");
+    expect(sentence(/Subsidies dropped by 18%/).className).toContain("v-contradicted");
   });
 });
 
@@ -238,19 +240,73 @@ describe("moving between issues", () => {
 });
 
 describe("filters", () => {
-  it("counts claims by status, and mutes the sentences a filter leaves out", async () => {
+  it("lists the verdicts that are present with a count each, and mutes the sentences a filter leaves out", async () => {
     const { wrong, fine, draft } = twoClaims();
     const user = userEvent.setup();
     view(stateOf([wrong, fine]), draft);
-    expect(screen.getByRole("button", { name: "All claims (2)" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Needs a fix (1)" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Verified (1)" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Needs a source/ })).toBeNull(); // nothing to show
+    const filters = within(screen.getByRole("group", { name: "Filter claims" }));
+    expect(filters.getByRole("button", { name: /^All claims\s*2$/ })).toBeTruthy();
+    expect(filters.getByRole("button", { name: /^Contradicted\s*1$/ })).toBeTruthy();
+    expect(filters.getByRole("button", { name: /^Supported\s*1$/ })).toBeTruthy();
+    expect(filters.queryByRole("button", { name: /^Partly/ })).toBeNull(); // no such claim
 
-    await user.click(screen.getByRole("button", { name: "Verified (1)" }));
-    expect(screen.getByRole("button", { name: "Verified (1)" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(filters.getByRole("button", { name: /^Supported/ }));
+    expect(filters.getByRole("button", { name: /^Supported/ }).getAttribute("aria-pressed")).toBe("true");
     expect(sentence(/Subsidies dropped by 18%/).className).toContain("hl-muted");
     expect(sentence(/Inflation was 3.2%/).className).not.toContain("hl-muted");
+  });
+});
+
+describe("the stats line", () => {
+  it("counts the checked claims, the supported ones and the ones that need attention, and drops a count when a fix is applied", async () => {
+    const { wrong, fine, draft } = twoClaims();
+    const user = userEvent.setup();
+    view(stateOf([wrong, fine]), draft);
+    const line = () => document.querySelector(".stats-line")?.textContent ?? "";
+    expect(line()).toContain("2 claims checked");
+    expect(line()).toContain("1 supported");
+    expect(line()).toContain("1 need attention");
+    await user.click(sentence(/Subsidies dropped by 18%/));
+    await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    expect(line()).toContain("0 need attention");
+    expect(line()).toContain("1 resolved");
+    expect(screen.getByRole("img", { name: "Verdicts across the draft" })).toBeTruthy();
+  });
+});
+
+describe("the fix list", () => {
+  function pair() {
+    const partial = claim("Gamma is 5%.", "partial", { fixSuggestion: "Gamma is 6%." });
+    const contradicted = claim("Alpha is 1%.", "contradicted", { fixSuggestion: "Alpha is 2%." });
+    return { partial, contradicted, draft: `${partial.text} ${contradicted.text}` };
+  }
+
+  it("ranks the open issues most serious first, with a count on the tab, and a press opens that claim", async () => {
+    const { partial, contradicted, draft } = pair();
+    const user = userEvent.setup();
+    view(stateOf([partial, contradicted]), draft);
+    await user.click(screen.getByRole("button", { name: /^Fix list\s*2$/ }));
+    const rows = screen.getAllByRole("button").filter((button) => button.className.includes("fixrow"));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.textContent).toContain("Change 1% to 2%"); // contradicted outranks partly supported
+    expect(rows[0]!.textContent).toContain("Contradicted");
+    expect(rows[1]!.textContent).toContain("Partly supported");
+
+    await user.click(rows[1]!);
+    expect(sentence(/Gamma is 5%/).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("button", { name: "Apply fix" })).toBeTruthy(); // back on the Claim tab
+  });
+
+  it("drops a claim from the list once its fix is applied, and says when nothing is left", async () => {
+    const { partial, contradicted, draft } = pair();
+    const user = userEvent.setup();
+    view(stateOf([partial, contradicted]), draft);
+    for (const text of [/Alpha is 1%/, /Gamma is 5%/]) {
+      await user.click(sentence(text));
+      await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    }
+    await user.click(screen.getByRole("button", { name: /^Fix list\s*0$/ }));
+    expect(screen.getByText("Nothing left to fix.")).toBeTruthy();
   });
 });
 

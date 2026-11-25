@@ -7,12 +7,14 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { FlagReason } from "@/lib/flag-reasons";
 import type { MessageKey } from "@/lib/i18n";
 import type { VerifierState } from "@/lib/client/verifier-state";
-import { buildWorkingDraft, fitFix, groupOf, openIssues, resolvedText, stepIssue } from "@/lib/client/working-draft";
-import { ClaimFilters, type Filter } from "./ClaimFilters";
+import { buildWorkingDraft, fitFix, openIssues, resolvedText, stepIssue } from "@/lib/client/working-draft";
+import { ClaimFilters, FILTER_ORDER, type Filter } from "./ClaimFilters";
 import { ClaimInspector, type Resolution } from "./ClaimInspector";
 import { copy } from "./claim-bits";
 import { DraftCanvas } from "./DraftCanvas";
+import { FixList } from "./FixList";
 import type { AttachFn, EventFn, FindFn } from "./FoundSources";
+import { pluralKey } from "@/lib/i18n";
 import { useT } from "./LocaleProvider";
 import { RunStatus } from "./RunStatus";
 
@@ -39,7 +41,8 @@ interface Props {
 }
 
 export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources, actions, after, onRetryClaim, onReadPart, onEvent, onFindSources, onFindWebSources, onAttachSource }: Props) {
-  const { t } = useT();
+  const { t, locale } = useT();
+  const [tab, setTab] = useState<"claim" | "fix">("claim");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [applied, setApplied] = useState<Readonly<Record<string, string>>>({});
@@ -66,17 +69,28 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
   const issues = useMemo(() => openIssues(state.claims, state.fixList, resolvedIds), [state.claims, state.fixList, resolvedIds]);
 
   const counts = useMemo(() => {
-    const out: Record<Filter, number> = { all: state.claims.length, fix: 0, source: 0, ok: 0, waiting: 0 };
-    for (const claim of state.claims) out[groupOf(claim)] += 1;
+    const out = { all: state.claims.length, waiting: 0 } as Record<Filter, number>;
+    for (const verdict of FILTER_ORDER) out[verdict] = 0;
+    for (const claim of state.claims) out[claim.verdict ?? "waiting"] += 1;
     return out;
   }, [state.claims]);
-  const shown = useMemo(() => (filter === "all" ? null : new Set(state.claims.filter((claim) => groupOf(claim) === filter).map((claim) => claim.id))), [filter, state.claims]);
+  const shown = useMemo(
+    () => (filter === "all" ? null : new Set(state.claims.filter((claim) => (filter === "waiting" ? claim.verdict === null : claim.verdict === filter)).map((claim) => claim.id))),
+    [filter, state.claims],
+  );
+  // The fix list is ranked by severity (the server's order); the previous and next buttons walk the draft in order.
+  const ranked = useMemo(() => {
+    const byId = new Map(state.claims.map((claim) => [claim.id, claim]));
+    return state.fixList.flatMap((id) => (byId.has(id) && !resolvedIds.has(id) ? [byId.get(id)!] : []));
+  }, [state.claims, state.fixList, resolvedIds]);
+  const checked = state.claims.filter((claim) => claim.verdict !== null).length;
 
   const active = state.claims.find((claim) => claim.id === activeId) ?? null;
   const at = active ? issues.findIndex((claim) => claim.id === active.id) : -1;
 
   const select = useCallback((id: string) => {
     setActiveId(id);
+    setTab("claim");
     setPane("claim");
     setInspectorOpen(true);
     // Bring the sentence into view in the draft; the inspector already shows the claim.
@@ -122,9 +136,24 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
       <div className="ws-bar">
         <div className="actions">{actions}</div>
         {state.claims.length > 0 && (
-          <p className="ws-progress">
-            {t("ws.progress", { checked: state.claims.filter((claim) => claim.verdict !== null).length, total: state.claims.length })}
-          </p>
+          <div className="stats">
+            <p className="stats-line">
+              <strong>{checked}</strong> {t(pluralKey(locale, "ws.s.checked", checked))} · <strong className="stat-ok">{counts.supported}</strong> {t("ws.s.ok")} ·{" "}
+              <strong className="stat-attn">{issues.length}</strong> {t("ws.s.attn")}
+              {resolutions.size > 0 && (
+                <>
+                  {" "}
+                  · <strong>{resolutions.size}</strong> {t("ws.s.resolved")}
+                </>
+              )}
+            </p>
+            <div className="stats-bar" role="img" aria-label={t("ws.s.bar")}>
+              {FILTER_ORDER.filter((verdict) => counts[verdict] > 0).map((verdict) => (
+                <span key={verdict} className={`bar-seg v-${verdict}`} style={{ flexGrow: counts[verdict] }} />
+              ))}
+              {counts.waiting > 0 && <span className="bar-seg v-waiting" style={{ flexGrow: counts.waiting }} />}
+            </div>
+          </div>
         )}
         <div className="actions ws-toggles">
           <button type="button" className="btn btn-small ws-toggle" aria-expanded={sideOpen} aria-controls="side" onClick={() => setSideOpen((open) => !open)}>
@@ -151,7 +180,7 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
           {sources}
           {state.claims.length > 0 && (
             <div className="side-filters">
-              <h2 className="pane-title">{t("ws.filters")}</h2>
+              <h2 className="pane-title">{t("ws.filtersTitle")}</h2>
               <ClaimFilters counts={counts} value={filter} onChange={setFilter} />
             </div>
           )}
@@ -180,29 +209,44 @@ export function Workspace({ state, draftText, draftLabel, focusWhenDone, sources
 
         <aside className="pane pane-insp" id="inspector" aria-label={t("ws.insp.title")}>
           {state.claims.length > 0 && (
-            <ClaimInspector
-              key={activeId ?? "none"}
-              claim={active}
-              label={active ? (working.labels.get(active.id) ?? null) : null}
-              error={active ? state.claimErrors[active.id] : undefined}
-              ended={finished}
-              scanned={scanned}
-              flagged={active ? flagged.has(active.id) : false}
-              resolution={active ? (resolutions.get(active.id) ?? null) : null}
-              canApply={active ? placed.has(active.id) : false}
-              place={at >= 0 ? { at: at + 1, of: issues.length } : null}
-              onPrev={() => step(-1)}
-              onNext={() => step(1)}
-              onApply={() => active?.fixSuggestion && apply(active.id, fitFix(active.text, active.fixSuggestion))}
-              onIgnore={() => active && ignore(active.id)}
-              onUndo={() => active && undo(active.id)}
-              onFlag={(reason) => active && flag(active.id, reason)}
-              onRetry={() => active && onRetryClaim(active.id)}
-              onEvent={onEvent}
-              onFindSources={onFindSources}
-              onFindWebSources={state.webSearch ? onFindWebSources : undefined}
-              onAttachSource={onAttachSource}
-            />
+            <>
+              <div className="tabs" role="group" aria-label={t("ws.tabs")}>
+                <button type="button" className="tab" aria-pressed={tab === "claim"} onClick={() => setTab("claim")}>
+                  {t("ws.tab.claim")}
+                </button>
+                <button type="button" className="tab" aria-pressed={tab === "fix"} onClick={() => setTab("fix")}>
+                  {t("ws.tab.fix")} <span className="mono tab-count">{issues.length}</span>
+                </button>
+              </div>
+              <div className="insp-body" hidden={tab !== "claim"}>
+                <ClaimInspector
+                  key={activeId ?? "none"}
+                  claim={active}
+                  label={active ? (working.labels.get(active.id) ?? null) : null}
+                  error={active ? state.claimErrors[active.id] : undefined}
+                  ended={finished}
+                  scanned={scanned}
+                  flagged={active ? flagged.has(active.id) : false}
+                  resolution={active ? (resolutions.get(active.id) ?? null) : null}
+                  canApply={active ? placed.has(active.id) : false}
+                  place={at >= 0 ? { at: at + 1, of: issues.length } : null}
+                  onPrev={() => step(-1)}
+                  onNext={() => step(1)}
+                  onApply={() => active?.fixSuggestion && apply(active.id, fitFix(active.text, active.fixSuggestion))}
+                  onIgnore={() => active && ignore(active.id)}
+                  onUndo={() => active && undo(active.id)}
+                  onFlag={(reason) => active && flag(active.id, reason)}
+                  onRetry={() => active && onRetryClaim(active.id)}
+                  onEvent={onEvent}
+                  onFindSources={onFindSources}
+                  onFindWebSources={state.webSearch ? onFindWebSources : undefined}
+                  onAttachSource={onAttachSource}
+                />
+              </div>
+              <div className="insp-body" hidden={tab !== "fix"}>
+                <FixList claims={ranked} labels={working.labels} onPick={select} />
+              </div>
+            </>
           )}
         </aside>
       </div>

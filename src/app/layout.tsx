@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
+import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
+
+// Self-hosted at build time (no request to Google when a student visits). The student's words are set in the serif,
+// the interface in the sans, and ids, pages and file names in the mono (see the design reference, 25 Nov 2026).
+const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500", "600"], style: ["normal", "italic"], display: "swap", variable: "--font-serif" });
+const sans = Inter({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
+const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], display: "swap", variable: "--font-mono" });
 
 export const metadata = {
   title: "VerifiDocs: check your claims against your sources",
@@ -12,7 +19,7 @@ const THEME_SCRIPT = `try{var t=localStorage.getItem("verifidocs.theme");if(t===
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${serif.variable} ${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

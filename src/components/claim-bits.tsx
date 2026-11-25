@@ -15,13 +15,22 @@ export async function copy(text: string): Promise<boolean> {
   }
 }
 
+/** The verdict's icon, drawn in the surrounding text colour. Decorative: the label next to it carries the meaning. */
+export function VerdictIcon({ verdict, size = 18 }: { verdict: Verdict; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d={VERDICT_INFO[verdict].icon} />
+    </svg>
+  );
+}
+
 /** `optional`: a general statement with no citation, shown as a suggestion rather than a problem. */
 export function Badge({ verdict, optional = false }: { verdict: Verdict; optional?: boolean }) {
   const { t } = useT();
-  const info = VERDICT_INFO[verdict];
   return (
-    <span className={`badge badge-${optional ? "muted" : info.tone}`}>
-      <span aria-hidden="true">{info.symbol}</span> {optional ? t("claim.optional") : verdictLabel(t, verdict)}
+    <span className={`badge ${optional ? "badge-muted" : `v-${verdict}`}`}>
+      {!optional && <VerdictIcon verdict={verdict} />}
+      {optional ? t("claim.optional") : verdictLabel(t, verdict)}
     </span>
   );
 }

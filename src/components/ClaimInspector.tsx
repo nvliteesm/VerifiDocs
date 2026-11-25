@@ -1,15 +1,15 @@
 "use client";
 
-// The right-hand pane: one claim at a time. What the check found, the draft sentence set against the source's own
-// words, and the fix, which the student applies to their working copy or ignores.
+// The right-hand pane, Claim tab: one claim at a time. The verdict and what it means, the sentence, the source's own
+// words with file and page, why, and the fix, which the student applies to their working copy or ignores.
 import { useEffect, useRef, useState } from "react";
 import type { FlagReason } from "@/lib/flag-reasons";
 import { localizeReason } from "@/lib/i18n/reasons";
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
 import { markDifferences } from "@/lib/client/numbers";
 import type { ClaimView } from "@/lib/client/types";
-import { verdictAdvice } from "@/lib/client/verdict-info";
-import { groupOf, numberChange } from "@/lib/client/working-draft";
+import { verdictAdvice, verdictMeaning } from "@/lib/client/verdict-info";
+import { numberChange } from "@/lib/client/working-draft";
 import { isOptional } from "@/lib/fix-list";
 import { Badge, copy, Pieces } from "./claim-bits";
 import { FlagVerdict } from "./FlagVerdict";
@@ -66,7 +66,7 @@ export function ClaimInspector(props: Props) {
       <button type="button" className="btn btn-small" onClick={onPrev} aria-label={t("ws.prev")}>
         <span aria-hidden="true">‹</span>
       </button>
-      {place && <span className="hint">{t("ws.place", { at: place.at, of: place.of })}</span>}
+      {place && <span className="mono">{t("ws.place", { at: place.at, of: place.of })}</span>}
       <button type="button" className="btn btn-small" onClick={onNext} aria-label={t("ws.next")}>
         <span aria-hidden="true">›</span>
       </button>
@@ -77,7 +77,7 @@ export function ClaimInspector(props: Props) {
     return (
       <div className="insp">
         <div className="insp-head">
-          <h2 className="pane-title">{t("ws.insp.title")}</h2>
+          <span />
           {nav}
         </div>
         <p className="empty">{t("ws.insp.empty")}</p>
@@ -97,23 +97,22 @@ export function ClaimInspector(props: Props) {
   return (
     <div className="insp" id={`claim-${claim.id}`}>
       <div className="insp-head">
-        <h2 className="pane-title">{t("ws.insp.title")}</h2>
+        <span className="mono">{label}</span>
         {nav}
       </div>
 
-      <h3 className="insp-title" data-group={resolution ?? groupOf(claim)}>
-        <span className="tag">{label}</span> <span className="insp-title-text">{claim.text}</span>
-      </h3>
-
-      <div className="insp-claim">
+      <div className="insp-verdict">
         {verdict ? <Badge verdict={verdict} optional={optional} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
+        {verdict && !optional && <p className="meaning">{verdictMeaning(t, verdict)}</p>}
         {claim.citation && (
-          <span className="citation">
+          <p className="mono citation">
             {claim.citation}
             {claim.citationInherited ? ` · ${t("claim.inherited")}` : ""}
-          </span>
+          </p>
         )}
       </div>
+
+      <blockquote className="insp-sentence">{numberMarks ? <Pieces pieces={numberMarks.claim} /> : claim.text}</blockquote>
 
       {/* The audit trail (PRD guard rule 2): this citation was attached here, after the claim was written. */}
       {claim.citationSource === "found" && <p className="found-tag">{t("claim.found")}</p>}
@@ -124,30 +123,14 @@ export function ClaimInspector(props: Props) {
         </p>
       ))}
 
-      {claim.reason && <p className="reason">{localizeReason(claim.reason, t)}</p>}
-      {verdict && verdict !== "supported" && !listMissing && (
-        <p className="next">
-          <strong>{t("claim.todo")}</strong> {notInList ? t("claim.notInList") : optional ? t("claim.optionalAdvice") : verdictAdvice(t, verdict)}
-        </p>
-      )}
-
-      {claim.quote ? (
-        <section className="compare" data-group={groupOf(claim)} aria-labelledby="compare-title">
-          <h3 id="compare-title" className="sub-title">
-            {t("ws.cmp.title")}
-          </h3>
-          <div className="compare-pair">
-            <div className="compare-box compare-box-draft">
-              <span className="compare-label">{t("ws.cmp.draft")}</span>
-              <p className="compare-text">{numberMarks ? <Pieces pieces={numberMarks.claim} /> : claim.text}</p>
-            </div>
-            <div className="compare-box compare-box-source">
-              <span className="compare-label">{t("ws.cmp.source")}</span>
-              <blockquote className="compare-quote">{numberMarks ? <Pieces pieces={numberMarks.quote} /> : claim.quote}</blockquote>
-            </div>
+      {claim.quote && (
+        <section className="evidence" aria-label={t("evidence.summary")}>
+          <div className="evidence-head">
+            <span className="mono evidence-file">{claim.sourceFile ?? ""}</span>
+            <span className="mono evidence-page">{claim.page !== null ? t("ws.page", { n: claim.page }) : ""}</span>
           </div>
-          <p className="hint">{[claim.sourceFile, claim.page !== null ? t("ws.page", { n: claim.page }) : null].filter(Boolean).join(" · ")}</p>
-          {numberMarks && <p className="hint">{t("evidence.numbers")}</p>}
+          <p className="evidence-quote">“{numberMarks ? <Pieces pieces={numberMarks.quote} /> : claim.quote}”</p>
+          {numberMarks && <p className="hint evidence-note">{t("evidence.numbers")}</p>}
           {/* Help to read an English quote. The quote above stays the evidence; this line is never checked. */}
           {claim.quoteGloss && (
             <p className="gloss">
@@ -155,8 +138,18 @@ export function ClaimInspector(props: Props) {
             </p>
           )}
         </section>
-      ) : (
-        <p className="compare-text compare-solo">{claim.text}</p>
+      )}
+
+      {claim.reason && (
+        <div>
+          <h3 className="sub-title">{t("ws.why")}</h3>
+          <p className="reason">{localizeReason(claim.reason, t)}</p>
+        </div>
+      )}
+      {verdict && verdict !== "supported" && !listMissing && (
+        <p className="next">
+          <strong>{t("claim.todo")}</strong> {notInList ? t("claim.notInList") : optional ? t("claim.optionalAdvice") : verdictAdvice(t, verdict)}
+        </p>
       )}
 
       {verdict === "no_citation_given" && props.onFindSources && (
@@ -165,12 +158,15 @@ export function ClaimInspector(props: Props) {
 
       {verdict && verdict !== "supported" && !optional && (
         <section className="remedy" aria-labelledby="remedy-title">
-          <h3 id="remedy-title" className="sub-title">
-            {t("ws.fix.title")}
-          </h3>
+          <div>
+            <h3 id="remedy-title" className="remedy-title">
+              {t("ws.fix.title")}
+            </h3>
+            {claim.fixSuggestion && !resolution && <p className="hint">{t("ws.fix.note")}</p>}
+          </div>
           {resolution ? (
             <>
-              <p className="hint" role="status">
+              <p className="remedy-done" role="status">
                 {resolution === "applied" ? t("ws.fix.applied") : t("ws.fix.ignored")}
               </p>
               <div className="actions">
@@ -184,12 +180,21 @@ export function ClaimInspector(props: Props) {
               {claim.fixSuggestion ? (
                 <>
                   {change && <p className="remedy-change">{t("ws.fix.change", { from: change.from, to: change.to })}</p>}
-                  <p className="remedy-sentence">{claim.fixSuggestion}</p>
+                  <div className="before-after">
+                    <div>
+                      <span className="ba-label">{t("ws.fix.before")}</span>
+                      <p className="ba-before">{claim.text}</p>
+                    </div>
+                    <div>
+                      <span className="ba-label ba-label-after">{t("ws.fix.after")}</span>
+                      <p className="ba-after">{claim.fixSuggestion}</p>
+                    </div>
+                  </div>
                 </>
               ) : (
                 <p className="hint">{t("ws.fix.none")}</p>
               )}
-              <div className="actions">
+              <div className="actions remedy-actions">
                 {claim.fixSuggestion && canApply && (
                   <button
                     type="button"

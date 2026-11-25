@@ -27,7 +27,11 @@ function Frame({ children, busy, wide }: { children?: React.ReactNode; busy?: bo
       </a>
       <header className="top">
         <span className="wordmark">
-          Verifi<span>Docs</span>
+          <svg width="28" height="28" viewBox="0 0 30 30" aria-hidden="true" focusable="false">
+            <rect width="30" height="30" rx="8" fill="var(--accent)" />
+            <path d="M8.5 15.5l4.2 4.2L21.5 10.5" fill="none" stroke="var(--accent-text)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          VerifiDocs
         </span>
         <div className="tools">
           <LanguageToggle />

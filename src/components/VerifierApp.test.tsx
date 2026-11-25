@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXAMPLE_DRAFT, EXAMPLE_REFERENCES, EXAMPLE_SOURCE_FILENAME, EXAMPLE_SOURCE_URL, exampleFor } from "@/lib/client/example";
@@ -513,7 +513,7 @@ describe("the scan, then the check", () => {
     expect(screen.getByText("1 cited and ready to check")).toBeTruthy();
     // A cited claim with no verdict says "Not checked yet" once its sentence is selected in the draft.
     await user.click(screen.getByRole("button", { name: /International trade rose 5 percent/ }));
-    expect(screen.getByText("Not checked yet")).toBeTruthy();
+    expect(within(screen.getByRole("complementary", { name: "Claim inspector" })).getByText("Not checked yet")).toBeTruthy();
     expect(server.count("POST /api/claims/claim-1/check")).toBe(0);
     expect(server.log.some((line) => line.includes("/check"))).toBe(false);
   });
@@ -582,7 +582,7 @@ describe("bringing a draft in without pasting it", () => {
     expect(server.count("POST /api/import")).toBe(1);
     expect(server.count("POST /api/runs")).toBe(1);
     // The results say what was checked.
-    expect(screen.getByText("Draft: Google Doc")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Google Doc" })).toBeTruthy();
   });
 
   it("waits when the document has no reference list at the end, and opens the reference list box", async () => {
@@ -671,7 +671,7 @@ describe("bringing a draft in without pasting it", () => {
     await user.upload(fileInput(), new File(["﻿First paragraph.\r\n\r\n\r\n\r\nSecond paragraph."], "draft.txt", { type: "text/plain" }));
     expect(await screen.findByText("Scan complete")).toBeTruthy();
     expect(server.count("POST /api/import")).toBe(0);
-    expect(screen.getByText("Draft: draft.txt")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "draft.txt" })).toBeTruthy();
   });
 
   it("sends a .pdf draft to the server to be read, then scans it", async () => {
@@ -694,7 +694,7 @@ describe("bringing a draft in without pasting it", () => {
 
     await user.upload(fileInput(), new File(["x"], "thesis.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
     expect(await screen.findByText("Scan complete")).toBeTruthy();
-    expect(screen.getByText("Draft: thesis.docx")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "thesis.docx" })).toBeTruthy();
   });
 });
 

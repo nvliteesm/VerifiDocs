@@ -102,8 +102,8 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
               <div className="source-main">
                 <span className="source-name">
                   {compact && (
-                    <svg className="file-icon" width="14" height="16" viewBox="0 0 14 16" aria-hidden="true" focusable="false">
-                      <path d="M2 1h6l4 4v10H2z M8 1v4h4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                    <svg className="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                      <path d={row.phase === "ready" ? "M5 12.5l4.5 4.5L19 7" : row.phase === "no_text" ? "M4 8V4h4 M16 4h4v4 M20 16v4h-4 M8 20H4v-4 M8 12h8" : row.phase === "failed" ? "M6 6l12 12 M18 6L6 18" : "M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14z M20 20l-4-4"} />
                     </svg>
                   )}
                   {row.filename}

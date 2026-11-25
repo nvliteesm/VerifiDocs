@@ -113,7 +113,7 @@ export function RunStatus({ state, focusWhenDone, onReadPart }: Props) {
         </p>
       )}
 
-      {(finished || scanned) && total > 0 && <p className="run-line">{finished && !scanView ? tally : scanHeadline}</p>}
+      {(finished || scanned) && total > 0 && <p className={finished && !scanView ? "run-line sr-only" : "run-line"}>{finished && !scanView ? tally : scanHeadline}</p>}
       {scanView && total > 0 && (
         <ul className="scan-list">
           {couldUseSource > 0 && <li>{t("scan.optional", { n: couldUseSource })}</li>}

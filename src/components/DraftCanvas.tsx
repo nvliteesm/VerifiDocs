@@ -2,7 +2,7 @@
 
 // The centre pane: the draft is the hero. Each claim sentence is an inline button with a soft underline for its
 // status and a [C-n] tag; the selected one has a focus border. An applied fix shows as a small diff while selected.
-import { groupOf, type WorkingDraft } from "@/lib/client/working-draft";
+import type { WorkingDraft } from "@/lib/client/working-draft";
 import { verdictLabel } from "@/lib/client/verdict-info";
 import type { ClaimView } from "@/lib/client/types";
 import type { Resolution } from "./ClaimInspector";
@@ -41,12 +41,12 @@ interface SentenceProps {
 
 function Sentence({ claim, label, text, applied, resolution, active, muted, onSelect }: SentenceProps) {
   const { t } = useT();
-  const state = resolution ?? groupOf(claim);
+  const state = resolution ?? claim.verdict ?? "waiting";
   return (
     <button
       type="button"
       id={`hl-${claim.id}`}
-      className={`hl hl-${state}${active ? " hl-active" : ""}${muted ? " hl-muted" : ""}`}
+      className={`hl v-${state}${resolution ? ` hl-${resolution}` : ""}${active ? " hl-active" : ""}${muted ? " hl-muted" : ""}`}
       aria-current={active ? "true" : undefined}
       onClick={() => onSelect(claim.id)}
     >
@@ -74,7 +74,11 @@ export function DraftCanvas({ working, applied, resolutions, activeId, shown, dr
   return (
     <div className="canvas">
       <div className="canvas-head">
-        <h2 className="canvas-title">{draftLabel ? t("ws.draft", { name: draftLabel }) : t("ws.draftPlain")}</h2>
+        <div>
+          <p className="eyebrow mono">{t("ws.draftPane")}</p>
+          <h2 className="canvas-title">{draftLabel ?? t("ws.draftPlain")}</h2>
+          <p className="hint">{t("ws.hint")}</p>
+        </div>
         <div className="actions">
           <button type="button" className="btn btn-small" onClick={onNext} disabled={!hasIssues}>
             {t("ws.next")}
