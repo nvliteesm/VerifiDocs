@@ -1,0 +1,681 @@
+{
+  "config": {
+    "date": "2026-11-24T17:09:56.063Z",
+    "commit": "d5a9a6f",
+    "model": "gemini-3.8-flash",
+    "review": "gemini-4-hydrogen",
+    "runs": 1,
+    "includeProposed": false
+  },
+  "report": {
+    "claims": 40,
+    "runs": 1,
+    "notApproved": 0,
+    "preview": false,
+    "strict": 0.95,
+    "lenient": 1,
+    "missed": {
+      "count": 0,
+      "of": 15,
+      "rate": 0,
+      "ids": []
+    },
+    "meetsBar": true,
+    "errors": 0,
+    "retried": 0,
+    "reviewSkipped": {
+      "count": 0,
+      "ids": []
+    },
+    "quoteRetried": {
+      "count": 0,
+      "ids": []
+    },
+    "byExpected": {
+      "supported": {
+        "n": 18,
+        "strict": 1,
+        "got": {
+          "supported": 18
+        }
+      },
+      "contradicted": {
+        "n": 9,
+        "strict": 1,
+        "got": {
+          "contradicted": 9
+        }
+      },
+      "partial": {
+        "n": 3,
+        "strict": 0.3333333333333333,
+        "got": {
+          "contradicted": 2,
+          "partial": 1
+        }
+      },
+      "not_in_sources": {
+        "n": 3,
+        "strict": 1,
+        "got": {
+          "not_in_sources": 3
+        }
+      },
+      "cant_check": {
+        "n": 2,
+        "strict": 1,
+        "got": {
+          "cant_check": 2
+        }
+      },
+      "reference_not_found": {
+        "n": 3,
+        "strict": 1,
+        "got": {
+          "reference_not_found": 3
+        }
+      },
+      "no_citation_given": {
+        "n": 2,
+        "strict": 1,
+        "got": {
+          "no_citation_given": 2
+        }
+      }
+    },
+    "bySplit": {
+      "dev": {
+        "n": 30,
+        "strict": 0.9666666666666667,
+        "lenient": 1
+      },
+      "held_out": {
+        "n": 10,
+        "strict": 0.9,
+        "lenient": 1
+      }
+    },
+    "byLanguage": {
+      "en": {
+        "n": 20,
+        "strict": 1,
+        "lenient": 1
+      },
+      "id": {
+        "n": 20,
+        "strict": 0.9,
+        "lenient": 1
+      }
+    },
+    "unstable": [],
+    "latency": {
+      "p50": 7488,
+      "p95": 10707,
+      "max": 17117
+    }
+  },
+  "callTimes": {
+    "judge": {
+      "n": 33,
+      "p50": 3029,
+      "p95": 8321,
+      "max": 12633
+    },
+    "review": {
+      "n": 19,
+      "p50": 2367,
+      "p95": 3497,
+      "max": 3497
+    },
+    "other": {
+      "n": 12,
+      "p50": 2420,
+      "p95": 3755,
+      "max": 3755
+    },
+    "embed": {
+      "n": 33,
+      "p50": 349,
+      "p95": 432,
+      "max": 438
+    }
+  },
+  "rows": [
+    {
+      "id": "E01",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Passage P1 directly states that the authors evaluated residual nets with a depth of up to 152 layers on ImageNet, which is 8x deeper than VGG nets."
+    },
+    {
+      "id": "E02",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Pernyataan didukung secara langsung oleh teks yang menyatakan bahwa ensembel tersebut meraih galat top-5 sebesar 3,57% pada set uji ImageNet dan memenangkan juara pertama dalam kompetisi klasifikasi ILSVRC 2015."
+    },
+    {
+      "id": "E03",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The text explicitly states that the 152-layer residual network has lower complexity than VGG nets, not higher."
+    },
+    {
+      "id": "E04",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Kutipan secara langsung menyatakan bahwa korpus pra-pelatihan yang digunakan adalah BooksCorpus (800 juta kata) dan English Wikipedia (2.500 juta kata)."
+    },
+    {
+      "id": "E05",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage states that BERT pushed the GLUE score to 80.5%, not 90.5%."
+    },
+    {
+      "id": "E06",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Teks menyatakan bahwa skor F1 Pengujian SQuAD v1.1 adalah 93,2, bukan 95,2."
+    },
+    {
+      "id": "E07",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly states that the method is straightforward to implement, computationally efficient, and has little memory requirements."
+    },
+    {
+      "id": "E08",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Kutipan dari P1 secara langsung menyebutkan pengaturan bawaan yang baik untuk algoritma Adam dengan nilai parameter yang sama persis seperti pada klaim."
+    },
+    {
+      "id": "E09",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Klaim tersebut bertentangan dengan teks sumber, yang menyatakan bahwa Adam memiliki kebutuhan memori yang sedikit dan sangat cocok untuk masalah dengan data dan/atau parameter yang besar."
+    },
+    {
+      "id": "E10",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The authors explicitly state that they make no claim that their samples are better than those generated by existing methods."
+    },
+    {
+      "id": "E11",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Kutipan pada Passage P1 secara eksplisit menyatakan bahwa kerangka kerja tersebut berhubungan dengan permainan minimax dua pemain."
+    },
+    {
+      "id": "E12",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "not_in_sources",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "not_in_sources"
+      ],
+      "retrievalHit": false,
+      "lastReason": "The provided passages do not mention ImageNet or training the generative adversarial nets on more than one million ImageNet images."
+    },
+    {
+      "id": "E13",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly states that it takes less than a day to learn high quality word vectors from a 1.6 billion words dataset using the proposed architectures."
+    },
+    {
+      "id": "E14",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Klaim didukung secara langsung oleh kalimat abstrak pada sumber yang menyatakan pengusulan dua arsitektur model baru untuk menghitung representasi vektor kata kontinu dari kumpulan data yang sangat besar."
+    },
+    {
+      "id": "E15",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly states that Batch Normalization achieves the same accuracy with 14 times fewer training steps when applied to a state-of-the-art image classification model."
+    },
+    {
+      "id": "E16",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "partial"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Klaim menyatakan bahwa Batch Normalization 'sepenuhnya' menghilangkan kebutuhan akan Dropout, padahal sumber hanya menyatakan hal tersebut terjadi 'dalam beberapa kasus' (in some cases)."
+    },
+    {
+      "id": "E17",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The ensemble reached a 4.9% top-5 validation error on ImageNet, not 3.9%."
+    },
+    {
+      "id": "E18",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "not_in_sources",
+      "also": [],
+      "verdicts": [
+        "not_in_sources"
+      ],
+      "retrievalHit": null,
+      "lastReason": "Bagian teks yang disediakan tidak menyebutkan penurunan biaya inferensi sebesar 90 persen maupun aplikasi seluler."
+    },
+    {
+      "id": "E19",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly confirms that distilling the knowledge in an ensemble of models into a single model can significantly improve the acoustic model of a heavily used commercial system."
+    },
+    {
+      "id": "E20",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Pernyataan didukung secara tepat oleh teks yang menyatakan bahwa model RAG menggabungkan model seq2seq terlatih sebagai memori parametrik dan indeks vektor padat Wikipedia sebagai memori non-parametrik."
+    },
+    {
+      "id": "E21",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly states that the models set the state of the art on three open domain QA tasks."
+    },
+    {
+      "id": "E22",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Teks sumber menyatakan bahwa model RAG menghasilkan bahasa yang lebih faktual dibandingkan baseline seq2seq yang hanya parametrik, bukan kurang faktual."
+    },
+    {
+      "id": "E23",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passages show that the GCN model achieved an accuracy of 81.5% on the Cora dataset, not 91.5%."
+    },
+    {
+      "id": "E24",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Kutipan pada Passage 4 secara langsung menyatakan bahwa model tersebut berskala secara linear terhadap jumlah sisi graf."
+    },
+    {
+      "id": "E25",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly confirms that the authors evaluate their model on three citation network datasets, namely Citeseer, Cora, and Pubmed."
+    },
+    {
+      "id": "E26",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly states that on the WMT'14 English to French translation task, the LSTM achieved a BLEU score of 34.8."
+    },
+    {
+      "id": "E27",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Teks secara tegas menyatakan bahwa LSTM tidak mengalami kesulitan pada kalimat panjang, bertentangan dengan klaim yang menyebutkan LSTM kesulitan."
+    },
+    {
+      "id": "E28",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Pernyataan tersebut didukung sepenuhnya oleh teks pada Passage P3 yang menyatakan bahwa skor BLEU meningkat menjadi 36,5 ketika LSTM digunakan untuk memeringkat ulang 1000 hipotesis dari sistem SMT."
+    },
+    {
+      "id": "E29",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly confirms that 55% of the GPT-3.5 citations were fabricated compared to 18% of the GPT-4 citations."
+    },
+    {
+      "id": "E30",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Kutipan dari P1 secara langsung menyatakan bahwa mereka menggunakan 42 topik multidisiplin untuk menghasilkan 84 makalah dan mengumpulkan data atas 636 sitasi bibliografis."
+    },
+    {
+      "id": "E31",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Teks menyatakan bahwa 55% sitasi yang dipalsukan berasal dari GPT-3.5, sedangkan untuk GPT-4 hanya sebesar 18%."
+    },
+    {
+      "id": "E32",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passages explicitly state that 18% of the citations generated by GPT-4 were fabricated, contradicting the claim that it produces none."
+    },
+    {
+      "id": "E33",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "cant_check",
+      "also": [],
+      "verdicts": [
+        "cant_check"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The reference exists, but no uploaded source matches it. Upload the PDF to check this claim."
+    },
+    {
+      "id": "E34",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "cant_check",
+      "also": [],
+      "verdicts": [
+        "cant_check"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The reference exists, but no uploaded source matches it. Upload the PDF to check this claim."
+    },
+    {
+      "id": "E35",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "reference_not_found",
+      "also": [],
+      "verdicts": [
+        "reference_not_found"
+      ],
+      "retrievalHit": null,
+      "lastReason": "Reference 11 (\"Pratama, R., & Sari, D. (2022). Pengaruh kecerdasan buatan terhadap in...\") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it."
+    },
+    {
+      "id": "E36",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "reference_not_found",
+      "also": [],
+      "verdicts": [
+        "reference_not_found"
+      ],
+      "retrievalHit": null,
+      "lastReason": "Reference 15 (\"Wijaya, A., Kusuma, B., & Lestari, N. (2021). Analisis pemanfaatan kec...\") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it."
+    },
+    {
+      "id": "E37",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "reference_not_found",
+      "also": [],
+      "verdicts": [
+        "reference_not_found"
+      ],
+      "retrievalHit": null,
+      "lastReason": "\"Brown 2020\" is not in your reference list."
+    },
+    {
+      "id": "E38",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "no_citation_given",
+      "also": [],
+      "verdicts": [
+        "no_citation_given"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The claim has no citation."
+    },
+    {
+      "id": "E39",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "no_citation_given",
+      "also": [],
+      "verdicts": [
+        "no_citation_given"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The claim has no citation."
+    },
+    {
+      "id": "E40",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "not_in_sources",
+      "also": [],
+      "verdicts": [
+        "not_in_sources"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The passages do not mention GPU memory use or state that Batch Normalization halves it during training."
+    }
+  ]
+}

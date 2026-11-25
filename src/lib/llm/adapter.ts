@@ -73,6 +73,14 @@ export interface LlmConfig {
    * is no second look. A slower, stronger model than the judge's, used only where a mistake costs most.
    */
   reviewModel?: string;
+  /**
+   * Tokens each call on the main model (GEMINI_MODEL: extract, judge, fix) may spend thinking before it answers
+   * (GEMINI_THINKING_BUDGET). Optional: unset, the model decides, which is fine for a lite model and too slow for a
+   * stronger one (24 Nov 2026, gemini-3.8-flash: a fix call took 5.6 to 8 s while thinking about 490 tokens, and
+   * 2.3 s with 0; thinking also counts against the output cap, so a long thought can force a retry). 0 turns thinking
+   * off where the model allows it. The review model keeps its own budget, set where it is called.
+   */
+  thinkingBudget?: number;
   /** Hard deadline for each Gemini request. Defaults to 15 seconds. */
   timeoutMs?: number;
 }
@@ -163,11 +171,21 @@ export function loadLlmConfig(env: Record<string, string | undefined> = process.
     throw new LlmConfigError(`Missing required environment variables: ${missing.join(", ")}`);
   }
   const reviewModel = env.GEMINI_REVIEW_MODEL?.trim();
+  const budgetText = env.GEMINI_THINKING_BUDGET?.trim();
+  let thinkingBudget: number | undefined;
+  if (budgetText) {
+    thinkingBudget = Number(budgetText);
+    // The message names the variable, never its value.
+    if (!Number.isInteger(thinkingBudget) || thinkingBudget < 0) {
+      throw new LlmConfigError("GEMINI_THINKING_BUDGET must be a whole number of tokens, 0 or more.");
+    }
+  }
   return {
     apiKey: env.GEMINI_API_KEY as string,
     generationModel: env.GEMINI_MODEL as string,
     embeddingModel: env.GEMINI_EMBEDDING_MODEL as string,
     ...(reviewModel ? { reviewModel } : {}),
+    ...(thinkingBudget !== undefined ? { thinkingBudget } : {}),
   };
 }
 
@@ -201,6 +219,9 @@ export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
       throw new LlmConfigError("A review was asked for, but GEMINI_REVIEW_MODEL is not set.");
     }
     const model = request.role === "review" ? config.reviewModel! : config.generationModel;
+    // A budget on the request wins. Otherwise calls on the main model use GEMINI_THINKING_BUDGET, if set; the review
+    // model is left alone (its callers set 512).
+    const thinkingBudget = request.thinkingBudget ?? (request.role === "review" ? undefined : config.thinkingBudget);
 
     for (let attempt = 1; attempt <= MAX_JSON_ATTEMPTS; attempt += 1) {
       let text: string | undefined;
@@ -213,7 +234,7 @@ export function createLlm(config: LlmConfig, client?: GeminiClientLike): Llm {
             responseMimeType: "application/json",
             temperature: request.temperature ?? 0,
             maxOutputTokens: request.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-            ...(request.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: request.thinkingBudget } } : {}),
+            ...(thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget } } : {}),
             ...(request.system !== undefined ? { systemInstruction: request.system } : {}),
           },
         });

@@ -66,6 +66,23 @@ describe("loadLlmConfig", () => {
     expect(createLlm({ ...config, reviewModel: "test-review-model" }, fakeClient({}).client).reviewAvailable).toBe(true);
   });
 
+  it("reads the optional thinking budget; blank means unset, a bad value is refused by name only", () => {
+    const base = { GEMINI_API_KEY: "k", GEMINI_MODEL: "main-model", GEMINI_EMBEDDING_MODEL: "embed-model" };
+    expect(loadLlmConfig(base).thinkingBudget).toBeUndefined();
+    expect(loadLlmConfig({ ...base, GEMINI_THINKING_BUDGET: "  " }).thinkingBudget).toBeUndefined();
+    expect(loadLlmConfig({ ...base, GEMINI_THINKING_BUDGET: "512" }).thinkingBudget).toBe(512);
+    expect(loadLlmConfig({ ...base, GEMINI_THINKING_BUDGET: "0" }).thinkingBudget).toBe(0);
+    for (const bad of ["-1", "1.5", "lots", "12abc"]) {
+      expect(() => loadLlmConfig({ ...base, GEMINI_THINKING_BUDGET: bad })).toThrow(LlmConfigError);
+      expect(() => loadLlmConfig({ ...base, GEMINI_THINKING_BUDGET: bad })).toThrow(/GEMINI_THINKING_BUDGET/);
+      try {
+        loadLlmConfig({ ...base, GEMINI_THINKING_BUDGET: bad });
+      } catch (error) {
+        expect((error as Error).message).not.toContain(bad); // the message names the variable, never the value
+      }
+    }
+  });
+
   it("names every missing variable and never a value", () => {
     expect(() => loadLlmConfig({ GEMINI_API_KEY: "secret-value" })).toThrow(
       /GEMINI_MODEL, GEMINI_EMBEDDING_MODEL/,
@@ -257,6 +274,26 @@ describe("timeouts (hard rule 6: no request may run long)", () => {
     await llm.generateJson({ prompt: "p", schema: verdictSchema });
     await llm.generateJson({ prompt: "p", schema: verdictSchema, thinkingBudget: 512 });
     expect(generateCalls.map((call) => call.config?.thinkingConfig)).toEqual([undefined, { thinkingBudget: 512 }]);
+  });
+
+  it("applies the configured thinking budget to the main model only, and a budget on the request wins", async () => {
+    const answers = Array.from({ length: 5 }, () => '{"verdict":"supported","page":1}');
+    const { client, generateCalls } = fakeClient({ texts: answers });
+    const llm = createLlm({ ...config, reviewModel: "test-review-model", thinkingBudget: 0 }, client);
+    await llm.generateJson({ prompt: "judge", schema: verdictSchema }); // main model: the configured 0
+    await llm.generateJson({ prompt: "fix", schema: verdictSchema, thinkingBudget: 256 }); // the request wins
+    await llm.generateJson({ prompt: "review", schema: verdictSchema, role: "review" }); // review: left to its callers
+    await llm.generateJson({ prompt: "review", schema: verdictSchema, role: "review", thinkingBudget: 512 });
+    expect(generateCalls.map((call) => call.config?.thinkingConfig)).toEqual([
+      { thinkingBudget: 0 },
+      { thinkingBudget: 256 },
+      undefined,
+      { thinkingBudget: 512 },
+    ]);
+    // Unset, nothing is sent, as before.
+    const unset = fakeClient({ texts: answers });
+    await createLlm(config, unset.client).generateJson({ prompt: "p", schema: verdictSchema });
+    expect(unset.generateCalls[0]!.config?.thinkingConfig).toBeUndefined();
   });
 
   it("takes the answer a looping model wrote before it hit the cap", async () => {

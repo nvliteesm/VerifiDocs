@@ -1,0 +1,150 @@
+{
+  "config": {
+    "date": "2026-11-24T17:00:13.657Z",
+    "commit": "d5a9a6f",
+    "model": "gemini-3.8-flash",
+    "review": "gemini-4-hydrogen",
+    "runs": 1,
+    "includeProposed": false
+  },
+  "report": {
+    "claims": 5,
+    "runs": 1,
+    "notApproved": 0,
+    "preview": false,
+    "strict": 1,
+    "lenient": 1,
+    "missed": {
+      "count": 0,
+      "of": 2,
+      "rate": 0,
+      "ids": []
+    },
+    "meetsBar": true,
+    "errors": 0,
+    "retried": 0,
+    "reviewSkipped": {
+      "count": 0,
+      "ids": []
+    },
+    "quoteRetried": {
+      "count": 0,
+      "ids": []
+    },
+    "byExpected": {
+      "supported": {
+        "n": 3,
+        "strict": 1,
+        "got": {
+          "supported": 3
+        }
+      },
+      "contradicted": {
+        "n": 2,
+        "strict": 1,
+        "got": {
+          "contradicted": 2
+        }
+      }
+    },
+    "bySplit": {
+      "dev": {
+        "n": 4,
+        "strict": 1,
+        "lenient": 1
+      },
+      "held_out": {
+        "n": 1,
+        "strict": 1,
+        "lenient": 1
+      }
+    },
+    "byLanguage": {
+      "en": {
+        "n": 3,
+        "strict": 1,
+        "lenient": 1
+      },
+      "id": {
+        "n": 2,
+        "strict": 1,
+        "lenient": 1
+      }
+    },
+    "unstable": [],
+    "latency": {
+      "p50": 10569,
+      "p95": 18242,
+      "max": 18242
+    }
+  },
+  "rows": [
+    {
+      "id": "E01",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passage directly confirms that residual networks with a depth of up to 152 layers were evaluated on ImageNet, which is 8 times deeper than VGG nets."
+    },
+    {
+      "id": "E02",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Pernyataan didukung secara tepat oleh teks yang menyebutkan bahwa ensembel tersebut meraih galat top-5 sebesar 3,57% pada set uji ImageNet dan memenangkan juara pertama dalam kompetisi klasifikasi ILSVRC 2015."
+    },
+    {
+      "id": "E03",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "The passages state that the 152-layer residual network has lower complexity than VGG nets, not higher."
+    },
+    {
+      "id": "E04",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "supported"
+      ],
+      "retrievalHit": true,
+      "lastReason": "Kutipan dari teks secara eksplisit menyebutkan bahwa korpus pra-pelatihan yang digunakan adalah BooksCorpus (800 juta kata) dan Wikipedia bahasa Inggris (2.500 juta kata)."
+    },
+    {
+      "id": "E05",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "contradicted"
+      ],
+      "retrievalHit": true,
+      "lastReason": "BERT pushed the GLUE score to 80.5%, not 90.5%."
+    }
+  ]
+}

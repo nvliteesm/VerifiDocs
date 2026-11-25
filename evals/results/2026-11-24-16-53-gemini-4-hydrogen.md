@@ -1,0 +1,77 @@
+# Eval 2026-11-24
+
+Judge `gemini-4-hydrogen`, review `gemini-4-hydrogen`, commit `d5a9a6f`, 40 claims x 1 runs.
+
+| Measure | Result | Bar |
+| --- | --- | --- |
+| Correct verdicts (strict) | 85.0% | at least 90.0% |
+| Correct verdicts (lenient) | 85.0% | |
+| Missed unsupported (called Supported) | 0 of 15 (0.0%) | at most 5.0% |
+| Meets the bar | no | |
+| Retrieval: expected passage in the top 5 | 30 of 31 | |
+| Verdict changed between runs | none | |
+| Check time p50 / p95 / max | 11.2 s / 49.0 s / 70.2 s | under 10 s |
+| Checks that never finished | 0 | |
+| Checks that needed a retry | 9 of 40 | |
+| Quote not found, judge asked again | 0 | |
+| Second look failed (kept Partly supported) | 0 | none, or rerun those claims |
+
+| Split or language | Claims | Strict | Lenient |
+| --- | --- | --- | --- |
+| dev | 30 | 86.7% | 86.7% |
+| held_out | 10 | 80.0% | 80.0% |
+| en | 20 | 90.0% | 90.0% |
+| id | 20 | 80.0% | 80.0% |
+
+| Expected | Claims | Strict | What it said |
+| --- | --- | --- | --- |
+| supported | 18 | 83.3% | supported 15, cant_tell 3 |
+| contradicted | 9 | 88.9% | contradicted 8, cant_tell 1 |
+| not_in_sources | 3 | 100.0% | not_in_sources 3 |
+| partial | 3 | 33.3% | partial 1, cant_tell 2 |
+| cant_check | 2 | 100.0% | cant_check 2 |
+| reference_not_found | 3 | 100.0% | reference_not_found 3 |
+| no_citation_given | 2 | 100.0% | no_citation_given 2 |
+
+| Claim | Lang | Split | Expected | Verdicts per run | Retrieval |
+| --- | --- | --- | --- | --- | --- |
+| E01 | en | dev | supported | supported | hit |
+| E02 | id | dev | supported | supported | hit |
+| E03 | en | held_out | contradicted | contradicted | hit |
+| E04 | id | dev | supported | supported | hit |
+| E05 | en | dev | contradicted (or partial) | contradicted | hit |
+| E06 | id | held_out | partial (or contradicted) | cant_tell | hit |
+| E07 | en | dev | supported | supported | hit |
+| E08 | id | dev | supported | cant_tell | hit |
+| E09 | id | dev | contradicted | contradicted | hit |
+| E10 | en | dev | contradicted (or partial) | contradicted | hit |
+| E11 | id | held_out | supported | supported | hit |
+| E12 | en | dev | not_in_sources (or contradicted) | not_in_sources | miss |
+| E13 | en | dev | supported | supported | hit |
+| E14 | id | dev | supported | supported | hit |
+| E15 | en | dev | supported | supported | hit |
+| E16 | id | dev | partial (or contradicted) | partial | hit |
+| E17 | en | dev | contradicted (or partial) | contradicted | hit |
+| E18 | id | dev | not_in_sources | not_in_sources | - |
+| E19 | en | dev | supported | supported | hit |
+| E20 | id | dev | supported | supported | hit |
+| E21 | en | held_out | supported | supported | hit |
+| E22 | id | dev | contradicted | contradicted | hit |
+| E23 | en | dev | contradicted (or partial) | cant_tell | hit |
+| E24 | id | held_out | supported | supported | hit |
+| E25 | en | held_out | supported | cant_tell | hit |
+| E26 | en | dev | supported | supported | hit |
+| E27 | id | dev | partial (or contradicted) | cant_tell | hit |
+| E28 | id | dev | supported | supported | hit |
+| E29 | en | dev | supported | supported | hit |
+| E30 | id | dev | supported | cant_tell | hit |
+| E31 | id | held_out | contradicted | contradicted | hit |
+| E32 | en | dev | contradicted | contradicted | hit |
+| E33 | en | dev | cant_check | cant_check | - |
+| E34 | id | dev | cant_check | cant_check | - |
+| E35 | id | dev | reference_not_found | reference_not_found | - |
+| E36 | id | held_out | reference_not_found | reference_not_found | - |
+| E37 | en | dev | reference_not_found | reference_not_found | - |
+| E38 | id | dev | no_citation_given | no_citation_given | - |
+| E39 | en | held_out | no_citation_given | no_citation_given | - |
+| E40 | en | held_out | not_in_sources | not_in_sources | - |

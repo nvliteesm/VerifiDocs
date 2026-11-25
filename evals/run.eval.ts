@@ -17,7 +17,7 @@ import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import postgres from "postgres";
 import { runPool } from "../src/lib/client/pool";
-import { getLlm } from "../src/lib/llm/adapter";
+import { getLlm, type GenerateJsonRequest, type Llm } from "../src/lib/llm/adapter";
 import { checkClaim } from "../src/lib/pipeline/claim-check";
 import { createDocumentFromPdf, ingestNextBatch, MAX_DOCUMENTS_PER_SESSION } from "../src/lib/pipeline/ingest";
 import { resolveReference } from "../src/lib/pipeline/resolve-reference";
@@ -79,6 +79,48 @@ async function cachedPdf(source: Source): Promise<Uint8Array> {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Where a check's time goes (24 Nov 2026: gemini-3.8-flash judged well but checks took 11 s at p50, and a judge call
+// alone takes 2 to 3 s). The model client used for the claim checks is wrapped, and every call is timed by kind.
+// Durations only: no prompt, claim or quote is kept.
+type CallKind = "judge" | "review" | "other" | "embed";
+const callMs: Record<CallKind, number[]> = { judge: [], review: [], other: [], embed: [] };
+
+function kindOf(request: GenerateJsonRequest<unknown>): CallKind {
+  if (request.role === "review") return "review";
+  return request.prompt.includes("Decide whether the passages support the claim") ? "judge" : "other";
+}
+
+function timed(llm: Llm): Llm {
+  return {
+    ...llm,
+    generateJson: async (request) => {
+      const started = Date.now();
+      try {
+        return await llm.generateJson(request);
+      } finally {
+        callMs[kindOf(request as GenerateJsonRequest<unknown>)].push(Date.now() - started);
+      }
+    },
+    embed: async (texts, task) => {
+      const started = Date.now();
+      try {
+        return await llm.embed(texts, task);
+      } finally {
+        callMs.embed.push(Date.now() - started);
+      }
+    },
+  };
+}
+
+function callTimes(): Record<CallKind, { n: number; p50: number; p95: number; max: number }> {
+  const pick = (sorted: number[], p: number) => (sorted.length ? sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)]! : 0);
+  const summary = (list: number[]) => {
+    const sorted = [...list].sort((a, b) => a - b);
+    return { n: sorted.length, p50: pick(sorted, 0.5), p95: pick(sorted, 0.95), max: sorted.at(-1) ?? 0 };
+  };
+  return { judge: summary(callMs.judge), review: summary(callMs.review), other: summary(callMs.other), embed: summary(callMs.embed) };
+}
+
 afterAll(async () => {
   if (!sql) return;
   for (const id of sessionIds) {
@@ -93,7 +135,7 @@ describe.skipIf(!enabled)("eval (Neon dev branch only)", () => {
     const db = sql!;
     const llm = getLlm();
     const deps = {
-      llm,
+      llm: timed(llm),
       resolve: (raw: string) => resolveReference(raw, undefined, undefined, { openAlexApiKey: process.env.OPENALEX_API_KEY || undefined }),
     };
 
@@ -202,7 +244,7 @@ function writeResults(report: EvalReport, outcomes: (Outcome & { reason?: string
     retrievalHit: retrievalHit.get(c.id) ?? null,
     lastReason: outcomes.filter((o) => o.id === c.id).at(-1)?.reason ?? null,
   }));
-  writeFileSync(`${stem}.json`, JSON.stringify({ config: { date, commit, model, review, runs: RUNS, includeProposed: INCLUDE_PROPOSED }, report, rows }, null, 2));
+  writeFileSync(`${stem}.json`, JSON.stringify({ config: { date, commit, model, review, runs: RUNS, includeProposed: INCLUDE_PROPOSED }, report, callTimes: callTimes(), rows }, null, 2));
 
   const hits = [...retrievalHit.values()];
   const lines = [
@@ -219,6 +261,10 @@ function writeResults(report: EvalReport, outcomes: (Outcome & { reason?: string
     `| Retrieval: expected passage in the top 5 | ${hits.filter(Boolean).length} of ${hits.length} | |`,
     `| Verdict changed between runs | ${report.unstable.length ? report.unstable.join(", ") : "none"} | |`,
     `| Check time p50 / p95 / max | ${(report.latency.p50 / 1000).toFixed(1)} s / ${(report.latency.p95 / 1000).toFixed(1)} s / ${(report.latency.max / 1000).toFixed(1)} s | under 10 s |`,
+    `| Model call time p50 / p95 s (calls) | ${(Object.entries(callTimes()) as [CallKind, { n: number; p50: number; p95: number }][])
+      .filter(([, t]) => t.n > 0)
+      .map(([kind, t]) => `${kind === "other" ? "fix and other" : kind} ${(t.p50 / 1000).toFixed(1)} / ${(t.p95 / 1000).toFixed(1)} (${t.n})`)
+      .join("; ")} | |`,
     `| Checks that never finished | ${report.errors} | |`,
     `| Checks that needed a retry | ${report.retried} of ${report.claims * report.runs} | |`,
     `| Quote not found, judge asked again | ${report.quoteRetried.count}${report.quoteRetried.ids.length ? `: ${report.quoteRetried.ids.join(", ")}` : ""} | |`,

@@ -1,0 +1,654 @@
+{
+  "config": {
+    "date": "2026-11-24T16:47:34.544Z",
+    "commit": "d5a9a6f",
+    "model": "gemini-2.5-flash",
+    "review": "gemini-4-hydrogen",
+    "runs": 1,
+    "includeProposed": false
+  },
+  "report": {
+    "claims": 40,
+    "runs": 1,
+    "notApproved": 0,
+    "preview": false,
+    "strict": 0.175,
+    "lenient": 0.175,
+    "missed": {
+      "count": 0,
+      "of": 15,
+      "rate": 0,
+      "ids": []
+    },
+    "meetsBar": false,
+    "errors": 33,
+    "retried": 33,
+    "reviewSkipped": {
+      "count": 0,
+      "ids": []
+    },
+    "quoteRetried": {
+      "count": 0,
+      "ids": []
+    },
+    "byExpected": {
+      "supported": {
+        "n": 18,
+        "strict": 0,
+        "got": {
+          "error": 18
+        }
+      },
+      "contradicted": {
+        "n": 9,
+        "strict": 0,
+        "got": {
+          "error": 9
+        }
+      },
+      "partial": {
+        "n": 3,
+        "strict": 0,
+        "got": {
+          "error": 3
+        }
+      },
+      "not_in_sources": {
+        "n": 3,
+        "strict": 0,
+        "got": {
+          "error": 3
+        }
+      },
+      "cant_check": {
+        "n": 2,
+        "strict": 1,
+        "got": {
+          "cant_check": 2
+        }
+      },
+      "reference_not_found": {
+        "n": 3,
+        "strict": 1,
+        "got": {
+          "reference_not_found": 3
+        }
+      },
+      "no_citation_given": {
+        "n": 2,
+        "strict": 1,
+        "got": {
+          "no_citation_given": 2
+        }
+      }
+    },
+    "bySplit": {
+      "dev": {
+        "n": 30,
+        "strict": 0.16666666666666666,
+        "lenient": 0.16666666666666666
+      },
+      "held_out": {
+        "n": 10,
+        "strict": 0.2,
+        "lenient": 0.2
+      }
+    },
+    "byLanguage": {
+      "en": {
+        "n": 20,
+        "strict": 0.15,
+        "lenient": 0.15
+      },
+      "id": {
+        "n": 20,
+        "strict": 0.2,
+        "lenient": 0.2
+      }
+    },
+    "unstable": [],
+    "latency": {
+      "p50": 23139,
+      "p95": 25619,
+      "max": 25928
+    }
+  },
+  "rows": [
+    {
+      "id": "E01",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E02",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E03",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E04",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E05",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E06",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E07",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E08",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E09",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E10",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E11",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E12",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "not_in_sources",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": false,
+      "lastReason": null
+    },
+    {
+      "id": "E13",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E14",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E15",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E16",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E17",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E18",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "not_in_sources",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": null,
+      "lastReason": null
+    },
+    {
+      "id": "E19",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E20",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E21",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E22",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E23",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [
+        "partial"
+      ],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E24",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E25",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E26",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E27",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "partial",
+      "also": [
+        "contradicted"
+      ],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E28",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E29",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E30",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "supported",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E31",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E32",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "contradicted",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": true,
+      "lastReason": null
+    },
+    {
+      "id": "E33",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "cant_check",
+      "also": [],
+      "verdicts": [
+        "cant_check"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The reference exists, but no uploaded source matches it. Upload the PDF to check this claim."
+    },
+    {
+      "id": "E34",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "cant_check",
+      "also": [],
+      "verdicts": [
+        "cant_check"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The reference exists, but no uploaded source matches it. Upload the PDF to check this claim."
+    },
+    {
+      "id": "E35",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "reference_not_found",
+      "also": [],
+      "verdicts": [
+        "reference_not_found"
+      ],
+      "retrievalHit": null,
+      "lastReason": "Reference 11 (\"Pratama, R., & Sari, D. (2022). Pengaruh kecerdasan buatan terhadap in...\") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it."
+    },
+    {
+      "id": "E36",
+      "language": "id",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "reference_not_found",
+      "also": [],
+      "verdicts": [
+        "reference_not_found"
+      ],
+      "retrievalHit": null,
+      "lastReason": "Reference 15 (\"Wijaya, A., Kusuma, B., & Lestari, N. (2021). Analisis pemanfaatan kec...\") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it."
+    },
+    {
+      "id": "E37",
+      "language": "en",
+      "split": "dev",
+      "status": "approved",
+      "expected": "reference_not_found",
+      "also": [],
+      "verdicts": [
+        "reference_not_found"
+      ],
+      "retrievalHit": null,
+      "lastReason": "\"Brown 2020\" is not in your reference list."
+    },
+    {
+      "id": "E38",
+      "language": "id",
+      "split": "dev",
+      "status": "approved",
+      "expected": "no_citation_given",
+      "also": [],
+      "verdicts": [
+        "no_citation_given"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The claim has no citation."
+    },
+    {
+      "id": "E39",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "no_citation_given",
+      "also": [],
+      "verdicts": [
+        "no_citation_given"
+      ],
+      "retrievalHit": null,
+      "lastReason": "The claim has no citation."
+    },
+    {
+      "id": "E40",
+      "language": "en",
+      "split": "held_out",
+      "status": "approved",
+      "expected": "not_in_sources",
+      "also": [],
+      "verdicts": [
+        "error"
+      ],
+      "retrievalHit": null,
+      "lastReason": null
+    }
+  ]
+}
