@@ -17,6 +17,18 @@ export interface PurgeResult {
   sessionsDeleted: number;
 }
 
+/** Runs purge_expired() now and says what it deleted. Throws when the database fails: a scheduler should see that. */
+export async function purgeNow(db: SqlLike): Promise<PurgeResult> {
+  const sql = db as postgres.Sql;
+  const [row] = await sql<{ runs_deleted: number; documents_deleted: number; sessions_deleted: number }[]>`
+    select * from purge_expired()`;
+  return {
+    runsDeleted: row?.runs_deleted ?? 0,
+    documentsDeleted: row?.documents_deleted ?? 0,
+    sessionsDeleted: row?.sessions_deleted ?? 0,
+  };
+}
+
 /**
  * Runs purge_expired() unless it already ran in the last `windowSeconds`. Returns what it deleted, or null when it
  * did not run. It never throws: a failed purge must not stop a student from using the product, and it is tried
@@ -33,13 +45,7 @@ export async function purgeIfDue(db: SqlLike, windowSeconds: number = PURGE_EVER
     return null;
   }
   try {
-    const [row] = await sql<{ runs_deleted: number; documents_deleted: number; sessions_deleted: number }[]>`
-      select * from purge_expired()`;
-    return {
-      runsDeleted: row?.runs_deleted ?? 0,
-      documentsDeleted: row?.documents_deleted ?? 0,
-      sessionsDeleted: row?.sessions_deleted ?? 0,
-    };
+    return await purgeNow(sql);
   } catch (error) {
     console.error(`Purge failed: ${error instanceof Error ? error.name : typeof error}`);
     return null;
