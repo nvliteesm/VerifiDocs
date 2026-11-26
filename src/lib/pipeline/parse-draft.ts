@@ -203,6 +203,8 @@ export function linesAreParagraphs(text: string): boolean {
   return long >= 2 && long / lines.length >= 0.01;
 }
 
+const APPENDIX_HEADING = /^\W*(?:lampiran|appendix|appendices|apendiks|attachments?)\b/i;
+
 function toParagraphs(cleaned: string): string[] {
   const separator = linesAreParagraphs(cleaned) ? /\n+/ : /\n\s*\n/;
   return cleaned.split(separator).map((p) => p.trim()).filter(Boolean);
@@ -227,10 +229,18 @@ export function parseDraftText(raw: string): ParsedDraft {
     if (!paragraph.includes("\n") && REFERENCE_HEADING.test(paragraph)) referenceStart = i;
   });
 
+  // The reference list ends where an appendix starts: its figure captions and links are neither references nor claims.
+  // (A real Bahasa paper had 12 references and 48 appendix captions, which were counted as 60 references.)
+  let referenceEnd = paragraphs.length;
+  if (referenceStart >= 0) {
+    const appendix = paragraphs.findIndex((paragraph, i) => i > referenceStart && !paragraph.includes("\n") && paragraph.length <= 40 && APPENDIX_HEADING.test(paragraph));
+    if (appendix >= 0) referenceEnd = appendix;
+  }
+
   let body = paragraphs;
   let referenceText: string | null = null;
   if (referenceStart >= 0) {
-    const refs = paragraphs.slice(referenceStart + 1).join("\n\n").trim();
+    const refs = paragraphs.slice(referenceStart + 1, referenceEnd).join("\n\n").trim();
     if (refs.length > 0) {
       body = paragraphs.slice(0, referenceStart);
       referenceText = refs;

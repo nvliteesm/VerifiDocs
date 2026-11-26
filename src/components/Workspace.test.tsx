@@ -458,3 +458,41 @@ describe("the journey (DESIGN.md 4b)", () => {
     expect(screen.getByText("Finding the claims in your draft...")).toBeTruthy();
   });
 });
+
+describe("coverage: what could be checked, before any count of problems", () => {
+  const draftOf = (...texts: string[]) => texts.join(" ");
+
+  it("with no sources, says the paper has been reviewed but not verified, and offers to add sources, instead of an issue count", async () => {
+    const a = claim("Alpha is 1%.", "cant_check");
+    const b = claim("Beta is 2%.", "reference_not_found");
+    const c = claim("Gamma holds.", "no_citation_given", { need: "must" });
+    const user = userEvent.setup();
+    view(stateOf([a, b, c], "scanned"), draftOf(a.text, b.text, c.text));
+    expect(screen.getByText("Your paper has been reviewed, but we couldn't verify its claims because the original sources haven't been added yet.")).toBeTruthy();
+    expect(document.querySelector(".result-line")?.textContent).not.toMatch(/to fix/);
+    const cta = screen.getByRole("button", { name: "Add missing sources" });
+    expect(cta.className).toContain("btn-primary");
+    await user.click(cta);
+    expect((document.querySelector(".ws-grid") as HTMLElement).dataset.side).toBe("open");
+  });
+
+  it("shows how the claims divide, without double counting, using words and numbers as well as colour", () => {
+    const claims = [
+      claim("One.", "supported"), claim("Two.", "contradicted"), claim("Three.", "reference_not_found"), claim("Four.", "cant_check"), claim("Five.", "cant_check"),
+    ];
+    view(stateOf(claims, "done"), draftOf(...claims.map((c) => c.text)));
+    const items = [...document.querySelectorAll(".cov-legend li")].map((li) => li.textContent);
+    expect(items).toEqual(["Supported1", "To review1", "Citations to fix1", "Waiting for sources2"]);
+    expect(document.querySelector(".result-line")?.textContent).toBe("2 of 5 claims are checked against your sources. 2 are waiting for more sources.");
+    // The primary action is not shown when some claims were already checked.
+    expect(screen.getByRole("button", { name: "Add missing sources" }).className).not.toContain("btn-primary");
+  });
+
+  it("keeps the plain count-down line when nothing is waiting for a source", () => {
+    const a = claim("Alpha is 1%.", "contradicted", { fixSuggestion: "Alpha is 2%." });
+    const ok = claim("Beta holds.", "supported");
+    view(stateOf([a, ok]), draftOf(a.text, ok.text));
+    expect(document.querySelector(".result-line")?.textContent).toBe("1 to fix, 1 supported.");
+    expect(screen.queryByRole("button", { name: "Add missing sources" })).toBeNull();
+  });
+});

@@ -3,6 +3,7 @@
 // Text is kept short on purpose: the label says what happened, the reason (written per claim) says why, and the
 // advice says what to do. The label and advice live in src/lib/i18n/messages.ts (English and Bahasa Indonesia).
 import type { MessageKey, Translate } from "../i18n";
+import { isOptional } from "../fix-list";
 import type { Verdict } from "./types";
 
 export type Tone = "good" | "warn" | "bad" | "info" | "muted";
@@ -67,3 +68,64 @@ export const SUMMARY_ORDER: readonly Verdict[] = [
   "cant_check",
   "supported",
 ];
+
+/**
+ * How well the claims could be checked, in buckets that never overlap, so the counts add up to the number of claims.
+ * Source availability is kept apart from the verdict: a claim whose source has not been added is "awaiting", not wrong.
+ *
+ *   supported  a source says it
+ *   findings   a source was read and the claim needs attention (partly supported, contradicted, not in the sources, unclear)
+ *   citation   the citation itself needs fixing: not in the reference list, or a claim with no citation that needs one
+ *   awaiting   no source could be read for it yet (not uploaded, not retrieved, a law or standard, or not checked yet)
+ *   general    a general statement that a source would only strengthen (informational)
+ *   checking   the check is running and this claim has no answer yet
+ */
+export interface Coverage {
+  total: number;
+  supported: number;
+  findings: number;
+  citation: number;
+  awaiting: number;
+  general: number;
+  checking: number;
+  /** Claims actually judged against a source (supported plus findings). */
+  verified: number;
+  /** Some claims could not be verified yet, because their sources are missing. */
+  incomplete: boolean;
+  /** Nothing at all could be verified, and the claims are waiting for sources. */
+  none: boolean;
+}
+
+export function coverageOf(claims: readonly { verdict: Verdict | null; need?: "must" | "should" }[], running: boolean): Coverage {
+  const out: Coverage = { total: claims.length, supported: 0, findings: 0, citation: 0, awaiting: 0, general: 0, checking: 0, verified: 0, incomplete: false, none: false };
+  for (const claim of claims) {
+    switch (claim.verdict) {
+      case "supported":
+        out.supported += 1;
+        break;
+      case "partial":
+      case "contradicted":
+      case "not_in_sources":
+      case "cant_tell":
+        out.findings += 1;
+        break;
+      case "reference_not_found":
+        out.citation += 1;
+        break;
+      case "no_citation_given":
+        if (isOptional(claim)) out.general += 1;
+        else out.citation += 1;
+        break;
+      case "cant_check":
+        out.awaiting += 1;
+        break;
+      default:
+        if (running) out.checking += 1;
+        else out.awaiting += 1;
+    }
+  }
+  out.verified = out.supported + out.findings;
+  out.incomplete = out.awaiting > 0;
+  out.none = out.verified === 0 && out.awaiting > 0 && !running;
+  return out;
+}

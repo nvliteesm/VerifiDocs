@@ -14,6 +14,7 @@
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "../reasons";
 import { documentCitationKind, matchEntryIndex, normalizeForMatch, parseCitationMarkers, type CitationMarker, type DocumentCitationKind } from "./citations";
 import type { SourceLookup } from "./find-source";
+import { classifyReference, indexedOnline } from "./reference-type";
 import type { ReferenceResolution } from "./resolve-reference";
 import type { StageExit } from "./types";
 
@@ -162,12 +163,25 @@ export async function runPrelude(
         lookups.push(uploaded);
         continue;
       }
+      // Only a journal-style entry is worth calling "not found": journals are what Crossref and OpenAlex index, and AI
+      // tools invent them. A thesis, conference paper, book, law, standard or government report is often just not online
+      // (Indonesian ones very often), so it is "could not be retrieved", never a hint that it may not exist.
+      if (indexedOnline(classifyReference(entry.raw))) {
+        return {
+          outcome: "exit",
+          exit: {
+            verdict: "reference_not_found",
+            exitStage: 3,
+            reason: `Reference ${entry.position} ("${snippet(entry.raw)}") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it. Some journals are not indexed online, so check that it exists and upload its PDF if you have it.`,
+          },
+        };
+      }
       return {
         outcome: "exit",
         exit: {
-          verdict: "reference_not_found",
+          verdict: "cant_check",
           exitStage: 3,
-          reason: `Reference ${entry.position} ("${snippet(entry.raw)}") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it.`,
+          reason: `Reference ${entry.position} ("${snippet(entry.raw)}") could not be retrieved automatically. It may not be online. Upload its PDF to check this claim.`,
         },
       };
     }

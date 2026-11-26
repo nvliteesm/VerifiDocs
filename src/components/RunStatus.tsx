@@ -19,9 +19,11 @@ interface Props {
   onReadPart?: (unit: number) => Promise<void>;
   /** The scan has ended and the check starts by itself once the sources finish reading (DESIGN.md J1). */
   waitingForSources?: boolean;
+  /** The workspace shows the coverage summary in place of the scan headline, so the headline here would say it twice. */
+  coverageShown?: boolean;
 }
 
-export function RunStatus({ state, focusWhenDone, onReadPart, waitingForSources = false }: Props) {
+export function RunStatus({ state, focusWhenDone, onReadPart, waitingForSources = false, coverageShown = false }: Props) {
   const { t, locale } = useT();
   // The part being read again, if any (one at a time: each is one model request).
   const [readingPart, setReadingPart] = useState<number | null>(null);
@@ -129,6 +131,23 @@ export function RunStatus({ state, focusWhenDone, onReadPart, waitingForSources 
             <div className="scanbar" aria-hidden="true" />
           )}
           <progress className="sr-only" max={Math.max(total, 1)} value={checked} aria-label={t("results.progress.aria")} />
+          {/* The real stages of this run, each in the state it is really in. No percentages. */}
+          <ol className="stages" aria-label={t("results.title")}>
+            {(
+              [
+                ["stage.read", "done", null],
+                ["stage.claims", state.phase === "starting" || state.phase === "extracting" ? "active" : "done", null],
+                ["stage.check", state.phase === "checking" ? "active" : "todo", state.phase === "checking" && total > 0 ? `${checked}/${total}` : null],
+                ["stage.results", "todo", null],
+              ] as const
+            ).map(([key, status, detail]) => (
+              <li key={key} data-status={status}>
+                <span className="stage-mark" aria-hidden="true" />
+                {t(key)}
+                {detail && <span className="mono"> {detail}</span>}
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 
@@ -138,7 +157,7 @@ export function RunStatus({ state, focusWhenDone, onReadPart, waitingForSources 
         </p>
       )}
 
-      {(finished || (scanned && !waitingForSources)) && total > 0 && (
+      {(finished || (scanned && !waitingForSources)) && total > 0 && !coverageShown && (
         // Once a check is done the workspace's result line says it; a stopped check and a scan still say it here.
         <p className={finished && !scanView && !isStopped ? "run-line sr-only" : "run-line"}>{finished && !scanView ? tally : scanHeadline}</p>
       )}

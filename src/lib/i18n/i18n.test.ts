@@ -126,8 +126,8 @@ describe("localizeReason", () => {
 
   it("turns the longer fixed reasons too (copied from prelude.ts)", () => {
     expect(
-      localizeReason('Reference 2 ("Kementerian Keuangan...") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it.', id),
-    ).toBe('Referensi 2 ("Kementerian Keuangan...") tidak ditemukan di Crossref atau OpenAlex, dan tidak ada PDF yang kamu unggah yang cocok.');
+      localizeReason('Reference 2 ("Kementerian Keuangan...") was not found in Crossref or OpenAlex, and none of your uploaded PDFs matches it. Some journals are not indexed online, so check that it exists and upload its PDF if you have it.', id),
+    ).toBe('Referensi 2 ("Kementerian Keuangan...") tidak ditemukan di Crossref atau OpenAlex, dan tidak ada PDF yang kamu unggah yang cocok. Sebagian jurnal tidak terindeks online, jadi pastikan referensinya ada dan unggah PDF-nya kalau kamu punya.');
     expect(localizeReason("The reference exists, but no uploaded source matches it. Upload the PDF to check this claim.", id)).toContain("Unggah PDF-nya");
     expect(localizeReason("The uploaded PDF for this reference has no readable text (it may be a scan). Upload a text version.", id)).toContain("hasil scan");
   });

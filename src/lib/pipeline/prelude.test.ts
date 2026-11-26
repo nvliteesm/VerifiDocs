@@ -7,7 +7,7 @@ import type { ReferenceResolution } from "./resolve-reference";
 
 const entries: PreludeEntry[] = [
   { id: "e1", position: 1, raw: "Smith, J., & Lee, K. (2021). Inflation and household spending. Journal of Economics.", documentId: null },
-  { id: "e2", position: 2, raw: "Lee, K. (2020). Consumer behaviour under price pressure. Economic Review.", documentId: null },
+  { id: "e2", position: 2, raw: "Lee, K. (2020). Consumer behaviour under price pressure. Economic Review, 12(3), 44-60.", documentId: null },
   { id: "e3", position: 3, raw: "Wijaya, A. (2019). Dampak inflasi terhadap konsumsi. Jurnal Ekonomi.", documentId: null },
 ];
 
@@ -224,6 +224,40 @@ describe("runPrelude", () => {
     const { impl } = deps({});
     const result = await runPrelude({ citation: "(Brown, 2017)" }, entries, impl);
     expect(JSON.stringify(result)).not.toMatch(/inflation rose/i);
+  });
+});
+
+describe("a reference that cannot be retrieved online", () => {
+  const entry = (raw: string): PreludeEntry => ({ id: "x", position: 1, raw, documentId: null });
+  // The citation names the entry's first author and year, so the claim reaches the online lookup.
+  const run = (raw: string, citation = `(${raw.split(/[ .,]/)[0]}, ${/\b(19|20)\d\d\b/.exec(raw)![0]})`) =>
+    runPrelude({ citation }, [entry(raw)], { ...deps({ resolutions: { 1: { status: "not_found" } } }).impl, findUploaded: async () => ({ kind: "none" }) });
+
+  it("keeps Reference not found for a journal-style entry, with a hedge that some journals are not indexed", async () => {
+    const result = (await run("Hermanto, D. (2014). Kuat tekan batako dengan serat ijuk. Jurnal Teknik Sipil, 8(2), 112-130.")) as { exit: { verdict: string; reason: string } };
+    expect(result.exit.verdict).toBe("reference_not_found");
+    expect(result.exit.reason).toContain("Some journals are not indexed online");
+  });
+
+  it("never calls a thesis, proceedings paper, book, regulation, standard or institutional report not found: it could not be retrieved", async () => {
+    for (const raw of [
+      "Hermanto, Dony. 2014. Kuat Tekan Batako Dengan Variasi Bahan Tambah Serat Ijuk. Skripsi. Surakarta: Universitas Sebelas Maret.",
+      "Justin, Joshua. 2015. Eksplorasi Limbah Kaca. e-Proceeding of Art & Design, Vol. 2, No. 2, hlm. 908.",
+      "Darmono. 2016. Teknologi Bahan Bangunan. Jakarta: Erlangga.",
+      "Republik. 2002. Undang-Undang Nomor 28 Tahun 2002 tentang Bangunan Gedung.",
+      "Badan. 1989. SNI 03-0349-1989 Bata Beton untuk Pasangan Dinding.",
+      "Dinas. 2018. Laporan Volume Sampah Kota Pontianak.",
+    ]) {
+      const result = (await run(raw)) as { exit: { verdict: string; reason: string } };
+      expect(result.exit.verdict, raw).toBe("cant_check");
+      expect(result.exit.reason, raw).toContain("could not be retrieved automatically");
+      expect(result.exit.reason, raw).not.toMatch(/not found|invented|fake/i);
+    }
+  });
+
+  it("is translated on an Indonesian screen", async () => {
+    const result = (await run("Darmono. 2016. Teknologi Bahan Bangunan. Jakarta: Erlangga.")) as { exit: { reason: string } };
+    expect(localizeReason(result.exit.reason, translatorFor("id"))).toContain("tidak bisa diambil otomatis");
   });
 });
 

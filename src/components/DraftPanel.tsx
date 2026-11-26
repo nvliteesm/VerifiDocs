@@ -5,6 +5,7 @@ import { MAX_DOCX_BYTES, MAX_DRAFT_CHARS, MAX_PDF_BYTES, MAX_TXT_BYTES, megabyte
 import { messageOf } from "@/lib/client/run-verification";
 import type { ImportResponse, Importer, VerifyInput } from "@/lib/client/types";
 import { verdictLabel } from "@/lib/client/verdict-info";
+import { guessTitle } from "@/lib/client/working-draft";
 import { looksLikeGoogleDocLink } from "@/lib/import/google-link";
 import { pluralKey } from "@/lib/i18n";
 import { useT } from "./LocaleProvider";
@@ -91,6 +92,17 @@ export function DraftPanel({
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState<"link" | "file" | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Seconds spent reading a document, counted for real so a slow Google Doc shows that it is still working.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (reading === null) return;
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => {
+      clearInterval(timer);
+      setElapsed(0);
+    };
+  }, [reading]);
   const fileInput = useRef<HTMLInputElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
 
@@ -147,7 +159,7 @@ export function DraftPanel({
     try {
       const read = await importer.link(url.trim());
       show({
-        label: t("import.source.link"),
+        label: guessTitle(read.text) ?? t("import.source.link"),
         text: read.text,
         file: null,
         characters: read.text.length,
@@ -327,8 +339,11 @@ export function DraftPanel({
               )}
 
               {reading !== null && (
-                <p role="status" className="hint">
+                <p role="status" className="hint reading">
+                  <span className="pulse-dot" aria-hidden="true" />
                   {reading === "link" ? t("link.reading") : t("file.reading")}
+                  {elapsed >= 3 ? ` ${elapsed}s` : ""}
+                  {reading === "link" && elapsed >= 8 ? ` ${t("link.slow")}` : ""}
                 </p>
               )}
               {error && (

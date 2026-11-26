@@ -26,3 +26,6 @@ next-env.d.ts
 
 # Eval: downloaded source PDFs (not redistributable)
 evals/.cache/
+
+# Browser test screenshots and snapshots: they can contain a student draft
+.playwright-mcp/

@@ -5,6 +5,7 @@ import { createApi } from "@/lib/client/api";
 import { exampleFor } from "@/lib/client/example";
 import { pluralKey } from "@/lib/i18n";
 import { buildReport } from "@/lib/client/report";
+import { guessTitle } from "@/lib/client/working-draft";
 import { messageOf } from "@/lib/client/run-verification";
 import type { ClientEventName, VerifyInput } from "@/lib/client/types";
 import { DraftPanel } from "./DraftPanel";
@@ -235,9 +236,11 @@ export function VerifierApp() {
   if (consent === null || !ready) return <Frame busy />;
 
   const readySources = sources.rows.filter((row) => row.phase === "ready").length;
+  // The paper's own title (a file name, or the draft's first lines), never "Google Doc" when the text says better.
+  const title = lastInput?.label ?? (lastInput?.draft.kind === "paste" ? guessTitle(lastInput.draft.text) : null);
 
   return (
-    <Frame fit={!idle} screen={idle ? "start" : "work"} docTitle={idle ? null : (lastInput?.label ?? null)}>
+    <Frame fit={!idle} screen={idle ? "start" : "work"} docTitle={idle ? null : title}>
       {/* Once a check exists the results come first; the heading stays for screen readers (one h1 per page). */}
       {!idle && <h1 className="sr-only">{t("app.title")}</h1>}
 
@@ -351,7 +354,7 @@ export function VerifierApp() {
           key={state.runId ?? "new"}
           state={state}
           draftText={lastInput?.draft.kind === "paste" ? lastInput.draft.text : null}
-          draftLabel={lastInput?.label ?? null}
+          draftLabel={title}
           focusWhenDone={lastInput !== null}
           sources={
             <SourcesPanel
@@ -372,7 +375,7 @@ export function VerifierApp() {
             <>
               {state.phase === "scanned" && !autoCheck && (
                 <>
-                  <button type="button" className="btn btn-primary" disabled={sources.busy} onClick={verification.check}>
+                  <button type="button" className={readySources > 0 ? "btn btn-primary" : "btn"} disabled={sources.busy} onClick={verification.check}>
                     {t(pluralKey(locale, "act.checkCited", waitingClaims), { n: waitingClaims })}
                   </button>
                   {sources.busy ? <span className="hint">{t("wait.sources")}</span> : readySources === 0 && <span className="hint">{t("scan.addSources")}</span>}

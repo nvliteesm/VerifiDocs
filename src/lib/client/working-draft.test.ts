@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ClaimView, Verdict } from "./types";
-import { buildWorkingDraft, claimLabels, fitFix, groupOf, numberChange, openIssues, resolvedText, stepIssue } from "./working-draft";
+import { buildWorkingDraft, claimLabels, fitFix, groupOf, numberChange, openIssues, resolvedText, stepIssue, guessTitle } from "./working-draft";
 
 let n = 0;
 function claim(text: string, verdict: Verdict | null = "contradicted", extra: Partial<ClaimView> = {}): ClaimView {
@@ -151,5 +151,23 @@ describe("fitFix", () => {
   it("leaves the suggestion alone when the original ends with a stop, or the suggestion has none", () => {
     expect(fitFix("Prices fell.", "Prices rose.")).toBe("Prices rose.");
     expect(fitFix("Prices fell", "Prices rose")).toBe("Prices rose");
+  });
+});
+
+describe("guessTitle", () => {
+  it("reads a title set over two lines and in capitals, and sets it in sentence case", () => {
+    const text = "\uFEFFANALISIS KELAYAKAN SUBSTITUSI PASIR PADA BATAKO RAMAH \\\\\nLINGKUNGAN DENGAN MENGGUNAKAN BAHAN LIMBAH\n\n\nKarya Ilmiah\nUntuk Memenuhi Sebagian Persyaratan";
+    expect(guessTitle(text)).toBe("Analisis kelayakan substitusi pasir pada batako ramah lingkungan dengan menggunakan bahan limbah");
+  });
+
+  it("keeps a title that is already in normal case", () => {
+    expect(guessTitle("Social media and purchase intent among students\n\nSocial media is now the main way students discover products (Hidayat, 2020).")).toBe("Social media and purchase intent among students");
+  });
+
+  it("returns null when the first lines are not a title, so the caller keeps its generic label", () => {
+    expect(guessTitle("Social media is now the main way Indonesian students discover new products (Hidayat, 2020).")).toBeNull();
+    expect(guessTitle("DAFTAR ISI\n\nBab 1 ....... 3")).toBeNull();
+    expect(guessTitle("Abstract\n\nThis paper studies prices.")).toBeNull();
+    expect(guessTitle("")).toBeNull();
   });
 });

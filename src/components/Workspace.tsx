@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FlagReason } from "@/lib/flag-reasons";
 import { localizeReason } from "@/lib/i18n/reasons";
-import { verdictLabel } from "@/lib/client/verdict-info";
+import { coverageOf, verdictLabel } from "@/lib/client/verdict-info";
 import type { ClaimView } from "@/lib/client/types";
 import type { VerifierState } from "@/lib/client/verifier-state";
 import { buildWorkingDraft, fitFix, openIssues, resolvedText, stepIssue } from "@/lib/client/working-draft";
@@ -195,9 +195,23 @@ export function Workspace(props: Props) {
     if (verdict) onEvent("verdict_flagged_wrong", { verdict, reason });
   };
 
+  // How well the claims could be checked. While sources are missing this replaces the issue count: claims that wait for
+  // a source are not wrong, and the paper has not been judged, so the first thing said is what is missing.
+  const coverage = useMemo(() => coverageOf(state.claims, state.phase === "checking" || scanning), [state.claims, state.phase, scanning]);
+  const showCoverage = (scanned || finished) && !state.stopped && state.claims.length > 0 && coverage.incomplete;
+  const coverageParts = (
+    [
+      ["supported", coverage.supported],
+      ["findings", coverage.findings],
+      ["citation", coverage.citation],
+      ["awaiting", coverage.awaiting],
+      ["general", coverage.general],
+    ] as const
+  ).filter(([, n]) => n > 0);
+
   // J3 and J5: one plain line for the outcome, counting down as the student fixes. Ink, not red.
   const resultLine =
-    finished && !state.stopped && state.claims.length > 0
+    !showCoverage && finished && !state.stopped && state.claims.length > 0
       ? issuesFound === 0
         ? t("ws.done.clean")
         : handled === 0
@@ -223,10 +237,29 @@ export function Workspace(props: Props) {
 
   return (
     <div className="ws" data-sheet={active ? "open" : "closed"}>
-      <RunStatus state={state} focusWhenDone={focusWhenDone} onReadPart={onReadPart} waitingForSources={waitingForSources} />
+      <RunStatus state={state} focusWhenDone={focusWhenDone} onReadPart={onReadPart} waitingForSources={waitingForSources} coverageShown={showCoverage} />
 
       <>
         <div className="ws-bar">
+          {showCoverage && (
+            <div className="coverage" data-none={coverage.none ? "true" : undefined}>
+              <p className="result-line">{coverage.none ? t("cov.none") : t("cov.partial", { checked: coverage.verified, total: coverage.total, waiting: coverage.awaiting })}</p>
+              <div className="cov-bar" role="img" aria-label={t("ws.s.bar")}>
+                {coverageParts.map(([key, n]) => (
+                  <span key={key} className={`cov-seg cov-${key}`} style={{ flexGrow: n }} />
+                ))}
+              </div>
+              <ul className="cov-legend">
+                {coverageParts.map(([key, n]) => (
+                  <li key={key} className={`cov-${key}`}>
+                    <span className="cov-dot" aria-hidden="true" />
+                    <span>{t(`cov.${key}` as const)}</span>
+                    <span className="mono">{n}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {resultLine && (
             <div className="result">
               <p className="result-line">{resultLine}</p>
@@ -239,6 +272,11 @@ export function Workspace(props: Props) {
             </div>
           )}
           <div className="actions ws-actions">
+            {showCoverage && coverage.awaiting > 0 && (
+              <button type="button" className={coverage.none ? "btn btn-primary" : "btn"} onClick={() => setSideOpen(true)}>
+                {t("cov.cta")}
+              </button>
+            )}
             {actions}
             <button type="button" ref={sideToggle} className="btn btn-quiet btn-small ws-toggle" aria-expanded={sideOpen} aria-controls="side" onClick={() => setSideOpen((open) => !open)}>
               {sideOpen ? t("ws.side.hide") : t("ws.side.show")}

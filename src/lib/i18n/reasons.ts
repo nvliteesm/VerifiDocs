@@ -38,6 +38,7 @@ const WHOLE_REASONS: MessageKey[] = [
   "reason.standardCitation",
   "reason.institutionCitation",
   "reason.notOnline",
+  "reason.notRetrieved",
   "reason.noText",
   "reason.noUploadedMatch",
   "reason.noPassages",

@@ -233,3 +233,24 @@ describe("where focus goes", () => {
     expect(document.activeElement).toBe(document.body);
   });
 });
+
+describe("the stages of a run", () => {
+  it("lists the real stages while the claims are being checked, with the real count and no percentage", () => {
+    const claims = [claim("supported"), claim(null), claim(null)];
+    view(stateOf(claims, "checking"));
+    const stages = [...document.querySelectorAll(".stages li")];
+    expect(stages.map((li) => [li.textContent?.trim(), (li as HTMLElement).dataset.status])).toEqual([
+      ["Document read", "done"],
+      ["Finding claims", "done"],
+      ["Checking claims 1/3", "active"],
+      ["Results", "todo"],
+    ]);
+    expect(document.body.textContent).not.toMatch(/\d+\s?%/);
+  });
+
+  it("marks Finding claims as the active stage while the draft is being read", () => {
+    view({ ...initialState, phase: "extracting", runId: "r" });
+    const active = document.querySelector('.stages li[data-status="active"]');
+    expect(active?.textContent).toContain("Finding claims");
+  });
+});

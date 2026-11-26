@@ -310,3 +310,30 @@ describe("a contents page", () => {
     expect(headings).toContain("1. Batako");
   });
 });
+
+describe("an appendix after the reference list", () => {
+  const text = [
+    "BAB I PENDAHULUAN",
+    "Batako berfungsi sebagai penahan gaya horizontal pada dinding bangunan (Darmono, 2016).",
+    "DAFTAR PUSTAKA",
+    "Darmono. 2016. Teknologi Bahan Bangunan. Jakarta: Erlangga.",
+    "Hermanto, Dony. 2014. Kuat Tekan Batako Dengan Variasi Bahan Tambah Serat Ijuk. Skripsi. Surakarta: UNS.",
+    "LAMPIRAN",
+    "Link Slide Presentasi : https://www.canva.com/design/DAFfnZ1tJmk/edit",
+    "Proses Pengolahan Limbah Botol Kaca menjadi Batako",
+    "Menghancurkan botol kaca menjadi serbuk yang lebih halus",
+    "Hasil Batako berbahan Limbah Styrofoam",
+  ].join("\n\n");
+
+  it("ends the reference list at the appendix, so captions are not counted as references", () => {
+    const parsed = parseDraftText(text);
+    expect(parseReferenceList(parsed.referenceText ?? "")).toHaveLength(2);
+    expect(parsed.referenceText).not.toContain("Menghancurkan");
+    expect(parsed.text).not.toContain("Menghancurkan");
+  });
+
+  it("keeps the whole list when there is no appendix", () => {
+    const plain = text.split("LAMPIRAN")[0]!.trim();
+    expect(parseReferenceList(parseDraftText(plain).referenceText ?? "")).toHaveLength(2);
+  });
+});

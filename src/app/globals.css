@@ -2109,3 +2109,98 @@ mark.num {
 .evidence-page {
   white-space: nowrap;
 }
+
+/* ===== Coverage: what could be checked, before any count of problems ===== */
+.coverage {
+  display: grid;
+  flex: 1 1 380px;
+  gap: 10px;
+  max-width: 760px;
+}
+.coverage .result-line {
+  font-weight: 500;
+}
+.cov-bar {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+}
+.cov-seg {
+  flex-basis: 0;
+  min-width: 4px;
+  border-radius: 2px;
+  background: var(--c);
+  transition: flex-grow var(--t-slow) var(--ease);
+}
+.cov-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+  font-size: 0.88rem;
+}
+.cov-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cov-legend .mono {
+  color: var(--ink);
+}
+.cov-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+}
+/* Green: supported. Amber: still waiting for a source. Rose: a citation to fix. Orange-red: a confirmed problem. Grey: informational. */
+.cov-supported { --c: var(--good); }
+.cov-findings { --c: var(--bad); }
+.cov-citation { --c: light-dark(#a8264a, #f08aa8); }
+.cov-awaiting { --c: var(--warn); }
+.cov-general { --c: var(--ink-3); }
+.cov-checking { --c: var(--blue); }
+
+/* The real stages of a run. */
+.stages {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-3);
+  font-size: 0.85rem;
+}
+.stages li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.stage-mark {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  transition: background-color var(--t-med) var(--ease), border-color var(--t-med) var(--ease);
+}
+.stages li[data-status="done"] {
+  color: var(--ink-2);
+}
+.stages li[data-status="done"] .stage-mark {
+  border-color: var(--good);
+  background: var(--good);
+}
+.stages li[data-status="active"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+.stages li[data-status="active"] .stage-mark {
+  border-color: var(--blue);
+  background: var(--blue);
+  animation: vd-pulse 1.4s ease-in-out infinite;
+}

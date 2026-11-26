@@ -156,3 +156,23 @@ export function fitFix(original: string, fix: string): string {
   if (closed.test(original.trim()) || !closed.test(trimmed)) return fix;
   return trimmed.replace(/[.!?…]+(["')\]]*)$/, "$1");
 }
+
+const NOT_A_TITLE = /^(?:daftar|bab|abstrak|abstract|kata pengantar|table of contents|contents|references|karya ilmiah|skripsi|tesis|thesis|proposal)\b/i;
+
+/**
+ * A title for the draft, from its own first lines (a Google Docs export has no title of its own): the first stretch of
+ * lines before a blank line, when it is short and reads like a title. An all-capitals title is set in sentence case.
+ * Null when nothing looks like one, so the caller keeps its generic label.
+ */
+export function guessTitle(text: string): string | null {
+  const head = text.replace(/^\uFEFF/, "").slice(0, 600).split(/\n\s*\n/);
+  const block = head.find((part) => part.trim() !== "");
+  if (!block) return null;
+  const lines = block.split("\n").map((line) => line.replace(/\s*\\+\s*$/, "").trim()).filter(Boolean);
+  if (lines.length === 0 || lines.length > 3) return null;
+  let title = lines.join(" ").replace(/\s+/g, " ").trim();
+  if (title.length < 8 || title.length > 180 || NOT_A_TITLE.test(title) || /[.!?;:]$/.test(title)) return null;
+  const letters = title.replace(/[^\p{L}]/gu, "");
+  if (letters.length > 12 && letters === letters.toUpperCase()) title = title.charAt(0) + title.slice(1).toLowerCase();
+  return title;
+}
