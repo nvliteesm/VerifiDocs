@@ -1,0 +1,36 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "Skip to content" [ref=e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=e4]:
+      - generic [ref=e5]: VerifiDocs
+      - generic [ref=e10]:
+        - group "Language" [ref=e11]:
+          - button "EN (English)" [pressed] [ref=e12] [cursor=pointer]: EN
+          - button "ID (Bahasa Indonesia)" [ref=e13] [cursor=pointer]: ID
+        - switch "Dark mode" [ref=e14] [cursor=pointer]
+    - main [ref=e17]:
+      - generic [ref=e133]:
+        - heading "Make sure every citation holds up." [level=1] [ref=e134]
+        - generic [ref=e135]:
+          - region "Results" [ref=e136]:
+            - paragraph [ref=e137]: Scanning
+            - heading "Results" [level=2] [ref=e138]
+            - status [ref=e139]
+            - generic [ref=e140]:
+              - generic [ref=e141]: Finding the claims in your draft...
+              - progressbar "Claims checked" [ref=e145]
+          - generic [ref=e147]:
+            - button "Stop checking" [ref=e148] [cursor=pointer]
+            - button "Start a new check" [disabled] [ref=e149]
+            - status [ref=e150]
+            - button "Show sources" [ref=e151] [cursor=pointer]
+          - generic [ref=e152]:
+            - region "Draft" [ref=e153]:
+              - generic [ref=e154]:
+                - heading "Your draft" [level=2] [ref=e155]
+                - generic [ref=e156]: Household spending in Kota Contoh rose by 4.2 percent in 2023 (Contoh Statistics Office, 2024). Food prices fell during the same year (Contoh Statistics Office, 2024). Rent was the largest expense for every income group (Contoh Statistics Office, 2024). Online shopping made up a third of all household purchases (Contoh Statistics Office, 2024). Public transport use doubled after the new bus lines opened (Smith, 2019).
+            - paragraph [ref=e158]: Finding the claims in your draft...
+          - button [aria-hidden]
+  - button "Open Next.js Dev Tools" [ref=e68] [cursor=pointer]
+  - alert [ref=e72]

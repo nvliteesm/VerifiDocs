@@ -17,9 +17,11 @@ export async function copy(text: string): Promise<boolean> {
 
 /** The verdict's icon, drawn in the surrounding text colour. Decorative: the label next to it carries the meaning. */
 export function VerdictIcon({ verdict, size = 18 }: { verdict: Verdict; size?: number }) {
+  const info = VERDICT_INFO[verdict];
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-      <path d={VERDICT_INFO[verdict].icon} />
+    <svg className="vicon" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d={info.icon} />
+      {info.fill && <path d={info.fill} fill="currentColor" />}
     </svg>
   );
 }

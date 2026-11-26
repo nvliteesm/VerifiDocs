@@ -1,6 +1,6 @@
 "use client";
 
-// The right-hand pane, Claim tab: one claim at a time. The verdict and what it means, the sentence, the source's own
+// The review card: one claim at a time. The verdict and what it means, the sentence, the source's own
 // words with file and page, why, and the fix, which the student applies to their working copy or ignores.
 import { useEffect, useRef, useState } from "react";
 import type { FlagReason } from "@/lib/flag-reasons";
@@ -10,6 +10,7 @@ import { markDifferences } from "@/lib/client/numbers";
 import type { ClaimView } from "@/lib/client/types";
 import { verdictAdvice, verdictMeaning } from "@/lib/client/verdict-info";
 import { numberChange } from "@/lib/client/working-draft";
+import { wordDiff } from "@/lib/client/word-diff";
 import { isOptional } from "@/lib/fix-list";
 import { Badge, copy, Pieces } from "./claim-bits";
 import { FlagVerdict } from "./FlagVerdict";
@@ -93,28 +94,40 @@ export function ClaimInspector(props: Props) {
   const marks = claim.quote ? markDifferences(claim.text, claim.citation, claim.quote) : null;
   const numberMarks = marks?.any ? marks : null;
   const change = claim.fixSuggestion ? numberChange(claim.text, claim.fixSuggestion) : null;
+  const diff = claim.fixSuggestion ? wordDiff(claim.text, claim.fixSuggestion) : null;
+  // With a fix on show, Before repeats the sentence, so the plain copy above steps aside.
+  const fixShown = Boolean(claim.fixSuggestion) && !resolution && verdict !== null && verdict !== "supported" && !optional;
 
   return (
     <div className="insp" id={`claim-${claim.id}`}>
       <div className="insp-head">
-        <span className="mono">{label}</span>
+        {verdict ? <Badge verdict={verdict} optional={optional} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
         {nav}
       </div>
 
-      <blockquote className="insp-sentence">{numberMarks ? <Pieces pieces={numberMarks.claim} /> : claim.text}</blockquote>
+      {/* One reason line. What the verdict means and what to do are said only when there is no suggested fix to say it. */}
+      {claim.reason && <p className="reason">{localizeReason(claim.reason, t)}</p>}
+
+      <blockquote className="insp-sentence" hidden={fixShown}>
+        {numberMarks ? <Pieces pieces={numberMarks.claim} /> : claim.text}
+      </blockquote>
 
       <div className="insp-props">
-        {verdict ? <Badge verdict={verdict} optional={optional} /> : <span className="badge badge-muted">{error || ended ? t("claim.notChecked") : scanned ? t("claim.notCheckedYet") : t("claim.waiting")}</span>}
+        <span className="mono">{label}</span>
         {claim.citation && (
           <span className="mono citation">
             {claim.citation}
             {claim.citationInherited ? `, ${t("claim.inherited")}` : ""}
           </span>
         )}
-        {claim.sourceFile && <span className="mono">{claim.sourceFile}</span>}
-        {claim.page !== null && <span className="mono">{t("ws.page", { n: claim.page })}</span>}
       </div>
-      {verdict && !optional && <p className="meaning">{verdictMeaning(t, verdict)}</p>}
+
+      {!claim.fixSuggestion && verdict && !optional && <p className="meaning">{verdictMeaning(t, verdict)}</p>}
+      {!claim.fixSuggestion && verdict && verdict !== "supported" && !listMissing && (
+        <p className="next">
+          <strong>{t("claim.todo")}</strong> {notInList ? t("claim.notInList") : optional ? t("claim.optionalAdvice") : verdictAdvice(t, verdict)}
+        </p>
+      )}
 
       {/* The audit trail (PRD guard rule 2): this citation was attached here, after the claim was written. */}
       {claim.citationSource === "found" && <p className="found-tag">{t("claim.found")}</p>}
@@ -125,11 +138,15 @@ export function ClaimInspector(props: Props) {
         </p>
       ))}
 
+      {/* Proof before the fix: the source's own words sit above what the student is asked to change. */}
       {claim.quote && (
         <section className="evidence" aria-label={t("evidence.summary")}>
           <div className="evidence-head">
-            <span className="mono evidence-file">{claim.sourceFile ?? ""}</span>
-            <span className="mono evidence-page">{claim.page !== null ? t("ws.page", { n: claim.page }) : ""}</span>
+            <span className="evidence-label">{t("evidence.summary")}</span>
+            <span className="evidence-cite">
+              <span className="evidence-file">{claim.sourceFile ?? ""}</span>
+              <span className="evidence-page">{claim.page !== null ? t("ws.page", { n: claim.page }) : ""}</span>
+            </span>
           </div>
           <p className="evidence-quote">“{numberMarks ? <Pieces pieces={numberMarks.quote} /> : claim.quote}”</p>
           {numberMarks && <p className="hint evidence-note">{t("evidence.numbers")}</p>}
@@ -140,22 +157,6 @@ export function ClaimInspector(props: Props) {
             </p>
           )}
         </section>
-      )}
-
-      {claim.reason && (
-        <div>
-          <h3 className="sub-title">{t("ws.why")}</h3>
-          <p className="reason">{localizeReason(claim.reason, t)}</p>
-        </div>
-      )}
-      {verdict && verdict !== "supported" && !listMissing && (
-        <p className="next">
-          <strong>{t("claim.todo")}</strong> {notInList ? t("claim.notInList") : optional ? t("claim.optionalAdvice") : verdictAdvice(t, verdict)}
-        </p>
-      )}
-
-      {verdict === "no_citation_given" && props.onFindSources && (
-        <FoundSources claim={claim} onFind={props.onFindSources} onAttach={props.onAttachSource} onFindWeb={props.onFindWebSources} onEvent={onEvent} />
       )}
 
       {verdict && verdict !== "supported" && !optional && (
@@ -179,17 +180,25 @@ export function ClaimInspector(props: Props) {
             </>
           ) : (
             <>
-              {claim.fixSuggestion ? (
+              {claim.fixSuggestion && diff ? (
                 <>
                   {change && <p className="remedy-change">{t("ws.fix.change", { from: change.from, to: change.to })}</p>}
                   <div className="before-after">
                     <div>
                       <span className="ba-label">{t("ws.fix.before")}</span>
-                      <p className="ba-before">{claim.text}</p>
+                      <p className="ba-before">
+                        {diff.pre}
+                        {diff.oldMid && <span className="wd-old">{diff.oldMid}</span>}
+                        {diff.post}
+                      </p>
                     </div>
                     <div>
                       <span className="ba-label ba-label-after">{t("ws.fix.after")}</span>
-                      <p className="ba-after">{claim.fixSuggestion}</p>
+                      <p className="ba-after">
+                        {diff.pre}
+                        {diff.newMid && <span className="wd-new">{diff.newMid}</span>}
+                        {diff.post}
+                      </p>
                     </div>
                   </div>
                 </>
@@ -230,6 +239,10 @@ export function ClaimInspector(props: Props) {
             </>
           )}
         </section>
+      )}
+
+      {verdict === "no_citation_given" && props.onFindSources && (
+        <FoundSources claim={claim} onFind={props.onFindSources} onAttach={props.onAttachSource} onFindWeb={props.onFindWebSources} onEvent={onEvent} />
       )}
 
       {error && (

@@ -1,0 +1,153 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - link "Skip to content" [ref=e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=e4]:
+      - generic [ref=e5]: VerifiDocs
+      - generic [ref=e10]:
+        - group "Language" [ref=e11]:
+          - button "EN (English)" [pressed] [ref=e12] [cursor=pointer]: EN
+          - button "ID (Bahasa Indonesia)" [ref=e13] [cursor=pointer]: ID
+        - switch "Dark mode" [ref=e14] [cursor=pointer]
+    - main [ref=e17]:
+      - generic [ref=e133]:
+        - heading "Make sure every citation holds up." [level=1] [ref=e134]
+        - generic [ref=e135]:
+          - region "Results":
+            - paragraph [ref=e137]: Check complete
+            - heading "Results" [active] [level=2] [ref=e138]
+            - status [ref=e139]: Check finished. 4 of 5 claims need attention.
+            - paragraph [ref=e256]: 4 of 5 claims need attention.
+          - generic [ref=e146]:
+            - generic [ref=e257]:
+              - paragraph [ref=e258]: 4 to fix, 1 supported.
+              - img "Verdicts across the draft" [ref=e259]
+            - generic [ref=e147]:
+              - button "Copy report" [ref=e264] [cursor=pointer]
+              - button "Check again with my sources" [ref=e265] [cursor=pointer]
+              - button "Edit draft" [ref=e266] [cursor=pointer]
+              - button "Start a new check" [ref=e149] [cursor=pointer]
+              - button "Delete this check" [ref=e267] [cursor=pointer]
+              - status [ref=e150]
+              - button "Show sources" [ref=e151] [cursor=pointer]
+          - generic [ref=e152]:
+            - region "Draft" [ref=e153]:
+              - generic [ref=e171]:
+                - generic [ref=e172]:
+                  - generic [ref=e173]:
+                    - heading "Your draft" [level=2] [ref=e174]
+                    - paragraph [ref=e175]: Select a sentence to see its evidence.
+                  - generic [ref=e176]:
+                    - button "Next issue" [ref=e177] [cursor=pointer]
+                    - button "Copy fixed draft" [ref=e178] [cursor=pointer]
+                - generic [ref=e179]:
+                  - button "Household spending in Kota Contoh rose by 4.2 percent in 2023 (Supported)" [ref=e268] [cursor=pointer]:
+                    - text: Household spending in Kota Contoh rose by 4.2 percent in 2023
+                    - generic [ref=e269]: (Supported)
+                    - generic [aria-hidden] [ref=e181]: C-1
+                  - text: (Contoh Statistics Office, 2024).
+                  - button "Food prices fell during the same year (Contradicted)" [ref=e272] [cursor=pointer]:
+                    - text: Food prices fell during the same year
+                    - generic [ref=e273]: (Contradicted)
+                    - generic [aria-hidden] [ref=e183]: C-2
+                  - text: (Contoh Statistics Office, 2024).
+                  - button "Rent was the largest expense for every income group (Contradicted)" [ref=e276] [cursor=pointer]:
+                    - text: Rent was the largest expense for every income group
+                    - generic [ref=e277]: (Contradicted)
+                    - generic [aria-hidden] [ref=e185]: C-3
+                  - text: (Contoh Statistics Office, 2024).
+                  - button "Online shopping made up a third of all household purchases (Not in your sources)" [ref=e280] [cursor=pointer]:
+                    - text: Online shopping made up a third of all household purchases
+                    - generic [ref=e281]: (Not in your sources)
+                    - generic [aria-hidden] [ref=e187]: C-4
+                  - text: (Contoh Statistics Office, 2024).
+                  - button "Public transport use doubled after the new bus lines opened (Reference not found)" [ref=e188] [cursor=pointer]:
+                    - text: Public transport use doubled after the new bus lines opened
+                    - generic [ref=e189]: (Reference not found)
+                    - generic [aria-hidden] [ref=e190]: C-5
+                  - text: (Smith, 2019).
+            - generic [ref=e157]:
+              - complementary "Claim inspector" [ref=e193]:
+                - generic [ref=e284]:
+                  - generic [ref=e285]:
+                    - generic [ref=e286]: Contradicted
+                    - group "Move between issues" [ref=e289]:
+                      - button "Previous issue" [ref=e290] [cursor=pointer]:
+                        - generic [aria-hidden] [ref=e291]: ‹
+                      - generic [ref=e292]: 1 of 4
+                      - button "Next issue" [ref=e293] [cursor=pointer]:
+                        - generic [aria-hidden] [ref=e294]: ›
+                  - paragraph [ref=e295]: The passage states that food prices rose rather than fell.
+                  - generic [ref=e296]:
+                    - generic [ref=e297]: C-2
+                    - generic [ref=e298]: (Contoh Statistics Office, 2024)
+                  - region "What your source says" [ref=e299]:
+                    - generic [ref=e300]:
+                      - generic [ref=e301]: What your source says
+                      - generic [ref=e302]:
+                        - generic [ref=e303]: Contoh-Statistics-Office-2024.pdf
+                        - generic [ref=e304]: p. 2
+                    - paragraph [ref=e305]: “Food prices rose by 7.1 percent in 2023, the fastest increase of any category.”
+                  - region "Suggested fix" [ref=e306]:
+                    - generic [ref=e307]:
+                      - heading "Suggested fix" [level=3] [ref=e308]
+                      - paragraph [ref=e309]: Written using only what the source says.
+                    - generic [ref=e310]:
+                      - generic [ref=e311]:
+                        - generic [ref=e312]: Before
+                        - paragraph [ref=e313]: Food prices fell during the same year
+                      - generic [ref=e314]:
+                        - generic [ref=e315]: After
+                        - paragraph [ref=e316]: Food prices rose by 7.1 percent in 2023, the fastest increase of any category.
+                    - generic [ref=e317]:
+                      - button "Apply fix" [ref=e318] [cursor=pointer]
+                      - button "Ignore" [ref=e319] [cursor=pointer]
+                  - button "This verdict is wrong" [ref=e321] [cursor=pointer]
+              - region "Claims" [ref=e204]:
+                - generic [ref=e205]:
+                  - region "Contradicted" [ref=e322]:
+                    - heading "Contradicted 2" [level=3] [ref=e323]:
+                      - generic [ref=e326]: Contradicted
+                      - generic [ref=e327]: "2"
+                    - list [ref=e328]:
+                      - listitem [ref=e329]:
+                        - button "C-2 Food prices fell during the same year p. 2" [ref=e330] [cursor=pointer]:
+                          - generic [ref=e334]: C-2
+                          - generic [ref=e335]: Food prices fell during the same year
+                          - generic [ref=e336]: p. 2
+                      - listitem [ref=e337]:
+                        - button "C-3 Rent was the largest expense for every income group p. 2" [ref=e338] [cursor=pointer]:
+                          - generic [ref=e342]: C-3
+                          - generic [ref=e343]: Rent was the largest expense for every income group
+                          - generic [ref=e344]: p. 2
+                  - region "Reference not found" [ref=e206]:
+                    - heading "Reference not found 1" [level=3] [ref=e207]:
+                      - generic [ref=e210]: Reference not found
+                      - generic [ref=e211]: "1"
+                    - list [ref=e212]:
+                      - listitem [ref=e213]:
+                        - button "C-5 Public transport use doubled after the new bus lines opened" [ref=e214] [cursor=pointer]:
+                          - generic [ref=e218]: C-5
+                          - generic [ref=e219]: Public transport use doubled after the new bus lines opened
+                  - region "Not in your sources" [ref=e345]:
+                    - heading "Not in your sources 1" [level=3] [ref=e346]:
+                      - generic [ref=e349]: Not in your sources
+                      - generic [ref=e350]: "1"
+                    - list [ref=e351]:
+                      - listitem [ref=e352]:
+                        - button "C-4 Online shopping made up a third of all household purchases" [ref=e353] [cursor=pointer]:
+                          - generic [ref=e357]: C-4
+                          - generic [ref=e358]: Online shopping made up a third of all household purchases
+                  - region "Supported" [ref=e359]:
+                    - heading "Supported 1" [level=3] [ref=e360]:
+                      - generic [ref=e363]: Supported
+                      - generic [ref=e364]: "1"
+                    - list [ref=e365]:
+                      - listitem [ref=e366]:
+                        - button "C-1 Household spending in Kota Contoh rose by 4.2 percent in 2023 p. 1" [ref=e367] [cursor=pointer]:
+                          - generic [ref=e371]: C-1
+                          - generic [ref=e372]: Household spending in Kota Contoh rose by 4.2 percent in 2023
+                          - generic [ref=e373]: p. 1
+          - button [aria-hidden]
+  - button "Open Next.js Dev Tools" [ref=e68] [cursor=pointer]
+  - alert [ref=e72]

@@ -1,0 +1,65 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - link "Skip to content" [ref=e3] [cursor=pointer]:
+      - /url: "#main"
+    - banner [ref=e4]:
+      - generic [ref=e5]: VerifiDocs
+      - generic [ref=e10]:
+        - group "Language" [ref=e11]:
+          - button "EN (English)" [pressed] [ref=e12] [cursor=pointer]: EN
+          - button "ID (Bahasa Indonesia)" [ref=e13] [cursor=pointer]: ID
+        - switch "Dark mode" [ref=e14] [cursor=pointer]
+    - main [ref=e17]:
+      - region "Your draft" [ref=e74]:
+        - generic [ref=e75]:
+          - paragraph [ref=e76]: "[ CHECK BEFORE YOU SEND ]"
+          - heading [level=1] [ref=e77]:
+            - text: Make sure every citation
+            - emphasis [ref=e78]: holds up.
+          - paragraph [ref=e79]: Three things in, one button. We read each claim against its source, with you.
+        - generic [ref=e80]:
+          - generic [ref=e81]:
+            - generic [ref=e82]:
+              - generic [aria-hidden] [ref=e83]: "[]"
+              - generic [ref=e86]:
+                - heading "Your draft" [level=2] [ref=e87]
+                - paragraph [ref=e88]: Paste your text or a Google Docs link, or add a file.
+            - generic [ref=e90]:
+              - generic [ref=e91] [cursor=pointer]: Text or Google Docs link
+              - textbox "Text or Google Docs link" [active] [ref=e92]:
+                - /placeholder: Paste here. A link is read at once.
+                - text: Household spending in Kota Contoh rose by 4.2 percent in 2023 (Contoh Statistics Office, 2024). Food prices fell during the same year (Contoh Statistics Office, 2024). Rent was the largest expense for every income group (Contoh Statistics Office, 2024). Online shopping made up a third of all household purchases (Contoh Statistics Office, 2024). Public transport use doubled after the new bus lines opened (Smith, 2019).
+              - generic [ref=e93]:
+                - button "Choose a file" [ref=e94] [cursor=pointer]
+                - generic [ref=e95]: .docx, .pdf or .txt, or drop it here
+              - paragraph [ref=e96]: 421 / 250,000 characters
+          - group [ref=e97]:
+            - generic "Reference list (only if it is not at the end of your draft)" [ref=e98] [cursor=pointer]:
+              - generic [aria-hidden] [ref=e99]: "[]"
+              - generic [ref=e102]: Reference list
+              - generic [ref=e103]: (only if it is not at the end of your draft)
+            - generic [ref=e105]:
+              - generic [ref=e106] [cursor=pointer]: Reference list
+              - textbox "Reference list" [ref=e107]:
+                - /placeholder: One reference per line.
+                - text: "Contoh Statistics Office. (2024). Household spending and inflation in Kota Contoh, 2023. Kota Contoh: Contoh Statistics Office."
+          - region "Your sources" [ref=e108]:
+            - generic [ref=e109]:
+              - generic [aria-hidden] [ref=e110]: "[]"
+              - generic [ref=e113]:
+                - heading "Your sources" [level=2] [ref=e114]
+                - paragraph [ref=e115]: PDFs you cite. Up to 10 files, 10 MB each. Text PDFs only, no scans.
+              - button "Add PDF" [ref=e116] [cursor=pointer]
+            - list [ref=e118]:
+              - listitem [ref=e119]:
+                - generic [ref=e120]:
+                  - generic [ref=e121]: Contoh-Statistics-Office-2024.pdf
+                  - generic [ref=e122]: Ready, 3 pages
+                - button "Remove Contoh-Statistics-Office-2024.pdf" [ref=e124] [cursor=pointer]: Remove
+        - group "Ready to check" [ref=e125]:
+          - button "Check my draft" [ref=e126] [cursor=pointer]
+          - paragraph [ref=e127]:
+            - generic [ref=e128]: Draft added. 1 of 1 sources read.
+        - paragraph [ref=e129]: Deleted 30 days after upload, or sooner if you delete them.
+  - button "Open Next.js Dev Tools" [ref=e68] [cursor=pointer]
+  - alert [ref=e72]

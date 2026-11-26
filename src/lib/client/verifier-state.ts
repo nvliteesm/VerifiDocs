@@ -61,6 +61,8 @@ export type VerifyEvent =
   | { type: "claim"; verdict: CheckedVerdict }
   | { type: "claimError"; id: string; message: string }
   | { type: "claimRetry"; id: string }
+  /** A claim's check request has started (so its row can say "Checking"). */
+  | { type: "claimStart"; id: string }
   | { type: "sources"; claimId: string; sources: FoundSourceView[] }
   | { type: "webSources"; claimId: string; sources: WebSourceView[] }
   | { type: "failed"; message: string }
@@ -138,7 +140,17 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
     }
 
     case "claimError":
-      return { ...state, claimErrors: { ...state.claimErrors, [event.id]: event.message } };
+      return {
+        ...state,
+        claims: state.claims.map((claim) => (claim.id === event.id && claim.status === "checking" ? { ...claim, status: "pending" as const } : claim)),
+        claimErrors: { ...state.claimErrors, [event.id]: event.message },
+      };
+
+    case "claimStart":
+      return {
+        ...state,
+        claims: state.claims.map((claim) => (claim.id === event.id && claim.verdict === null ? { ...claim, status: "checking" as const } : claim)),
+      };
 
     case "sources":
       return {
@@ -160,12 +172,13 @@ export function reduce(state: VerifierState, event: VerifyEvent): VerifierState 
       return { ...state, claimErrors: withoutError(state.claimErrors, event.id) };
 
     case "failed":
-      return { ...state, phase: "error", error: event.message, message: "" };
+      return { ...state, phase: "error", error: event.message, message: "", claims: state.claims.map((claim) => (claim.status === "checking" ? { ...claim, status: "pending" as const } : claim)) };
 
     case "stopped":
       // Only a check that is still running can be stopped. A late Stop after the end changes nothing.
       if (state.phase === "idle" || state.phase === "scanned" || state.phase === "done" || state.phase === "error") return state;
-      return { ...state, phase: "done", stopped: true, message: "", error: null };
+      // Claims whose request was still running when the student stopped go back to waiting.
+      return { ...state, phase: "done", stopped: true, message: "", error: null, claims: state.claims.map((claim) => (claim.status === "checking" ? { ...claim, status: "pending" as const } : claim)) };
   }
 }
 

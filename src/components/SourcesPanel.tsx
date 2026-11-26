@@ -19,8 +19,11 @@ interface Props {
   compact?: boolean;
   /** In the compact list, also show how many files and how large (the start screen has the room). */
   showHint?: boolean;
+  /** The third step of the start screen: a dashed card with its own head and the list under it. */
+  step?: boolean;
 }
 
+// One line of status per file, in the screen's language.
 function statusText(row: SourceRow, t: Translate, locale: Locale): string {
   switch (row.phase) {
     case "waiting":
@@ -38,10 +41,119 @@ function statusText(row: SourceRow, t: Translate, locale: Locale): string {
   }
 }
 
-export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, locked = false, compact = false, showHint = false }: Props) {
+export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, locked = false, compact = false, showHint = false, step = false }: Props) {
   const { t, locale } = useT();
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+
+  const list = (
+    rows.length > 0 && (
+        <ul className="source-list">
+          {rows.map((row) => (
+            <li key={row.key} className={`source source-${row.phase}`}>
+              <div className="source-main">
+                <span className="source-name">
+                  {compact && (
+                    <svg className="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                      <path d={row.phase === "ready" ? "M5 12.5l4.5 4.5L19 7" : row.phase === "no_text" ? "M4 8V4h4 M16 4h4v4 M20 16v4h-4 M8 20H4v-4 M8 12h8" : row.phase === "failed" ? "M6 6l12 12 M18 6L6 18" : "M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14z M20 20l-4-4"} />
+                    </svg>
+                  )}
+                  {row.filename}
+                </span>
+                <span className="source-status" aria-live="polite">
+                  {statusText(row, t, locale)}
+                </span>
+                {row.phase === "ingesting" && row.pageCount ? (
+                  <progress max={row.pageCount} value={row.pagesIngested} aria-label={t("src.progress", { name: row.filename })} />
+                ) : null}
+              </div>
+              <div className="source-actions">
+                {row.phase === "failed" && row.id && (
+                  <button type="button" className="btn btn-small" onClick={() => onRetry(row)}>
+                    {t("retry")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-small btn-quiet"
+                  onClick={() => onRemove(row)}
+                  disabled={row.phase === "uploading"}
+                  aria-label={t("src.removeLabel", { name: row.filename })}
+                >
+                  {t("src.remove")}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )
+  );
+
+  if (step) {
+    const ready = rows.some((row) => row.phase === "ready");
+    return (
+      <section
+        className={`step step-dashed${ready ? " step-done" : ""}${dragging ? " drop-active" : ""}`}
+        aria-labelledby="sources-title"
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          if (!locked) onAdd(Array.from(event.dataTransfer.files));
+        }}
+      >
+        <div className="step-head">
+          <span className="step-n" aria-hidden="true">
+            [
+            {ready ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+                <path d="M3.5 8.4l3 3 6-6.6" />
+              </svg>
+            ) : (
+              "3"
+            )}
+            ]
+          </span>
+          <div className="step-text">
+            <h2 id="sources-title" className="step-title">
+              {t("src.title")}
+            </h2>
+            <p className="step-sub">{t("src.hint", { max: MAX_SOURCES, size: megabytes(MAX_PDF_BYTES) })}</p>
+          </div>
+          <button type="button" className="btn" disabled={locked} onClick={() => input.current?.click()}>
+            {t("ws.addSource")}
+          </button>
+          <input
+            ref={input}
+            type="file"
+            accept="application/pdf,.pdf"
+            multiple
+            hidden
+            data-testid="source-input"
+            onChange={(event) => {
+              onAdd(Array.from(event.target.files ?? []));
+              event.target.value = "";
+            }}
+          />
+        </div>
+        {(notice || (loaded && rows.length === 0) || rows.length > 0) && (
+          <div className="step-body">
+            {notice && (
+              <p role="alert" className="notice notice-warn">
+                {notice}
+              </p>
+            )}
+            {loaded && rows.length === 0 && <p className="empty">{t("src.empty")}</p>}
+            {list}
+          </div>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className={compact ? "side-sources" : "panel panel-tray"} aria-labelledby="sources-title">
@@ -100,46 +212,7 @@ export function SourcesPanel({ rows, loaded, notice, onAdd, onRetry, onRemove, l
 
       {loaded && rows.length === 0 && <p className="empty">{t("src.empty")}</p>}
 
-      {rows.length > 0 && (
-        <ul className="source-list">
-          {rows.map((row) => (
-            <li key={row.key} className={`source source-${row.phase}`}>
-              <div className="source-main">
-                <span className="source-name">
-                  {compact && (
-                    <svg className="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-                      <path d={row.phase === "ready" ? "M5 12.5l4.5 4.5L19 7" : row.phase === "no_text" ? "M4 8V4h4 M16 4h4v4 M20 16v4h-4 M8 20H4v-4 M8 12h8" : row.phase === "failed" ? "M6 6l12 12 M18 6L6 18" : "M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14z M20 20l-4-4"} />
-                    </svg>
-                  )}
-                  {row.filename}
-                </span>
-                <span className="source-status" aria-live="polite">
-                  {statusText(row, t, locale)}
-                </span>
-                {row.phase === "ingesting" && row.pageCount ? (
-                  <progress max={row.pageCount} value={row.pagesIngested} aria-label={t("src.progress", { name: row.filename })} />
-                ) : null}
-              </div>
-              <div className="source-actions">
-                {row.phase === "failed" && row.id && (
-                  <button type="button" className="btn btn-small" onClick={() => onRetry(row)}>
-                    {t("retry")}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="btn btn-small btn-quiet"
-                  onClick={() => onRemove(row)}
-                  disabled={row.phase === "uploading"}
-                  aria-label={t("src.removeLabel", { name: row.filename })}
-                >
-                  {t("src.remove")}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      {list}
     </section>
   );
 }

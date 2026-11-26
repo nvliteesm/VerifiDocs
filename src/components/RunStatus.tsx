@@ -1,6 +1,6 @@
 "use client";
 
-// The strip above the panes: how far the check is, what it found in one line, and anything that went wrong. Ported
+// The strip above the draft: how far the check is, one block per claim as it lands, what it found in one line, and anything that went wrong. Ported
 // from the old card list (its tally, scan headline, unread parts and focus handling) so none of that behaviour is lost.
 import { useEffect, useRef, useState } from "react";
 import { pluralKey } from "@/lib/i18n";
@@ -17,9 +17,11 @@ interface Props {
   focusWhenDone: boolean;
   /** Reads a part of the draft the AI could not read before. */
   onReadPart?: (unit: number) => Promise<void>;
+  /** The scan has ended and the check starts by itself once the sources finish reading (DESIGN.md J1). */
+  waitingForSources?: boolean;
 }
 
-export function RunStatus({ state, focusWhenDone, onReadPart }: Props) {
+export function RunStatus({ state, focusWhenDone, onReadPart, waitingForSources = false }: Props) {
   const { t, locale } = useT();
   // The part being read again, if any (one at a time: each is one model request).
   const [readingPart, setReadingPart] = useState<number | null>(null);
@@ -86,7 +88,9 @@ export function RunStatus({ state, focusWhenDone, onReadPart }: Props) {
         ? t("results.eyebrow.scanned")
         : state.phase === "error"
           ? t("results.eyebrow.error")
-          : t("results.eyebrow.running");
+          : state.phase === "checking"
+            ? t("results.eyebrow.running")
+            : t("results.eyebrow.scanning");
 
   return (
     <section className="run-status" aria-labelledby="results-title">
@@ -100,10 +104,31 @@ export function RunStatus({ state, focusWhenDone, onReadPart }: Props) {
         {finished ? (total === 0 ? (isStopped ? t("sr.stoppedNone") : t("sr.noClaims")) : t(isStopped ? "sr.stopped" : "sr.finished", { tally: scanView ? scanHeadline : tally })) : ""}
       </p>
 
-      {!finished && !scanned && state.phase !== "error" && (
-        <div className="progress" aria-live="polite">
-          <progress max={Math.max(total, 1)} value={checked} aria-label={t("results.progress.aria")} />
-          <span className="hint">{state.message || (total > 0 ? t("results.progress.count", { checked, total }) : t("results.working"))}</span>
+      {((!finished && !scanned && state.phase !== "error") || (scanned && waitingForSources)) && (
+        <div className="run-main" aria-live="polite">
+          <span className="run-now">
+            <span className="pulse-dot" aria-hidden="true" />
+            <span>
+              {waitingForSources
+                ? t("ws.r.waitSources")
+                : state.phase === "checking"
+                  ? t("ws.r.checking", { done: checked, total })
+                  : state.message || (total > 0 ? t("results.progress.count", { checked, total }) : t("results.working"))}
+            </span>
+          </span>
+          {/* One block per claim: it takes the colour of its verdict as the answer lands. Decorative; the line says it. */}
+          {state.phase === "checking" && total > 0 ? (
+            <div className="segs" aria-hidden="true">
+              {[...state.claims]
+                .sort((a, b) => a.position - b.position)
+                .map((claim) => (
+                  <span key={claim.id} className={claim.verdict ? `seg v-${claim.verdict}` : claim.status === "checking" ? "seg seg-now" : "seg"} />
+                ))}
+            </div>
+          ) : (
+            <div className="scanbar" aria-hidden="true" />
+          )}
+          <progress className="sr-only" max={Math.max(total, 1)} value={checked} aria-label={t("results.progress.aria")} />
         </div>
       )}
 
@@ -113,8 +138,11 @@ export function RunStatus({ state, focusWhenDone, onReadPart }: Props) {
         </p>
       )}
 
-      {(finished || scanned) && total > 0 && <p className={finished && !scanView ? "run-line sr-only" : "run-line"}>{finished && !scanView ? tally : scanHeadline}</p>}
-      {scanView && total > 0 && (
+      {(finished || (scanned && !waitingForSources)) && total > 0 && (
+        // Once a check is done the workspace's result line says it; a stopped check and a scan still say it here.
+        <p className={finished && !scanView && !isStopped ? "run-line sr-only" : "run-line"}>{finished && !scanView ? tally : scanHeadline}</p>
+      )}
+      {scanView && !waitingForSources && total > 0 && (
         <ul className="scan-list">
           {couldUseSource > 0 && <li>{t("scan.optional", { n: couldUseSource })}</li>}
           {notListed > 0 && needSource > 0 && <li>{t("scan.missing", { n: notListed })}</li>}

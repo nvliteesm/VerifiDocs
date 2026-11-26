@@ -94,8 +94,14 @@ describe("the claim inspector", () => {
     const inspector = screen.getByRole("complementary", { name: "Claim inspector" });
     expect(inspector.querySelector(".insp .badge")?.textContent).toBe("Contradicted"); // the pill: icon, label and colour
     expect(within(inspector).getByText("The source gives a different figure.")).toBeTruthy();
-    expect(within(inspector).getByText("Subsidies dropped by 18% in 2023.")).toBeTruthy(); // the sentence, as the headline
-    expect(within(inspector).getByText("The source says something different.")).toBeTruthy(); // what the verdict means
+    // The sentence is kept in the card (hidden while Before shows it), with the differing number marked.
+    expect(inspector.querySelector(".insp-sentence")?.textContent).toBe("Subsidies dropped by 18% in 2023.");
+    expect(inspector.querySelector(".ba-before")?.textContent).toBe("Subsidies dropped by 18% in 2023.");
+    expect(inspector.querySelector(".ba-after")?.textContent).toBe("Subsidies dropped by 8% in 2023.");
+    expect(inspector.querySelector(".wd-old")?.textContent).toBe("18%");
+    expect(inspector.querySelector(".wd-new")?.textContent).toBe("8%");
+    // With a suggested fix, the reason line is enough: the general meaning and "What to do" are left out.
+    expect(within(inspector).queryByText("The source says something different.")).toBeNull();
     expect(within(inspector).getByText(/Subsidy reduction remains at/)).toBeTruthy();
     expect(within(inspector).getAllByText("Stats-Office-2024.pdf").length).toBeGreaterThan(0); // in the properties row and the evidence header
     expect(within(inspector).getAllByText("p. 4").length).toBeGreaterThan(0);
@@ -131,7 +137,7 @@ describe("the claim inspector", () => {
 });
 
 describe("applying a fix", () => {
-  it("puts the suggested sentence in the draft, shows the change, and undo brings the old one back", async () => {
+  it("puts the suggested sentence in the draft, moves on, and the undo line brings the old one back", async () => {
     const { wrong, fine, draft } = twoClaims();
     const user = userEvent.setup();
     const onEvent = view(stateOf([wrong, fine]), draft);
@@ -139,28 +145,26 @@ describe("applying a fix", () => {
     await user.click(screen.getByRole("button", { name: "Apply fix" }));
 
     expect(onEvent).toHaveBeenCalledWith("fix_accepted");
-    expect(screen.getByText("Applied to your copy of the draft.")).toBeTruthy();
+    // The panel has moved on (here to the done state, the only issue being handled) and says what happened.
+    expect(screen.getByText("Fix applied to C-1.")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByText("Fix applied to C-1.").closest(".last-action"));
     const applied = sentence(/Subsidies dropped by 8%/);
     expect(applied.className).toContain("hl-applied");
-    // While selected, the old sentence stays visible, struck through, beside the new one.
-    expect(applied.querySelector("del")?.textContent).toBe("Subsidies dropped by 18% in 2023.");
     expect(applied.querySelector("ins")?.textContent).toBe("Subsidies dropped by 8% in 2023.");
-    expect(screen.queryByRole("button", { name: "Apply fix" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(sentence(/Subsidies dropped by 18%/).className).toContain("v-contradicted");
-    expect(screen.getByRole("button", { name: "Apply fix" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Apply fix" })).toBeTruthy(); // back on the claim
   });
-
   it("copies the draft with the fix in it, and the rest of the text untouched", async () => {
     const { wrong, fine, draft } = twoClaims();
     const user = userEvent.setup();
     view(stateOf([wrong, fine]), draft);
     await user.click(sentence(/Subsidies dropped by 18%/));
     await user.click(screen.getByRole("button", { name: "Apply fix" }));
-    await user.click(screen.getByRole("button", { name: "Copy fixed draft" }));
+    await user.click(screen.getAllByRole("button", { name: "Copy fixed draft" })[0]!);
     expect(await navigator.clipboard.readText()).toBe(draft.replace("18%", "8%"));
-    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Copied" }).length).toBeGreaterThan(0);
   });
 
   it("fits the fix to its place when the claim sentence stops before its own citation and full stop", async () => {
@@ -170,7 +174,7 @@ describe("applying a fix", () => {
     view(stateOf([fell]), draft);
     await user.click(sentence(/Food prices fell/));
     await user.click(screen.getByRole("button", { name: "Apply fix" }));
-    await user.click(screen.getByRole("button", { name: "Copy fixed draft" }));
+    await user.click(screen.getAllByRole("button", { name: "Copy fixed draft" })[0]!);
     expect(await navigator.clipboard.readText()).toBe("Spending rose. Food prices rose by 7.1 percent in 2023 (Stats Office, 2024). Rent is high.");
   });
 
@@ -183,13 +187,13 @@ describe("applying a fix", () => {
     expect(await screen.findByRole("alert")).toBeTruthy();
   });
 
-  it("lets the student ignore a claim, and undo that", async () => {
+  it("lets the student ignore a claim, says so, and undo that", async () => {
     const { wrong, fine, draft } = twoClaims();
     const user = userEvent.setup();
     view(stateOf([wrong, fine]), draft);
     await user.click(sentence(/Subsidies dropped by 18%/));
     await user.click(screen.getByRole("button", { name: "Ignore" }));
-    expect(screen.getByText("Ignored.")).toBeTruthy();
+    expect(screen.getByText("C-1 ignored.")).toBeTruthy();
     expect(sentence(/Subsidies dropped by 18%/).className).toContain("hl-ignored");
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(sentence(/Subsidies dropped by 18%/).className).toContain("v-contradicted");
@@ -259,18 +263,15 @@ describe("filters", () => {
 });
 
 describe("the stats line", () => {
-  it("counts the checked claims, the supported ones and the ones that need attention, and drops a count when a fix is applied", async () => {
+  it("says the outcome in one line, and counts down as fixes are applied", async () => {
     const { wrong, fine, draft } = twoClaims();
     const user = userEvent.setup();
     view(stateOf([wrong, fine]), draft);
-    const line = () => document.querySelector(".stats-line")?.textContent ?? "";
-    expect(line()).toContain("2 claims checked");
-    expect(line()).toContain("1 supported");
-    expect(line()).toContain("1 need attention");
+    const line = () => document.querySelector(".result-line")?.textContent ?? "";
+    expect(line()).toBe("1 to fix, 1 supported.");
     await user.click(sentence(/Subsidies dropped by 18%/));
     await user.click(screen.getByRole("button", { name: "Apply fix" }));
-    expect(line()).toContain("0 need attention");
-    expect(line()).toContain("1 resolved");
+    expect(line()).toBe("0 left to fix, 1 handled.");
     expect(screen.getByRole("img", { name: "Verdicts across the draft" })).toBeTruthy();
   });
 });
@@ -312,7 +313,7 @@ describe("the claim list", () => {
       await user.click(screen.getByRole("button", { name: "Apply fix" }));
     }
     expect(document.querySelectorAll(".cl-done")).toHaveLength(2);
-    expect(document.querySelector(".stats-line")?.textContent).toContain("0 need attention");
+    expect(document.querySelector(".result-line")?.textContent).toBe("0 left to fix, 2 handled.");
   });
 
   it("lists only what the filter keeps, and says so when nothing matches", async () => {
@@ -334,7 +335,7 @@ describe("a draft the browser does not have", () => {
     expect(screen.getByText(/These are the checked sentences, in order/)).toBeTruthy();
     await user.click(sentence(/Subsidies dropped by 18%/));
     await user.click(screen.getByRole("button", { name: "Apply fix" }));
-    await user.click(screen.getByRole("button", { name: "Copy fixed draft" }));
+    await user.click(screen.getAllByRole("button", { name: "Copy fixed draft" })[0]!);
     expect(await navigator.clipboard.readText()).toBe("Subsidies dropped by 8% in 2023. Inflation was 3.2% in Q4.");
   });
 
@@ -349,29 +350,90 @@ describe("a draft the browser does not have", () => {
   });
 });
 
-describe("panes", () => {
-  it("lets a narrow screen switch between draft, claim and sources, and opens the claim pane when a sentence is pressed", async () => {
+describe("the review sheet and the sources drawer", () => {
+  it("opens the claim as a sheet when a sentence is pressed, and closes it again", async () => {
     const { wrong, fine, draft } = twoClaims();
     const user = userEvent.setup();
     view(stateOf([wrong, fine]), draft);
-    const group = screen.getByRole("group", { name: "Panes" });
-    expect(within(group).getByRole("button", { name: "Draft" }).getAttribute("aria-pressed")).toBe("true");
-    await user.click(within(group).getByRole("button", { name: "Sources" }));
-    expect(within(group).getByRole("button", { name: "Sources" }).getAttribute("aria-pressed")).toBe("true");
-    await user.click(within(group).getByRole("button", { name: "Draft" }));
+    const ws = document.querySelector(".ws") as HTMLElement;
+    expect(ws.dataset.sheet).toBe("closed");
     await user.click(sentence(/Subsidies dropped by 18%/));
-    expect(within(group).getByRole("button", { name: "Claim" }).getAttribute("aria-pressed")).toBe("true");
+    expect(ws.dataset.sheet).toBe("open");
+    await user.click(screen.getByRole("button", { name: "Close this issue" }));
+    expect(ws.dataset.sheet).toBe("closed");
+    expect(screen.getByText("Select a sentence in the draft to see its check.")).toBeTruthy();
   });
 
-  it("hides and shows the inspector, and reopens it when a sentence is pressed", async () => {
+  it("keeps the sources drawer closed until asked, closes with Escape, and gives focus back to its button", async () => {
     const { wrong, fine, draft } = twoClaims();
     const user = userEvent.setup();
     view(stateOf([wrong, fine]), draft);
-    const toggle = screen.getByRole("button", { name: "Hide inspector" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const toggle = screen.getByRole("button", { name: "Show sources" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect((document.querySelector(".ws-grid") as HTMLElement).dataset.side).toBe("closed");
     await user.click(toggle);
-    expect(screen.getByRole("button", { name: "Show inspector" }).getAttribute("aria-expanded")).toBe("false");
-    await user.click(sentence(/Subsidies dropped by 18%/));
-    expect(screen.getByRole("button", { name: "Hide inspector" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Hide sources" }).getAttribute("aria-expanded")).toBe("true");
+    expect((document.querySelector(".ws-grid") as HTMLElement).dataset.side).toBe("open");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
+    await user.keyboard("{Escape}");
+    expect((document.querySelector(".ws-grid") as HTMLElement).dataset.side).toBe("closed");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show sources" }));
+  });
+});
+
+describe("the journey (DESIGN.md 4b)", () => {
+  function three() {
+    const a = claim("Alpha is 1%.", "contradicted", { fixSuggestion: "Alpha is 2%." });
+    const ok = claim("Beta holds.", "supported");
+    const c = claim("Gamma is 5%.", "partial", { fixSuggestion: "Gamma is 6%." });
+    return { a, ok, c, draft: `${a.text} ${ok.text} ${c.text}` };
+  }
+
+  it("opens the most serious issue by itself when a check the student started ends", () => {
+    const { a, ok, c, draft } = three();
+    const props = { draftText: draft, draftLabel: null, focusWhenDone: true, sources: null, actions: null, onRetryClaim: () => {}, onEvent: vi.fn() };
+    const { rerender } = render(<Workspace state={stateOf([{ ...a, verdict: null }, { ...ok, verdict: null }, { ...c, verdict: null }], "checking")} {...props} />);
+    expect(screen.getByText("Select a sentence in the draft to see its check.")).toBeTruthy();
+    rerender(<Workspace state={stateOf([a, ok, c])} {...props} />);
+    expect(sentence(/Alpha is 1%/).getAttribute("aria-current")).toBe("true"); // contradicted outranks partly supported
+  });
+
+  it("does not open anything by itself when a finished check is reopened", () => {
+    const { a, ok, c, draft } = three();
+    render(<Workspace state={stateOf([a, ok, c])} draftText={draft} draftLabel={null} focusWhenDone={false} sources={null} actions={null} onRetryClaim={() => {}} onEvent={vi.fn()} />);
+    expect(screen.getByText("Select a sentence in the draft to see its check.")).toBeTruthy();
+  });
+
+  it("moves to the next issue after Apply fix, keeping the way back", async () => {
+    const { a, ok, c, draft } = three();
+    const user = userEvent.setup();
+    view(stateOf([a, ok, c]), draft);
+    await user.click(sentence(/Alpha is 1%/));
+    await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    expect(sentence(/Gamma is 5%/).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByText("Fix applied to C-1.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+  });
+
+  it("ends in a done state that offers the fixed draft first, and the pay question", async () => {
+    const { a, ok, c, draft } = three();
+    const user = userEvent.setup();
+    render(
+      <Workspace state={stateOf([a, ok, c])} draftText={draft} draftLabel={null} focusWhenDone={false} sources={null} actions={null} onRetryClaim={() => {}} onEvent={vi.fn()} onCopyReport={vi.fn()} survey={<p>Would you pay?</p>} />,
+    );
+    await user.click(sentence(/Alpha is 1%/));
+    await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    await user.click(screen.getByRole("button", { name: "Ignore" }));
+    expect(screen.getByText("All 2 handled. Copy your fixed draft to use it.")).toBeTruthy();
+    const done = document.querySelector(".done") as HTMLElement;
+    expect(within(done).getByRole("button", { name: "Copy fixed draft" }).className).toContain("btn-primary");
+    expect(within(done).getByRole("button", { name: "Copy report" })).toBeTruthy();
+    expect(within(done).getByText("Would you pay?")).toBeTruthy();
+  });
+
+  it("keeps the student's draft on screen while it is being read", () => {
+    render(<Workspace state={{ ...initialState, phase: "extracting", runId: "r" }} draftText="My pasted draft about prices." draftLabel={null} focusWhenDone sources={null} actions={null} onRetryClaim={() => {}} onEvent={vi.fn()} />);
+    expect(screen.getByText("My pasted draft about prices.")).toBeTruthy();
+    expect(screen.getByText("Finding the claims in your draft...")).toBeTruthy();
   });
 });

@@ -6,7 +6,7 @@ import { messageOf } from "@/lib/client/run-verification";
 import type { ImportResponse, Importer, VerifyInput } from "@/lib/client/types";
 import { verdictLabel } from "@/lib/client/verdict-info";
 import { looksLikeGoogleDocLink } from "@/lib/import/google-link";
-import { pluralKey, type MessageKey } from "@/lib/i18n";
+import { pluralKey } from "@/lib/i18n";
 import { useT } from "./LocaleProvider";
 
 interface Props {
@@ -28,8 +28,10 @@ interface Props {
   importer?: Importer;
   /** The heading and one line above the draft card. */
   intro?: ReactNode;
-  /** The sources list, shown beside the draft. It has its own upload handlers, which belong to the app. */
+  /** The sources step. It has its own upload handlers, which belong to the app. */
   sources?: ReactNode;
+  /** The privacy line under the button. */
+  footer?: ReactNode;
   /** What the sources list holds, for the "Ready to check" cards. */
   sourceSummary?: { total: number; ready: number; scans: number; reading: boolean };
 }
@@ -66,6 +68,7 @@ function loadedFrom(initial: VerifyInput | null): Loaded | null {
   return { label: initial.label, text, file: null, characters: text.length, referenceCount: null, warnings: [] };
 }
 
+// The start screen: three steps (draft, reference list, source PDFs) and one button, in one calm column.
 export function DraftPanel({
   disabled,
   disabledReason,
@@ -78,6 +81,7 @@ export function DraftPanel({
   importer,
   intro,
   sources,
+  footer,
   sourceSummary = { total: 0, ready: 0, scans: 0, reading: false },
 }: Props) {
   const { t, locale } = useT();
@@ -192,228 +196,211 @@ export function DraftPanel({
     requestAnimationFrame(() => document.getElementById("draft-text")?.focus());
   }
 
-  const draftName = loaded ? loaded.label : t("start.pasted");
-  const sourceCard =
-    sourceSummary.total === 0
-      ? { tone: "dashed", title: t("start.src.none"), body: t("start.src.noneBody") }
-      : {
-          tone: sourceSummary.ready === sourceSummary.total && !sourceSummary.reading ? "good" : "dashed",
-          title: t("start.src.some", { ready: sourceSummary.ready, total: sourceSummary.total }),
-          body:
-            sourceSummary.scans > 0
-              ? t(pluralKey(locale, "start.src.scan", sourceSummary.scans), { n: sourceSummary.scans, label: verdictLabel(t, "cant_check") })
-              : sourceSummary.reading
-                ? t("start.src.reading")
-                : "",
-        };
+  const tick = (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M3.5 8.4l3 3 6-6.6" />
+    </svg>
+  );
 
   return (
     <div className="start">
       <section className="start-main" aria-labelledby="draft-title">
-      {intro}
-      <div className="panel start-card">
-      <div className="panel-head">
-        <h2 id="draft-title">{t("draft.title")}</h2>
-        <p className="hint">{importer ? t("draft.hint") : t("draft.hintNoLink")}</p>
-      </div>
+        {intro}
 
-      {onTryExample && !loaded && text.trim() === "" && (
-        <div className="example">
-          <button type="button" className="btn btn-small" disabled={locked} onClick={onTryExample}>
-            {t("example.button")}
-          </button>
-          <span className="hint">{t("example.hint")}</span>
-        </div>
-      )}
-      {exampleNote && (
-        <p role="alert" className="notice notice-warn">
-          {exampleNote}
-        </p>
-      )}
-
-      {loaded ? (
-        <div className="draft-card">
-          <div className="draft-card-main">
-            <p className="draft-card-name">{loaded.label}</p>
-            {loaded.characters !== null && (
-              <p className={`hint${tooLong ? " hint-bad" : ""}`}>
-                {t("draft.count", { n: loaded.characters.toLocaleString(locale), max: MAX_DRAFT_CHARS.toLocaleString(locale) })}
-                {tooLong ? t("draft.tooLong") : ""}
-              </p>
-            )}
-            {loaded.referenceCount !== null && (
-              <p className="hint">
-                {loaded.referenceCount > 0
-                  ? t(pluralKey(locale, "import.refs", loaded.referenceCount), { n: loaded.referenceCount.toLocaleString(locale) })
-                  : t("import.norefs")}
-              </p>
-            )}
-          </div>
-          <button type="button" className="link" disabled={busy} onClick={change}>
-            {t("draft.change")}
-          </button>
-          {loaded.warnings.includes("footnotes") && (
-            <p className="notice notice-warn draft-card-note">{t("import.footnotes", { label: verdictLabel(t, "no_citation_given") })}</p>
-          )}
-          {loaded.warnings.includes("tables") && <p className="notice notice-warn draft-card-note">{t("import.tables")}</p>}
-        </div>
-      ) : (
-        <div
-          className={`field draft-drop${dragging ? " drop-active" : ""}`}
-          onDragOver={(event) => {
-            event.preventDefault();
-            if (!busy) setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragging(false);
-            if (!busy) void pickFile(event.dataTransfer.files?.[0] ?? null);
-          }}
-        >
-          <label htmlFor="draft-text">{importer ? t("draft.label") : t("draft.labelNoLink")}</label>
-          <textarea
-            id="draft-text"
-            rows={8}
-            value={text}
-            disabled={reading !== null}
-            onChange={(event) => setText(event.target.value)}
-            onPaste={(event) => {
-              // A pasted Google Docs link is read at once: the student never sees the link sit in the box.
-              const pasted = event.clipboardData.getData("text");
-              if (importer && !locked && text.trim() === "" && looksLikeGoogleDocLink(pasted)) {
-                event.preventDefault();
-                void readLink(pasted);
-              }
-            }}
-            placeholder={importer ? t("draft.placeholder") : t("draft.placeholderNoLink")}
-          />
-          <div className="draft-tools">
-            <button type="button" className="btn btn-small" disabled={busy} onClick={() => fileInput.current?.click()}>
-              {t("file.choose")}
-            </button>
-            <span className="hint">{importer ? t("file.types") : t("file.typesNoPdf")}</span>
-            <input
-              ref={fileInput}
-              type="file"
-              // Opened by the "Choose a file" button; a visually hidden input still took its full width on a phone.
-              hidden
-              accept={`.docx,.txt,${importer ? ".pdf," : ""}application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain${importer ? ",application/pdf" : ""}`}
-              onChange={(event) => {
-                void pickFile(event.target.files?.[0] ?? null);
-                event.target.value = "";
-              }}
-            />
-          </div>
-          {text.length > 0 && !pastedLink && (
-            <p className={`hint${tooLong ? " hint-bad" : ""}`} aria-live="polite">
-              {t("draft.count", { n: text.length.toLocaleString(locale), max: MAX_DRAFT_CHARS.toLocaleString(locale) })}
-              {tooLong ? t("draft.tooLong") : ""}
-            </p>
-          )}
-          {/* A link typed rather than pasted gets one press to read it. */}
-          {pastedLink && (
-            <div className="example">
-              <span className="hint">{t("link.detected")}</span>
-              <button type="button" className="btn" disabled={busy} onClick={() => void readLink(text)}>
-                {t("link.button")}
-              </button>
+        <div className="steps">
+          <div className={`step${hasDraft ? " step-done" : ""}`}>
+            <div className="step-head">
+              <span className="step-n" aria-hidden="true">
+                [{hasDraft ? tick : "1"}]
+              </span>
+              <div className="step-text">
+                <h2 id="draft-title" className="step-title">
+                  {t("draft.title")}
+                </h2>
+                <p className="step-sub">{importer ? t("draft.hint") : t("draft.hintNoLink")}</p>
+              </div>
+              {onTryExample && !loaded && text.trim() === "" && (
+                <button type="button" className="btn" disabled={locked} onClick={onTryExample}>
+                  {t("example.button")}
+                </button>
+              )}
             </div>
-          )}
+
+            <div className="step-body">
+              {onTryExample && !loaded && text.trim() === "" && <p className="hint">{t("example.hint")}</p>}
+              {exampleNote && (
+                <p role="alert" className="notice notice-warn">
+                  {exampleNote}
+                </p>
+              )}
+
+              {loaded ? (
+                <div className="draft-card">
+                  <div className="draft-card-main">
+                    <p className="draft-card-name">{loaded.label}</p>
+                    {loaded.characters !== null && (
+                      <p className={`hint${tooLong ? " hint-bad" : ""}`}>
+                        {t("draft.count", { n: loaded.characters.toLocaleString(locale), max: MAX_DRAFT_CHARS.toLocaleString(locale) })}
+                        {tooLong ? t("draft.tooLong") : ""}
+                      </p>
+                    )}
+                    {loaded.referenceCount !== null && (
+                      <p className="hint">
+                        {loaded.referenceCount > 0
+                          ? t(pluralKey(locale, "import.refs", loaded.referenceCount), { n: loaded.referenceCount.toLocaleString(locale) })
+                          : t("import.norefs")}
+                      </p>
+                    )}
+                  </div>
+                  <button type="button" className="link" disabled={busy} onClick={change}>
+                    {t("draft.change")}
+                  </button>
+                  {loaded.warnings.includes("footnotes") && (
+                    <p className="notice notice-warn draft-card-note">{t("import.footnotes", { label: verdictLabel(t, "no_citation_given") })}</p>
+                  )}
+                  {loaded.warnings.includes("tables") && <p className="notice notice-warn draft-card-note">{t("import.tables")}</p>}
+                </div>
+              ) : (
+                <div
+                  className={`field draft-drop${dragging ? " drop-active" : ""}`}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    if (!busy) setDragging(true);
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragging(false);
+                    if (!busy) void pickFile(event.dataTransfer.files?.[0] ?? null);
+                  }}
+                >
+                  <label htmlFor="draft-text">{importer ? t("draft.label") : t("draft.labelNoLink")}</label>
+                  <textarea
+                    id="draft-text"
+                    rows={8}
+                    value={text}
+                    disabled={reading !== null}
+                    onChange={(event) => setText(event.target.value)}
+                    onPaste={(event) => {
+                      // A pasted Google Docs link is read at once: the student never sees the link sit in the box.
+                      const pasted = event.clipboardData.getData("text");
+                      if (importer && !locked && text.trim() === "" && looksLikeGoogleDocLink(pasted)) {
+                        event.preventDefault();
+                        void readLink(pasted);
+                      }
+                    }}
+                    placeholder={importer ? t("draft.placeholder") : t("draft.placeholderNoLink")}
+                  />
+                  <div className="draft-tools">
+                    <button type="button" className="btn btn-small" disabled={busy} onClick={() => fileInput.current?.click()}>
+                      {t("file.choose")}
+                    </button>
+                    <span className="hint">{importer ? t("file.types") : t("file.typesNoPdf")}</span>
+                    <input
+                      ref={fileInput}
+                      type="file"
+                      // Opened by the "Choose a file" button; a visually hidden input still took its full width on a phone.
+                      hidden
+                      accept={`.docx,.txt,${importer ? ".pdf," : ""}application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain${importer ? ",application/pdf" : ""}`}
+                      onChange={(event) => {
+                        void pickFile(event.target.files?.[0] ?? null);
+                        event.target.value = "";
+                      }}
+                    />
+                  </div>
+                  {text.length > 0 && !pastedLink && (
+                    <p className={`hint${tooLong ? " hint-bad" : ""}`} aria-live="polite">
+                      {t("draft.count", { n: text.length.toLocaleString(locale), max: MAX_DRAFT_CHARS.toLocaleString(locale) })}
+                      {tooLong ? t("draft.tooLong") : ""}
+                    </p>
+                  )}
+                  {/* A link typed rather than pasted gets one press to read it. */}
+                  {pastedLink && (
+                    <div className="example">
+                      <span className="hint">{t("link.detected")}</span>
+                      <button type="button" className="btn" disabled={busy} onClick={() => void readLink(text)}>
+                        {t("link.button")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {reading !== null && (
+                <p role="status" className="hint">
+                  {reading === "link" ? t("link.reading") : t("file.reading")}
+                </p>
+              )}
+              {error && (
+                <p role="alert" className="notice notice-warn">
+                  {error}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <details className={`step refs${references.trim() !== "" ? " step-done" : ""}`} open={refsOpen} onToggle={(event) => setRefsOpen(event.currentTarget.open)}>
+            <summary>
+              <span className="step-n" aria-hidden="true">
+                [{references.trim() !== "" ? tick : "2"}]
+              </span>
+              <span className="step-title">{t("refs.label")}</span>
+              <span className="hint">{t("refs.hint")}</span>
+            </summary>
+            <div className="step-body">
+              <div className="field">
+                <label htmlFor="draft-refs" className="sr-only">
+                  {t("refs.label")}
+                </label>
+                <textarea id="draft-refs" rows={6} value={references} onChange={(event) => setReferences(event.target.value)} placeholder={t("refs.placeholder")} />
+              </div>
+            </div>
+          </details>
+
+          {sources}
         </div>
-      )}
 
-      {reading !== null && (
-        <p role="status" className="hint">
-          {reading === "link" ? t("link.reading") : t("file.reading")}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="notice notice-warn">
-          {error}
-        </p>
-      )}
+        {/* Only once there is a draft: before that it warns about a mistake the student has not made. */}
+        {noReadySources && hasDraft && <p className="notice notice-info">{t("nosrc.notice", { label: verdictLabel(t, "cant_check") })}</p>}
 
-      <details className="refs" open={refsOpen} onToggle={(event) => setRefsOpen(event.currentTarget.open)}>
-        <summary>
-          {t("refs.label")} <span className="hint">{t("refs.hint")}</span>
-        </summary>
-        <div className="field">
-          <label htmlFor="draft-refs" className="sr-only">
-            {t("refs.label")}
-          </label>
-          <textarea
-            id="draft-refs"
-            rows={6}
-            value={references}
-            onChange={(event) => setReferences(event.target.value)}
-            placeholder={t("refs.placeholder")}
-          />
+        <div className="start-go" role="group" aria-label={t("start.ready")}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            ref={startButton}
+            disabled={!canStart}
+            aria-describedby={canStart ? undefined : "start-reason"}
+            onClick={() => {
+              const next = input(loaded);
+              if (next) onStart(next);
+            }}
+          >
+            {t("check.button")}
+          </button>
+          <p className="ready-line">
+            <span>
+              {hasDraft ? t("start.r.draft") : t("start.r.noDraft")}{" "}
+              {sourceSummary.total === 0 ? t("start.r.noSrc") : t("start.r.src", { ready: sourceSummary.ready, total: sourceSummary.total })}
+            </span>
+            {sourceSummary.scans > 0 && (
+              <span className="hint ready-note">{t(pluralKey(locale, "start.src.scan", sourceSummary.scans), { n: sourceSummary.scans, label: verdictLabel(t, "cant_check") })}</span>
+            )}
+            {sourceSummary.reading && <span className="hint ready-note">{t("start.src.reading")}</span>}
+            {disabled && disabledReason && (
+              <span id="start-reason" className="hint">
+                {disabledReason}
+              </span>
+            )}
+            {!disabled && !hasDraft && (
+              <span id="start-reason" className="hint">
+                {t("check.needDraft")}
+              </span>
+            )}
+          </p>
         </div>
-      </details>
 
-      {/* Only once there is a draft: before that it warns about a mistake the student has not made. */}
-      {noReadySources && hasDraft && (
-        <p className="notice notice-info">
-          {t("nosrc.notice", { label: verdictLabel(t, "cant_check") })}
-        </p>
-      )}
-
-      </div>
+        {footer}
       </section>
-
-      <aside className="start-ready" aria-labelledby="ready-title">
-        <h2 id="ready-title" className="start-ready-title">
-          {t("start.ready")}
-        </h2>
-        <div className="status-cards">
-          <div className={`status-card ${hasDraft ? "status-good" : "status-dashed"}`}>
-            <strong>{hasDraft ? t("start.draft.yes") : t("start.draft.no")}</strong>
-            <span>{hasDraft ? t("start.draft.yesBody", { label: draftName }) : t("start.draft.noBody")}</span>
-          </div>
-          <div className={`status-card status-${sourceCard.tone}`}>
-            <strong>{sourceCard.title}</strong>
-            {sourceCard.body && <span>{sourceCard.body}</span>}
-          </div>
-        </div>
-        <div>
-          <h3 className="sub-title">{t("start.get.title")}</h3>
-          <ul className="get-list">
-            {(["1", "2", "3"] as const).map((n) => (
-              <li key={n}>{t(`start.get.${n}` as MessageKey)}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="actions start-actions">
-        <button
-          type="button"
-          className="btn btn-primary"
-          ref={startButton}
-          disabled={!canStart}
-          aria-describedby={canStart ? undefined : "start-reason"}
-          onClick={() => {
-            const next = input(loaded);
-            if (next) onStart(next);
-          }}
-        >
-          {t("check.button")}
-        </button>
-        {disabled && disabledReason && (
-          <span id="start-reason" className="hint">
-            {disabledReason}
-          </span>
-        )}
-        {!disabled && !hasDraft && (
-          <span id="start-reason" className="hint">
-            {t("check.needDraft")}
-          </span>
-        )}
-      </div>
-      </aside>
-
-      <aside className="start-side" aria-label={t("ws.side")}>
-        {sources}
-      </aside>
     </div>
   );
 }

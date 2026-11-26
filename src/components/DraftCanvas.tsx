@@ -1,11 +1,12 @@
 "use client";
 
-// The centre pane: the draft is the hero. Each claim sentence is an inline button with a soft underline for its
+// The draft as a page with a margin rule: the draft is the hero. Each claim sentence is an inline button with a soft underline for its
 // status and a [C-n] tag; the selected one has a focus border. An applied fix shows as a small diff while selected.
 import type { WorkingDraft } from "@/lib/client/working-draft";
 import { verdictLabel } from "@/lib/client/verdict-info";
 import type { ClaimView } from "@/lib/client/types";
 import type { Resolution } from "./ClaimInspector";
+import { VerdictIcon } from "./claim-bits";
 import { useT } from "./LocaleProvider";
 
 interface Props {
@@ -46,7 +47,7 @@ function Sentence({ claim, label, text, applied, resolution, active, muted, onSe
     <button
       type="button"
       id={`hl-${claim.id}`}
-      className={`hl v-${state}${resolution ? ` hl-${resolution}` : ""}${active ? " hl-active" : ""}${muted ? " hl-muted" : ""}`}
+      className={`hl v-${state}${resolution ? ` hl-${resolution}` : ""}${active ? " hl-active" : ""}${muted ? " hl-muted" : ""}${claim.status === "checking" && !claim.verdict ? " hl-checking" : ""}`}
       aria-current={active ? "true" : undefined}
       onClick={() => onSelect(claim.id)}
     >
@@ -63,6 +64,7 @@ function Sentence({ claim, label, text, applied, resolution, active, muted, onSe
         <span className="sr-only"> ({resolution === "applied" ? t("ws.fix.applied") : resolution === "ignored" ? t("ws.fix.ignored") : verdictLabel(t, claim.verdict!)})</span>
       )}
       <span className="tag" aria-hidden="true">
+        {(resolution === "applied" ? "supported" : claim.verdict) && <VerdictIcon verdict={resolution === "applied" ? "supported" : claim.verdict!} size={11} />}
         {label}
       </span>
     </button>

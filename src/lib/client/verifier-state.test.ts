@@ -245,3 +245,16 @@ describe("found sources", () => {
     expect(state.claims.map((c) => c.sourcesSearched)).toEqual([undefined, true]);
   });
 });
+
+describe("claimStart", () => {
+  const pending = (id: string) => ({ id, position: 1, text: "t", citation: null, citationInherited: false, section: null, need: "must" as const, status: "pending" as const, verdict: null, quote: null, page: null, reason: null, exitStage: null, fixSuggestion: null });
+
+  it("marks a claim as being checked, and a stop or a failure puts it back to waiting", () => {
+    let state = reduce({ ...initialState, phase: "checking", claims: [pending("a"), pending("b")] }, { type: "claimStart", id: "a" });
+    expect(state.claims.map((c) => c.status)).toEqual(["checking", "pending"]);
+    expect(reduce(state, { type: "stopped" }).claims[0]!.status).toBe("pending");
+    expect(reduce(state, { type: "failed", message: "m" }).claims[0]!.status).toBe("pending");
+    state = reduce(state, { type: "claimError", id: "a", message: "m" });
+    expect(state.claims[0]!.status).toBe("pending");
+  });
+});

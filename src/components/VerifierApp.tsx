@@ -18,28 +18,35 @@ import { useSources } from "./useSources";
 import { useVerification } from "./useVerification";
 import { Workspace } from "./Workspace";
 
-function Frame({ children, busy, wide }: { children?: React.ReactNode; busy?: boolean; wide?: boolean }) {
+// The page frame: header (wordmark, document name, language and theme), then the screen, which fades in when it changes.
+function Frame({ children, busy, fit, docTitle, screen }: { children?: React.ReactNode; busy?: boolean; fit?: boolean; docTitle?: string | null; screen?: string }) {
   const { t } = useT();
   return (
-    <div className={`shell${wide ? " shell-wide" : ""}`}>
+    <div className={`shell${fit ? " shell-fit" : ""}`}>
       <a className="skip" href="#main">
         {t("skip")}
       </a>
       <header className="top">
-        <span className="wordmark">
-          <svg width="28" height="28" viewBox="0 0 30 30" aria-hidden="true" focusable="false">
-            <rect width="30" height="30" rx="8" fill="var(--accent)" />
-            <path d="M8.5 15.5l4.2 4.2L21.5 10.5" fill="none" stroke="var(--accent-text)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          VerifiDocs
-        </span>
+        <div className="top-left">
+          <span className="wordmark">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <path d="M8 4H4v18h4M18 4h4v18h-4" />
+              <path d="M9 13.5l3 3 5.5-6.5" />
+            </svg>
+            VerifiDocs
+          </span>
+          {docTitle && <span className="doc-title">{docTitle}</span>}
+        </div>
         <div className="tools">
           <LanguageToggle />
           <ThemeToggle />
         </div>
       </header>
       <main id="main" aria-busy={busy}>
-        {children}
+        {/* A new key remounts the screen, so each one fades and rises in instead of snapping. */}
+        <div className="screen" key={screen}>
+          {children}
+        </div>
       </main>
     </div>
   );
@@ -52,6 +59,10 @@ export function VerifierApp() {
   // How the draft panel reads a Google Docs link or a PDF draft.
   const [importer] = useState(() => ({ link: api.importLink, pdf: api.importPdf }));
   const [consent, setConsent] = useState<boolean | null>(null);
+  // The privacy note is one line; its three points open on "Details" (DESIGN.md, Start).
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  // DESIGN.md J1: after a scan this visit, the check starts by itself once the sources are ready.
+  const [autoCheck, setAutoCheck] = useState(false);
   // Kept in memory only: it lets a failed check be retried or edited without retyping. Never stored (Hard Rules 4 and 11).
   const [lastInput, setLastInput] = useState<VerifyInput | null>(null);
   const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
@@ -181,6 +192,7 @@ export function VerifierApp() {
     setAnswered(false);
     setConfirmingDelete(false);
     setDeleteNote(null);
+    setAutoCheck(true);
     verification.start(input);
   };
 
@@ -202,23 +214,57 @@ export function VerifierApp() {
     }
   };
 
+  // J1: a scan this visit carries straight on to the check when a source is ready; while sources are still being
+  // read it waits, then starts. With no source ready it stops after the scan, as before. A reopened check never starts.
+  const readyCount = sources.rows.filter((row) => row.phase === "ready").length;
+  const { check } = verification;
+  useEffect(() => {
+    if (!autoCheck || state.phase !== "scanned") return;
+    if (waitingClaims === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- nothing to check: the scan is the result
+      setAutoCheck(false);
+      return;
+    }
+    if (sources.busy) return;
+    setAutoCheck(false);
+    if (readyCount > 0) check();
+  }, [autoCheck, state.phase, sources.busy, readyCount, waitingClaims, check]);
+  const waitingForSources = autoCheck && state.phase === "scanned" && sources.busy && waitingClaims > 0;
+
   // Both the privacy choice and the language live in the browser, so nothing is shown until both are known.
   if (consent === null || !ready) return <Frame busy />;
 
   const readySources = sources.rows.filter((row) => row.phase === "ready").length;
 
   return (
-    <Frame wide>
-      {/* Once a check exists the results come first; the heading stays for screen readers (one h1 per page). */}
+    <Frame fit={!idle} screen={idle ? "start" : "work"} docTitle={idle ? null : (lastInput?.label ?? null)}>
       {/* Once a check exists the results come first; the heading stays for screen readers (one h1 per page). */}
       {!idle && <h1 className="sr-only">{t("app.title")}</h1>}
 
+      <div className={idle ? "start-notices" : "page-notices"}>
       {/* The product is visible at once. Until the student presses "Got it", checking and uploading stay locked,
           because both send text to other services. */}
       {!consent && (
-        <section className="panel note" aria-labelledby="notice-title">
-          <h2 id="notice-title">{t("note.title")}</h2>
-          <ul className="promise">
+        <section className="consent" aria-labelledby="notice-title">
+          <div className="consent-row">
+            <p id="notice-title" className="consent-line">
+              {t("note.short")}
+            </p>
+            <button type="button" className="link" aria-expanded={noticeOpen} aria-controls="notice-details" onClick={() => setNoticeOpen((open) => !open)}>
+              {noticeOpen ? t("note.hide") : t("note.details")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-small"
+              onClick={() => {
+                writeStored(CONSENT_KEY, "yes");
+                setConsent(true);
+              }}
+            >
+              {t("note.ok")}
+            </button>
+          </div>
+          <ul className="promise" id="notice-details" hidden={!noticeOpen}>
             <li>
               <strong>{t("note.kept.title")}</strong>
               <span>{t("note.kept.body")}</span>
@@ -232,33 +278,22 @@ export function VerifierApp() {
               <span>{t("note.account.body")}</span>
             </li>
           </ul>
-          <div className="actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                writeStored(CONSENT_KEY, "yes");
-                setConsent(true);
-              }}
-            >
-              {t("note.ok")}
-            </button>
-          </div>
         </section>
       )}
 
       {deleteNote === "deleted" && idle && (
-        <p role="status" className="notice notice-info" style={{ marginBottom: 20 }} ref={deletedNote} tabIndex={-1}>
+        <p role="status" className="notice notice-info" ref={deletedNote} tabIndex={-1}>
           {t("deleted")}
         </p>
       )}
 
       {waking && (
-        <p role="status" className="notice notice-info" style={{ marginBottom: 20 }}>
+        <p role="status" className="notice notice-info">
           <span className="pulse-dot" aria-hidden="true" />
           {t("waking")}
         </p>
       )}
+      </div>
 
       {idle ? (
         <DraftPanel
@@ -276,9 +311,21 @@ export function VerifierApp() {
               exampleNote={exampleNote}
               intro={
                 <div className="intro">
-                  <h1>{t("app.title")}</h1>
+                  <p className="eyebrow">{t("app.eyebrow")}</p>
+                  <h1>
+                    {t("app.titleLead")} <em>{t("app.titleEm")}</em>
+                  </h1>
                   <p className="lede">{t("app.lede")}</p>
                 </div>
+              }
+              footer={
+                <p className="privacy-line">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                    <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                    <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+                  </svg>
+                  {t("footer")}
+                </p>
               }
               sourceSummary={{
                 total: sources.rows.length,
@@ -288,8 +335,7 @@ export function VerifierApp() {
               }}
               sources={
                 <SourcesPanel
-                  compact
-                  showHint
+                  step
                   rows={sources.rows}
                   loaded={sources.loaded}
                   notice={sources.notice}
@@ -319,155 +365,135 @@ export function VerifierApp() {
               onRemove={sources.remove}
             />
           }
+          waitingForSources={waitingForSources}
+          onCopyReport={copyReport}
+          reportCopied={copied}
           actions={
             <>
-                {state.phase === "scanned" && (
-                  <>
-                    <button type="button" className="btn btn-primary" disabled={sources.busy} onClick={verification.check}>
-                      {t(pluralKey(locale, "act.checkCited", waitingClaims), { n: waitingClaims })}
-                    </button>
-                    <button type="button" className="btn" onClick={copyReport}>
-                      {copied === "copied" ? t("act.copied") : t("act.copy")}
-                    </button>
-                    {lastInput && (
-                      <button type="button" className="btn" onClick={() => verification.reset()}>
-                        {t("act.edit")}
-                      </button>
-                    )}
-                    {sources.busy ? (
-                      <span className="hint">{t("wait.sources")}</span>
-                    ) : (
-                      readySources === 0 && <span className="hint">{t("scan.addSources")}</span>
-                    )}
-                  </>
-                )}
-                {state.phase === "done" && (
-                  <>
-                    <button type="button" className="btn btn-primary" onClick={copyReport}>
-                      {copied === "copied" ? t("act.copied") : t("act.copy")}
-                    </button>
-                    {lastInput && (
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={sources.busy}
-                        onClick={() => {
-                          event("recheck_started", { claims_rechecked: state.claims.length });
-                          start(lastInput);
-                        }}
-                      >
-                        {t("act.recheck")}
-                      </button>
-                    )}
-                    {lastInput && (
-                      <button type="button" className="btn" onClick={() => verification.reset()}>
-                        {t("act.edit")}
-                      </button>
-                    )}
-                  </>
-                )}
-                {state.phase === "error" && lastInput && (
-                  <>
-                    <button type="button" className="btn btn-primary" onClick={() => start(lastInput)}>
-                      {t("retry")}
-                    </button>
-                    <button type="button" className="btn" onClick={() => verification.reset()}>
-                      {t("act.edit")}
-                    </button>
-                  </>
-                )}
-                {running && (
-                  <button type="button" className="btn" onClick={verification.stop}>
-                    {t("act.stop")}
+              {state.phase === "scanned" && !autoCheck && (
+                <>
+                  <button type="button" className="btn btn-primary" disabled={sources.busy} onClick={verification.check}>
+                    {t(pluralKey(locale, "act.checkCited", waitingClaims), { n: waitingClaims })}
                   </button>
-                )}
-                {state.phase === "done" && !lastInput && <span className="hint">{t("recheck.hint")}</span>}
-                <span className="sr-only" role="status">
-                  {copied === "copied" ? t("act.copiedSr") : copied === "failed" ? t("act.copyFailSr") : ""}
-                </span>
-                {copied === "failed" && <span className="hint hint-bad">{t("act.copyFail")}</span>}
-            </>
-          }
-          after={
-            <>
-              {/* Starting over and deleting sit apart from the main actions: one is rare, the other cannot be undone. */}
-              <div className="actions actions-quiet">
+                  {sources.busy ? <span className="hint">{t("wait.sources")}</span> : readySources === 0 && <span className="hint">{t("scan.addSources")}</span>}
+                </>
+              )}
+              {state.phase === "error" && lastInput && (
+                <button type="button" className="btn btn-primary" onClick={() => start(lastInput)}>
+                  {t("retry")}
+                </button>
+              )}
+              {running && (
+                <button type="button" className="btn" onClick={verification.stop}>
+                  {t("act.stop")}
+                </button>
+              )}
+              {(state.phase === "scanned" || state.phase === "done") && (
+                <button type="button" className="btn btn-quiet" onClick={copyReport}>
+                  {copied === "copied" ? t("act.copied") : t("act.copy")}
+                </button>
+              )}
+              {state.phase === "done" && lastInput && (
                 <button
                   type="button"
                   className="btn btn-quiet"
-                  disabled={running}
+                  disabled={sources.busy}
                   onClick={() => {
-                    setLastInput(null);
-                    verification.reset();
+                    event("recheck_started", { claims_rechecked: state.claims.length });
+                    start(lastInput);
                   }}
                 >
-                  {t("act.new")}
+                  {t("act.recheck")}
                 </button>
-                {state.runId && !running && !confirmingDelete && (
-                  <button type="button" className="btn btn-quiet" ref={deleteButton} onClick={() => setConfirmingDelete(true)}>
-                    {t("act.delete")}
-                  </button>
-                )}
-                {confirmingDelete && (
-                  <span className="confirm" role="group" aria-label={t("delete.group")}>
-                    <span className="hint">{t("delete.hint")}</span>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={async () => {
-                        const gone = await verification.deleteCheck();
-                        setConfirmingDelete(false);
-                        if (gone) {
-                          setLastInput(null);
-                          setDeleteNote("deleted");
-                        } else {
-                          setDeleteNote("failed");
-                        }
-                      }}
-                    >
-                      {t("delete.yes")}
-                    </button>
-                    <button type="button" className="btn btn-quiet" ref={keepButton} onClick={cancelDelete}>
-                      {t("delete.keep")}
-                    </button>
-                  </span>
-                )}
-                {deleteNote === "failed" && (
-                  <span role="alert" className="hint hint-bad">
-                    {t("delete.failed")}
-                  </span>
-                )}
-              </div>
-              {state.phase === "done" && (
-                <div className="survey">
-                  {!answered && (
-                    <>
-                      <span className="hint" id="pay-title">
-                        {t("survey.question")}
-                      </span>
-                      <div className="chips" role="group" aria-labelledby="pay-title">
-                        {(["yes", "maybe", "no"] as const).map((answer) => (
-                          <button
-                            key={answer}
-                            type="button"
-                            className="chip"
-                            onClick={() => {
-                              event("would_pay_answered", { answer });
-                              setAnswered(true);
-                            }}
-                          >
-                            {answer === "yes" ? t("survey.yes") : answer === "maybe" ? t("survey.maybe") : t("survey.no")}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  <span className="hint" role="status">
-                    {answered ? t("survey.thanks") : ""}
-                  </span>
-                </div>
               )}
+              {(state.phase === "scanned" || state.phase === "done" || state.phase === "error") && lastInput && (
+                <button type="button" className="btn btn-quiet" onClick={() => verification.reset()}>
+                  {t("act.edit")}
+                </button>
+              )}
+              {/* Starting over and deleting: one is rare, the other cannot be undone, so they stay quiet. */}
+              <button
+                type="button"
+                className="btn btn-quiet"
+                disabled={running}
+                onClick={() => {
+                  setLastInput(null);
+                  verification.reset();
+                }}
+              >
+                {t("act.new")}
+              </button>
+              {state.runId && !running && !confirmingDelete && (
+                <button type="button" className="btn btn-quiet" ref={deleteButton} onClick={() => setConfirmingDelete(true)}>
+                  {t("act.delete")}
+                </button>
+              )}
+              {confirmingDelete && (
+                <span className="confirm" role="group" aria-label={t("delete.group")}>
+                  <span className="hint">{t("delete.hint")}</span>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={async () => {
+                      const gone = await verification.deleteCheck();
+                      setConfirmingDelete(false);
+                      if (gone) {
+                        setLastInput(null);
+                        setDeleteNote("deleted");
+                      } else {
+                        setDeleteNote("failed");
+                      }
+                    }}
+                  >
+                    {t("delete.yes")}
+                  </button>
+                  <button type="button" className="btn btn-quiet" ref={keepButton} onClick={cancelDelete}>
+                    {t("delete.keep")}
+                  </button>
+                </span>
+              )}
+              {deleteNote === "failed" && (
+                <span role="alert" className="hint hint-bad">
+                  {t("delete.failed")}
+                </span>
+              )}
+              {state.phase === "done" && !lastInput && <span className="hint">{t("recheck.hint")}</span>}
+              <span className="sr-only" role="status">
+                {copied === "copied" ? t("act.copiedSr") : copied === "failed" ? t("act.copyFailSr") : ""}
+              </span>
+              {copied === "failed" && <span className="hint hint-bad">{t("act.copyFail")}</span>}
             </>
+          }
+          survey={
+            state.phase === "done" ? (
+              <div className="survey">
+                {!answered && (
+                  <>
+                    <span className="hint" id="pay-title">
+                      {t("survey.question")}
+                    </span>
+                    <div className="chips" role="group" aria-labelledby="pay-title">
+                      {(["yes", "maybe", "no"] as const).map((answer) => (
+                        <button
+                          key={answer}
+                          type="button"
+                          className="chip"
+                          onClick={() => {
+                            event("would_pay_answered", { answer });
+                            setAnswered(true);
+                          }}
+                        >
+                          {answer === "yes" ? t("survey.yes") : answer === "maybe" ? t("survey.maybe") : t("survey.no")}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <span className="hint" role="status">
+                  {answered ? t("survey.thanks") : ""}
+                </span>
+              </div>
+            ) : null
           }
           onRetryClaim={verification.retry}
           onReadPart={verification.readPart}
@@ -478,9 +504,6 @@ export function VerifierApp() {
         />
       )}
 
-      <footer className="hint" style={{ marginTop: 40 }}>
-        {t("footer")}
-      </footer>
     </Frame>
   );
 }

@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
-import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
+import { Bricolage_Grotesque, IBM_Plex_Mono, Instrument_Serif, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
-// Self-hosted at build time (no request to Google when a student visits). The student's words are set in the serif,
-// the interface in the sans, and ids, pages and file names in the mono (see the design reference, 25 Nov 2026).
-const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500", "600"], style: ["normal", "italic"], display: "swap", variable: "--font-serif" });
-const sans = Inter({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
-const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], display: "swap", variable: "--font-mono" });
+// Self-hosted at build time (no request to Google when a student visits). Four voices, each with one job (the Claude
+// Design reference, 25 Nov 2026): Instrument Serif for headlines and the source's own words, Bricolage Grotesque for the
+// interface, IBM Plex Mono for citations, pages and counts, Source Serif 4 for the student's draft so it reads like a page.
+const display = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["normal", "italic"], display: "swap", variable: "--font-display" });
+const sans = Bricolage_Grotesque({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
+const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], display: "swap", variable: "--font-mono" });
+const page = Source_Serif_4({ subsets: ["latin"], display: "swap", variable: "--font-page" });
 
 export const metadata = {
   title: "VerifiDocs: check your claims against your sources",
@@ -19,7 +21,7 @@ const THEME_SCRIPT = `try{var t=localStorage.getItem("verifidocs.theme");if(t===
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${serif.variable} ${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable} ${page.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

@@ -50,6 +50,7 @@ export function messageOf(error: unknown, t?: Translate, locale?: Locale): strin
 
 async function checkClaim(deps: VerifyDeps, claimId: string, emit: Emit, signal: AbortSignal): Promise<void> {
   const sleep = deps.sleep ?? defaultSleep;
+  if (!signal.aborted) emit({ type: "claimStart", id: claimId });
   for (let round = 1; round <= MAX_CHECK_ROUNDS; round += 1) {
     if (signal.aborted) return;
     const reply = await deps.api.check(claimId);

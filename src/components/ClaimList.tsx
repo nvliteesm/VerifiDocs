@@ -1,6 +1,6 @@
 "use client";
 
-// The claim list at the top of the review column: every claim, grouped by verdict with the most serious group first,
+// The claim list under the review card: every claim, grouped by verdict with the most serious group first,
 // each group headed by its icon, name and count. A row is the status icon, the claim's tag, its sentence on one line,
 // and the page. Selecting a row selects the claim in the draft and below.
 import type { ClaimView, Verdict } from "@/lib/client/types";
@@ -35,7 +35,13 @@ export function ClaimList({ claims, labels, activeId, resolved, onSelect }: Prop
       {groups.map((group) => (
         <section key={group.key} className={`cl-group v-${group.verdict ?? "waiting"}`} aria-label={group.verdict ? verdictLabel(t, group.verdict) : t("ws.f.waiting")}>
           <h3 className="cl-head">
-            {group.verdict ? <VerdictIcon verdict={group.verdict} size={14} /> : null}
+            {group.verdict ? (
+              <VerdictIcon verdict={group.verdict} size={14} />
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M12 4a8 8 0 1 0 0 16a8 8 0 0 0 0-16z M12 8v4l3 2" />
+              </svg>
+            )}
             <span className="cl-name">{group.verdict ? verdictLabel(t, group.verdict) : t("ws.f.waiting")}</span>
             <span className="mono cl-count">{group.items.length}</span>
           </h3>
@@ -43,10 +49,22 @@ export function ClaimList({ claims, labels, activeId, resolved, onSelect }: Prop
             {group.items.map((claim) => (
               <li key={claim.id}>
                 <button type="button" className={`cl-row${resolved.has(claim.id) ? " cl-done" : ""}`} aria-current={activeId === claim.id ? "true" : undefined} onClick={() => onSelect(claim.id)}>
-                  <span className="cl-icon">{claim.verdict ? <VerdictIcon verdict={claim.verdict} size={16} /> : null}</span>
+                  <span className="cl-icon">
+                    {claim.verdict ? (
+                      <VerdictIcon verdict={claim.verdict} size={16} />
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M12 4a8 8 0 1 0 0 16a8 8 0 0 0 0-16z M12 8v4l3 2" />
+                      </svg>
+                    )}
+                  </span>
                   <span className="mono cl-id">{labels.get(claim.id) ?? ""}</span>
                   <span className="cl-text">{claim.text}</span>
-                  <span className="mono cl-page">{claim.page !== null ? t("ws.page", { n: claim.page }) : ""}</span>
+                  {claim.status === "checking" ? (
+                    <span className="cl-checking">{t("ws.row.checking")}</span>
+                  ) : (
+                    <span className="mono cl-page">{claim.page !== null ? t("ws.page", { n: claim.page }) : ""}</span>
+                  )}
                 </button>
               </li>
             ))}
