@@ -60,28 +60,36 @@ export function matchEntryToDocuments(
 ): SourceLookup {
   const entryTokens = new Set(normalizeForMatch(raw).split(" ").filter(Boolean));
   const distinctive = [...entryTokens].filter((token) => token.length >= MIN_ENTRY_TOKEN_LENGTH);
-  const matches: { row: Pick<Row, "id" | "status">; strength: number }[] = [];
+  const matches: { row: Pick<Row, "id" | "status">; strength: number; share: number }[] = [];
 
   for (const row of rows) {
     let strength = 0;
+    let share = 0;
     const headTokens = new Set(normalizeForMatch(row.head).split(" ").filter(Boolean));
     if (distinctive.length >= MIN_TITLE_TOKENS && headTokens.size > 0) {
-      const share = distinctive.filter((token) => headTokens.has(token)).length / distinctive.length;
-      if (share >= ENTRY_HEAD_SHARE_MIN) strength = 2;
+      const headShare = distinctive.filter((token) => headTokens.has(token)).length / distinctive.length;
+      if (headShare >= ENTRY_HEAD_SHARE_MIN) {
+        strength = 2;
+        share = headShare;
+      }
     }
     if (strength === 0) {
       const fileTokens = normalizeForMatch(row.filename.replace(/\.pdf$/i, ""))
         .split(" ")
         .filter((token) => token.length >= 2);
       if (fileTokens.length >= MIN_TITLE_TOKENS) {
-        const share = fileTokens.filter((token) => entryTokens.has(token)).length / fileTokens.length;
-        if (share >= ENTRY_FILENAME_SHARE_MIN) strength = 1;
+        const fileShare = fileTokens.filter((token) => entryTokens.has(token)).length / fileTokens.length;
+        if (fileShare >= ENTRY_FILENAME_SHARE_MIN) {
+          strength = 1;
+          share = fileShare;
+        }
       }
     }
-    if (strength > 0) matches.push({ row, strength });
+    if (strength > 0) matches.push({ row, strength, share });
   }
   if (matches.length === 0) return { kind: "none" };
-  matches.sort((a, b) => b.strength - a.strength || Number(b.row.status === "ready") - Number(a.row.status === "ready"));
+  // Several PDFs can clear the bar when papers share a topic's vocabulary: the one that shares the most words wins, not the first uploaded.
+  matches.sort((a, b) => b.strength - a.strength || b.share - a.share || Number(b.row.status === "ready") - Number(a.row.status === "ready"));
   return lookupOf(matches[0]!.row);
 }
 

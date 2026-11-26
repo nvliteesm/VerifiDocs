@@ -49,4 +49,15 @@ describe("matchEntryToDocuments (an uploaded PDF for an entry no online service 
   it("returns none when nothing was uploaded", () => {
     expect(matchEntryToDocuments(bankEntry, [])).toEqual({ kind: "none" });
   });
+
+  // Test run of 26 Nov 2026: three papers on the same topic were uploaded (Wijaya first). The entries for Sari and Saputra
+  // shared 65% and 64% of their words with the Wijaya PDF, over the 60% bar, so the first upload took all three and the
+  // claims were checked against the wrong paper. The PDF that shares the most words must win.
+  it("picks the PDF that shares the most words with the entry, not the first one uploaded that shares enough", () => {
+    const entry = "Sari Kusumawardana 2023 Karakteristik Penyerapan Batako Beton Berbahan Campuran Sekam Padi Ulang Jurnal Teknologi Bahan Bangunan";
+    const words = entry.split(" ");
+    const partial = words.slice(0, Math.ceil(words.length * 0.7)).join(" ");
+    const rows = [doc("first", "Wijaya_2022_BatakoSerbukKaca.pdf", partial), doc("own", "Sari_2023_BatakoAbuSekamPadi.pdf", entry)];
+    expect(matchEntryToDocuments(entry, rows)).toEqual({ kind: "found", documentId: "own" });
+  });
 });
