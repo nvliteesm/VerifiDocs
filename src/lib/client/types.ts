@@ -128,6 +128,30 @@ export interface ReferenceView {
   yearMismatch: boolean;
 }
 
+/** Where one reference-list entry's source file stands (apart from any claim verdict). See db/migrations/0013. */
+export type ReferenceSourceState = "pending" | "matched" | "retrieved" | "matched_no_file" | "possible" | "not_retrieved" | "uploaded";
+
+export interface ReferenceSource {
+  id: string;
+  position: number;
+  /** The entry exactly as the student wrote it. */
+  text: string;
+  /** Its real title and who/when, for showing a missing source by name. */
+  title: string;
+  byline: string;
+  refType: "journal" | "book" | "thesis" | "proceedings" | "regulation" | "standard" | "institution" | "unknown";
+  sourceState: ReferenceSourceState;
+  documentId: string | null;
+  /** The matched or possible work. The PDF link stays on the server. */
+  candidate: { title: string; year: number | null; doi: string | null; venue: string | null; hasPdf: boolean } | null;
+}
+
+export interface RetrieveReferenceResponse {
+  reference: ReferenceSource;
+  /** The attached PDF, or null when the link gave no PDF and the student has to upload it. */
+  document: { documentId: string; filename: string; status: SourceStatus; pageCount: number } | null;
+}
+
 export interface RunResponse {
   run: {
     id: string;

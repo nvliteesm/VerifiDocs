@@ -233,8 +233,13 @@ select:disabled {
   flex: 1;
   min-width: 0;
 }
+/*
+  "backwards", not "both": after it ends the screen has no transform at all. A kept transform (even an identity one)
+  makes this element the positioning box of every position:fixed child, which put the phone sheet and the sources
+  drawer at the bottom of a very long page instead of the bottom of the window.
+*/
 .screen {
-  animation: vd-screen var(--t-slow) var(--ease) both;
+  animation: vd-screen var(--t-slow) var(--ease) backwards;
 }
 @keyframes vd-screen {
   from {
@@ -2203,4 +2208,206 @@ mark.num {
   border-color: var(--blue);
   background: var(--blue);
   animation: vd-pulse 1.4s ease-in-out infinite;
+}
+
+/* ===== Sources overview: what is retrieved, what needs a yes, what still needs a file ===== */
+.overview {
+  display: grid;
+  gap: 20px;
+}
+.ov-head {
+  display: grid;
+  gap: 10px;
+}
+.ov-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.6rem;
+  line-height: 1.15;
+}
+.ov-bar {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+}
+.ov-seg {
+  flex-basis: 0;
+  min-width: 4px;
+  border-radius: 2px;
+  transition: flex-grow var(--t-slow) var(--ease);
+}
+.ov-ok { background: var(--good); }
+.ov-ask { background: var(--warn); }
+.ov-need { background: var(--ink-3); }
+.ov-wait { background: var(--rule-strong); }
+.ov-group {
+  display: grid;
+  gap: 8px;
+}
+.ov-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ov-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--quiet);
+  animation: vd-rise var(--t-med) var(--ease) both;
+}
+.ov-ask-item {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+.ov-q {
+  color: var(--warn);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.ov-name {
+  font-family: var(--page);
+  font-size: 1rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ov-by {
+  color: var(--ink-2);
+}
+.ov-yours {
+  font-size: 0.82rem;
+}
+.ov-done > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-weight: 600;
+  list-style: none;
+}
+.ov-done > summary::-webkit-details-marker {
+  display: none;
+}
+.ov-done > summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--blue);
+  border-bottom: 2px solid var(--blue);
+  transform: rotate(-45deg);
+  transition: transform var(--t-med) var(--ease);
+}
+.ov-done[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+/* ===== Start here: the few findings to look at first ===== */
+.start-here {
+  display: grid;
+  gap: 14px;
+  padding: 22px 24px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--paper);
+  animation: vd-card var(--t-slow) var(--ease) both;
+}
+.start-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+.start-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.start-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--rule-soft);
+}
+.start-what {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.start-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--v-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.start-text {
+  font-family: var(--page);
+  font-size: 0.98rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.start-text.mono {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.start-places {
+  color: var(--ink-2);
+}
+.start-item .btn {
+  flex: none;
+}
+.ws-startbtn {
+  display: none;
+}
+@media (max-width: 1023px) {
+  .start-here {
+    padding: 16px 4px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .ws-startbtn {
+    display: inline-flex;
+  }
+}
+
+/* Repeated findings in the list, and the filters added for severity and section. */
+.cl-repeat-sum {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  list-style: none;
+  cursor: pointer;
+}
+.cl-repeat-sum::-webkit-details-marker {
+  display: none;
+}
+.cl-nested {
+  padding-left: 18px;
+}
+.cl-repeat[open] > .cl-repeat-sum {
+  background: var(--quiet);
+}
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filters-row .chip {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+}
+.filters-row .chip[aria-pressed="true"] {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-strong);
+  font-weight: 600;
 }

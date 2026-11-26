@@ -496,3 +496,81 @@ describe("coverage: what could be checked, before any count of problems", () => 
     expect(screen.queryByRole("button", { name: "Add missing sources" })).toBeNull();
   });
 });
+
+describe("a long list of findings (Start here, grouping, filters)", () => {
+  /** One confirmed problem, one citation missing from the list in six places, and two more findings in two sections. */
+  function many() {
+    const bad = claim("Subsidies fell 18%.", "contradicted", { section: "2. Hasil", quote: "8%", page: 4, sourceFile: "s.pdf", fixSuggestion: "Subsidies fell 8%." });
+    const missing = [1, 2, 3, 4, 5, 6].map((k) => claim(`Darmono says thing ${k}.`, "reference_not_found", { citation: "(Darmono, 2016)", section: "1. Latar Belakang", reason: '"Darmono 2016" is not in your reference list.' }));
+    const unclear = claim("Usage peaked in 2020.", "cant_tell", { section: "2. Hasil" });
+    const uncited = claim("Mining harms the land.", "no_citation_given", { need: "must", citation: null, section: "1. Latar Belakang" });
+    const claims = [bad, ...missing, unclear, uncited];
+    return { claims, draft: claims.map((c) => c.text).join(" ") };
+  }
+
+  it("shows the few findings to start on, repeats already grouped, the confirmed problem first, and says how many more there are", () => {
+    const { claims, draft } = many();
+    view(stateOf(claims), draft);
+    const section = screen.getByRole("region", { name: "Start here" });
+    const items = [...section.querySelectorAll(".start-item")].map((li) => li.textContent);
+    expect(items).toHaveLength(4); // contradicted, Darmono x6, cant_tell, no citation
+    expect(items[0]).toContain("Subsidies fell 18%.");
+    expect(items[1]).toContain("Darmono, 2016");
+    expect(items[1]).toContain("6 places");
+    expect(items.some((text) => text?.includes("Usage peaked"))).toBe(true);
+  });
+
+  it("does not drop the student into the first issue when a finished check has more than five findings", () => {
+    const { claims, draft } = many();
+    const props = { draftText: draft, draftLabel: null, focusWhenDone: true, sources: null, actions: null, onRetryClaim: () => {}, onEvent: vi.fn() };
+    const checking = claims.map((c) => ({ ...c, verdict: null as Verdict | null }));
+    const { rerender } = render(<Workspace state={stateOf(checking, "checking")} {...props} />);
+    rerender(<Workspace state={stateOf(claims)} {...props} />);
+    expect(document.querySelector('.hl[aria-current="true"]')).toBeNull();
+    expect(screen.getByRole("region", { name: "Start here" })).toBeTruthy();
+  });
+
+  it("reviews the finding that was pressed, and Start here steps aside", async () => {
+    const { claims, draft } = many();
+    const user = userEvent.setup();
+    view(stateOf(claims), draft);
+    await user.click(screen.getByRole("button", { name: /Review: C-1/ }));
+    expect(sentence(/Subsidies fell 18%/).getAttribute("aria-current")).toBe("true");
+    expect(screen.queryByRole("region", { name: "Start here" })).toBeNull();
+  });
+
+  it("lists a citation repeated in six places as one line with a count, and opens to every place", async () => {
+    const { claims, draft } = many();
+    const user = userEvent.setup();
+    view(stateOf(claims), draft);
+    const summary = document.querySelector(".cl-repeat-sum") as HTMLElement;
+    expect(summary.textContent).toContain("Darmono, 2016");
+    expect(summary.textContent).toContain("6 places");
+    expect(document.querySelectorAll(".cl-repeat .cl-nested .cl-row")).toHaveLength(6);
+    await user.click(summary);
+    expect((document.querySelector(".cl-repeat") as HTMLDetailsElement).open).toBe(true);
+  });
+
+  it("filters by severity and by section, together with the issue type", async () => {
+    const { claims, draft } = many();
+    const user = userEvent.setup();
+    view(stateOf(claims), draft);
+    const muted = () => [...document.querySelectorAll(".hl.hl-muted")].length;
+    expect(muted()).toBe(0);
+    await user.click(within(screen.getByRole("group", { name: "Severity" })).getByRole("button", { name: "High" }));
+    expect(muted()).toBe(claims.length - 1); // only the contradicted claim is high
+    await user.click(within(screen.getByRole("group", { name: "Severity" })).getByRole("button", { name: "Any severity" }));
+    await user.selectOptions(screen.getByLabelText("Section"), "1. Latar Belakang");
+    expect(muted()).toBe(2); // the contradicted claim and the unclear one sit in "2. Hasil"
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["All sections", "2. Hasil", "1. Latar Belakang"]);
+  });
+
+  it("offers Add this source on a claim that waits for its file, which opens the sources", async () => {
+    const waiting = claim("Hermanto says pores matter.", "cant_check", { citation: "(Hermanto, 2014)", reason: "The reference exists, but no uploaded source matches it. Upload the PDF to check this claim." });
+    const user = userEvent.setup();
+    view(stateOf([waiting], "scanned"), waiting.text);
+    await user.click(sentence(/Hermanto says/));
+    await user.click(screen.getByRole("button", { name: "Add this source" }));
+    expect((document.querySelector(".ws-grid") as HTMLElement).dataset.side).toBe("open");
+  });
+});

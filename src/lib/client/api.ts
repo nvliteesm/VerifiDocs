@@ -12,6 +12,8 @@ import type {
   ExtractResponse,
   ImportResponse,
   IngestResponse,
+  ReferenceSource,
+  RetrieveReferenceResponse,
   RunResponse,
   FindWebSourcesResponse,
   SourceView,
@@ -154,6 +156,16 @@ export function createApi(options: ApiOptions = {}) {
       await send<null>("DELETE", `/api/runs/${runId}`);
     },
     check: (claimId: string) => send<CheckResponse>("POST", `/api/claims/${claimId}/check`),
+    /** Every reference-list entry of a run and where its source file stands. */
+    listReferences: async (runId: string) => (await send<{ references: ReferenceSource[] }>("GET", `/api/runs/${runId}/references`)).references,
+    /** Looks one entry up: matched, possible, or not retrieved. A repeat returns what was saved. */
+    discoverReference: async (runId: string, entryId: string) => (await send<{ reference: ReferenceSource }>("POST", `/api/runs/${runId}/references/${entryId}/discover`, { json: {} })).reference,
+    /** Fetches a matched entry's open-access PDF and attaches it. */
+    retrieveReference: (runId: string, entryId: string) => send<RetrieveReferenceResponse>("POST", `/api/runs/${runId}/references/${entryId}/retrieve`, { json: {} }),
+    /** The student's answer on a possible match. */
+    confirmReference: async (runId: string, entryId: string, accept: boolean) => (await send<{ reference: ReferenceSource }>("POST", `/api/runs/${runId}/references/${entryId}/confirm`, { json: { accept } })).reference,
+    /** Links a PDF the student uploaded to one entry. */
+    linkReference: async (runId: string, entryId: string, documentId: string) => (await send<{ reference: ReferenceSource }>("POST", `/api/runs/${runId}/references/${entryId}/link`, { json: { documentId } })).reference,
     listSources: async () => (await send<{ sources: SourceView[] }>("GET", "/api/sources")).sources,
     upload(file: File): Promise<UploadResponse> {
       const form = new FormData();

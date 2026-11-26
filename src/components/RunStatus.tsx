@@ -21,9 +21,11 @@ interface Props {
   waitingForSources?: boolean;
   /** The workspace shows the coverage summary in place of the scan headline, so the headline here would say it twice. */
   coverageShown?: boolean;
+  /** The lookup for the reference list: how many entries were looked at, and whether it is still going. */
+  sourcesStage?: { active: boolean; done: number; total: number } | null;
 }
 
-export function RunStatus({ state, focusWhenDone, onReadPart, waitingForSources = false, coverageShown = false }: Props) {
+export function RunStatus({ state, focusWhenDone, onReadPart, waitingForSources = false, coverageShown = false, sourcesStage = null }: Props) {
   const { t, locale } = useT();
   // The part being read again, if any (one at a time: each is one model request).
   const [readingPart, setReadingPart] = useState<number | null>(null);
@@ -137,6 +139,9 @@ export function RunStatus({ state, focusWhenDone, onReadPart, waitingForSources 
               [
                 ["stage.read", "done", null],
                 ["stage.claims", state.phase === "starting" || state.phase === "extracting" ? "active" : "done", null],
+                ...(sourcesStage
+                  ? ([["stage.sources", sourcesStage.active ? "active" : "done", sourcesStage.active ? `${sourcesStage.done}/${sourcesStage.total}` : null]] as const)
+                  : []),
                 ["stage.check", state.phase === "checking" ? "active" : "todo", state.phase === "checking" && total > 0 ? `${checked}/${total}` : null],
                 ["stage.results", "todo", null],
               ] as const

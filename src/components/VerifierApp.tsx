@@ -12,9 +12,11 @@ import { DraftPanel } from "./DraftPanel";
 import { LanguageToggle } from "./LanguageToggle";
 import { useT } from "./LocaleProvider";
 import type { AttachStage } from "./FoundSources";
+import { SourceOverview } from "./SourceOverview";
 import { SourcesPanel } from "./SourcesPanel";
 import { CONSENT_KEY, readStored, writeStored } from "./storage";
 import { ThemeToggle } from "./ThemeToggle";
+import { useReferences } from "./useReferences";
 import { useSources } from "./useSources";
 import { useVerification } from "./useVerification";
 import { Workspace } from "./Workspace";
@@ -104,6 +106,15 @@ export function VerifierApp() {
   const sources = useSources(api);
   const verification = useVerification(api);
   const { state } = verification;
+  // Finds the source files for the reference list; each one it fetches goes into the sources list.
+  const references = useReferences(api, state.runId, sources.adopt);
+  const { startOnce: startDiscovery } = references;
+  // Only for a check the student started in this visit, and while the draft is still being read, so the lookup runs
+  // alongside the scan. A check reopened after a reload shows what was found and offers "Find my sources".
+  useEffect(() => {
+    if (lastInput === null || !state.runId) return;
+    if (state.phase === "extracting" || state.phase === "scanned" || state.phase === "checking" || state.phase === "done") startDiscovery();
+  }, [lastInput, state.runId, state.phase, startDiscovery]);
 
   // Whether the notice was acknowledged lives in the browser's storage, which the server cannot read, so it is
   // read after mount. Reading it during render would make the server and the first client render disagree.
@@ -226,11 +237,11 @@ export function VerifierApp() {
       setAutoCheck(false);
       return;
     }
-    if (sources.busy) return;
+    if (sources.busy || references.running) return;
     setAutoCheck(false);
     if (readyCount > 0) check();
-  }, [autoCheck, state.phase, sources.busy, readyCount, waitingClaims, check]);
-  const waitingForSources = autoCheck && state.phase === "scanned" && sources.busy && waitingClaims > 0;
+  }, [autoCheck, state.phase, sources.busy, references.running, readyCount, waitingClaims, check]);
+  const waitingForSources = autoCheck && state.phase === "scanned" && (sources.busy || references.running) && waitingClaims > 0;
 
   // Both the privacy choice and the language live in the browser, so nothing is shown until both are known.
   if (consent === null || !ready) return <Frame busy />;
@@ -238,6 +249,16 @@ export function VerifierApp() {
   const readySources = sources.rows.filter((row) => row.phase === "ready").length;
   // The paper's own title (a file name, or the draft's first lines), never "Google Doc" when the text says better.
   const title = lastInput?.label ?? (lastInput?.draft.kind === "paste" ? guessTitle(lastInput.draft.text) : null);
+  // A claim waits for a source when it could not be read against one: not checked yet, or no file for its reference.
+  const isWaiting = (claim: (typeof state.claims)[number]) =>
+    claim.verdict === null || claim.verdict === "cant_check" || (claim.verdict === "reference_not_found" && /Crossref or OpenAlex/.test(claim.reason ?? ""));
+  const waitingNow = state.claims.filter(isWaiting);
+  // After sources were added (found online, confirmed or uploaded), check the claims that were waiting for them.
+  const checkWaiting = async () => {
+    if (state.phase === "scanned") return verification.check();
+    const ids = waitingNow.filter((claim) => claim.verdict !== null).map((claim) => claim.id);
+    for (let i = 0; i < ids.length; i += 3) await Promise.all(ids.slice(i, i + 3).map((id) => verification.retry(id)));
+  };
 
   return (
     <Frame fit={!idle} screen={idle ? "start" : "work"} docTitle={idle ? null : title}>
@@ -369,6 +390,27 @@ export function VerifierApp() {
             />
           }
           waitingForSources={waitingForSources}
+          overview={
+            <SourceOverview
+              refs={references.refs}
+              summary={references.summary}
+              running={references.running}
+              limit={references.limit}
+              onConfirm={references.confirm}
+              onUpload={references.uploadFor}
+              onFind={() => void references.start()}
+              waiting={waitingNow.length}
+              canCheck={readySources > 0}
+              onCheckWaiting={() => void checkWaiting()}
+            />
+          }
+          sourceDiscovery={{
+            pending: references.summary.pending,
+            running: references.running,
+            total: references.summary.total,
+            done: references.summary.total - references.summary.pending,
+            start: () => void references.start(),
+          }}
           onCopyReport={copyReport}
           reportCopied={copied}
           actions={

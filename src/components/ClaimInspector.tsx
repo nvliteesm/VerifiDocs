@@ -45,6 +45,8 @@ interface Props {
   onFindSources?: FindFn;
   onFindWebSources?: FindFn;
   onAttachSource?: AttachFn;
+  /** Opens the sources, for a claim that waits for its source file. */
+  onAddSource?: () => void;
 }
 
 export function ClaimInspector(props: Props) {
@@ -122,7 +124,7 @@ export function ClaimInspector(props: Props) {
         )}
       </div>
 
-      {!claim.fixSuggestion && verdict && !optional && <p className="meaning">{verdictMeaning(t, verdict)}</p>}
+      {!claim.fixSuggestion && verdict && !optional && !notInList && <p className="meaning">{verdictMeaning(t, verdict)}</p>}
       {!claim.fixSuggestion && verdict && verdict !== "supported" && !listMissing && (
         <p className="next">
           <strong>{t("claim.todo")}</strong> {notInList ? t("claim.notInList") : optional ? t("claim.optionalAdvice") : verdictAdvice(t, verdict)}
@@ -202,7 +204,7 @@ export function ClaimInspector(props: Props) {
                     </div>
                   </div>
                 </>
-              ) : (
+              ) : notInList ? null : (
                 <p className="hint">{t("ws.fix.none")}</p>
               )}
               <div className="actions remedy-actions">
@@ -229,6 +231,11 @@ export function ClaimInspector(props: Props) {
                     }}
                   >
                     {copied === "copied" ? t("fix.copied") : t("fix.copy")}
+                  </button>
+                )}
+                {verdict === "cant_check" && props.onAddSource && (
+                  <button type="button" className="btn btn-primary" onClick={props.onAddSource}>
+                    {t("insp.addSource")}
                   </button>
                 )}
                 <button type="button" className="btn" onClick={onIgnore}>

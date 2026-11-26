@@ -11,7 +11,8 @@ import { coverageOf, verdictLabel } from "@/lib/client/verdict-info";
 import type { ClaimView } from "@/lib/client/types";
 import type { VerifierState } from "@/lib/client/verifier-state";
 import { buildWorkingDraft, fitFix, openIssues, resolvedText, stepIssue } from "@/lib/client/working-draft";
-import { ClaimFilters, FILTER_ORDER, type Filter } from "./ClaimFilters";
+import { groupFindings, sectionsOf, severityOf, startHere } from "@/lib/client/findings";
+import { ClaimFilters, FILTER_ORDER, type Filter, type SeverityFilter } from "./ClaimFilters";
 import { ClaimInspector, type Resolution } from "./ClaimInspector";
 import { ClaimList } from "./ClaimList";
 import { VerdictIcon, copy } from "./claim-bits";
@@ -20,6 +21,7 @@ import { DraftCanvas } from "./DraftCanvas";
 import type { AttachFn, EventFn, FindFn } from "./FoundSources";
 import { useT } from "./LocaleProvider";
 import { RunStatus } from "./RunStatus";
+import { StartHere } from "./StartHere";
 
 interface Props {
   state: VerifierState;
@@ -31,6 +33,10 @@ interface Props {
   waitingForSources?: boolean;
   /** The sources list, with its own upload and retry handlers, which belong to the app. */
   sources: ReactNode;
+  /** Where each reference's source file stands ("4 of 12 sources retrieved"), shown first in the drawer. */
+  overview?: ReactNode;
+  /** The lookup for the reference list: how many entries wait, whether it is running, and how to start it. */
+  sourceDiscovery?: { pending: number; running: boolean; total: number; done: number; start: () => void };
   /** The quiet buttons of the top bar: check, copy report, edit, check again, new check, delete. */
   actions: ReactNode;
   /** Copies the report (the app owns it); offered again in the done state. */
@@ -47,11 +53,15 @@ interface Props {
 }
 
 export function Workspace(props: Props) {
-  const { state, draftText, draftLabel, focusWhenDone, waitingForSources = false, sources, actions, onCopyReport, reportCopied = "idle", survey } = props;
+  const { state, draftText, draftLabel, focusWhenDone, waitingForSources = false, sources, overview, sourceDiscovery, actions, onCopyReport, reportCopied = "idle", survey } = props;
   const { onRetryClaim, onReadPart, onEvent, onFindSources, onFindWebSources, onAttachSource } = props;
   const { t } = useT();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [severity, setSeverity] = useState<SeverityFilter>("all");
+  const [section, setSection] = useState("");
+  // On a phone the review column is a sheet. A check the student worked through opens it on "Start here" by itself.
+  const [startSheet, setStartSheet] = useState(focusWhenDone);
   const [applied, setApplied] = useState<Readonly<Record<string, string>>>({});
   const [ignored, setIgnored] = useState<ReadonlySet<string>>(new Set());
   const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set());
@@ -92,10 +102,18 @@ export function Workspace(props: Props) {
     for (const claim of state.claims) out[claim.verdict ?? "waiting"] += 1;
     return out;
   }, [state.claims]);
-  const shown = useMemo(
-    () => (filter === "all" ? null : new Set(state.claims.filter((claim) => (filter === "waiting" ? claim.verdict === null : claim.verdict === filter)).map((claim) => claim.id))),
-    [filter, state.claims],
-  );
+  const shown = useMemo(() => {
+    if (filter === "all" && severity === "all" && section === "") return null;
+    const keeps = (claim: ClaimView) =>
+      (filter === "all" || (filter === "waiting" ? claim.verdict === null : claim.verdict === filter)) &&
+      (severity === "all" || (claim.verdict !== null && severityOf(claim.verdict) === severity)) &&
+      (section === "" || claim.section === section);
+    return new Set(state.claims.filter(keeps).map((claim) => claim.id));
+  }, [filter, severity, section, state.claims]);
+  const sections = useMemo(() => sectionsOf(state.claims), [state.claims]);
+  // The findings as groups (the same unlisted reference in 15 places is one), and the few to start on.
+  const findingGroups = useMemo(() => groupFindings(state.claims, resolvedIds), [state.claims, resolvedIds]);
+  const topFindings = useMemo(() => startHere(findingGroups), [findingGroups]);
   // The list shows what the left rail's filter keeps; the draft mutes the rest.
   const listed = useMemo(() => (shown ? state.claims.filter((claim) => shown.has(claim.id)) : state.claims), [shown, state.claims]);
 
@@ -119,8 +137,9 @@ export function Workspace(props: Props) {
   useEffect(() => {
     if (wasChecking.current && finished && focusWhenDone && activeId === null) {
       const first = state.fixList.find((id) => !resolvedIds.has(id));
+      // With many findings the student starts from "Start here" instead of being dropped into the first one.
       // eslint-disable-next-line react-hooks/set-state-in-effect -- opening the first issue is the answer to the check ending
-      if (first) select(first);
+      if (first && openIssues(state.claims, state.fixList, resolvedIds).length <= 5) select(first);
     }
     wasChecking.current = state.phase === "checking";
     // Runs when the phase changes; the other values are read at that moment on purpose.
@@ -218,6 +237,7 @@ export function Workspace(props: Props) {
           ? t("ws.r.result", { n: issues.length, s: counts.supported })
           : t("ws.r.fixing", { left: issues.length, done: handled })
       : null;
+  const startVisible = activeId === null && (finished || scanned) && !state.stopped && topFindings.length > 0;
   const showDone = finished && !state.stopped && state.claims.length > 0 && issues.length === 0 && activeId === null;
   const reviewing = backAt !== null && backAt === resolvedIds.size;
   const doneScreen = showDone && !reviewing;
@@ -236,8 +256,8 @@ export function Workspace(props: Props) {
   const lastLabel = lastAction ? (working.labels.get(lastAction.id) ?? "") : "";
 
   return (
-    <div className="ws" data-sheet={active ? "open" : "closed"}>
-      <RunStatus state={state} focusWhenDone={focusWhenDone} onReadPart={onReadPart} waitingForSources={waitingForSources} coverageShown={showCoverage} />
+    <div className="ws" data-sheet={active || (startVisible && startSheet) ? "open" : "closed"}>
+      <RunStatus state={state} focusWhenDone={focusWhenDone} onReadPart={onReadPart} waitingForSources={waitingForSources} coverageShown={showCoverage} sourcesStage={sourceDiscovery && sourceDiscovery.total > 0 ? { active: sourceDiscovery.running, done: sourceDiscovery.done, total: sourceDiscovery.total } : null} />
 
       <>
         <div className="ws-bar">
@@ -273,8 +293,20 @@ export function Workspace(props: Props) {
           )}
           <div className="actions ws-actions">
             {showCoverage && coverage.awaiting > 0 && (
-              <button type="button" className={coverage.none ? "btn btn-primary" : "btn"} onClick={() => setSideOpen(true)}>
-                {t("cov.cta")}
+              <button
+                type="button"
+                className={coverage.none ? "btn btn-primary" : "btn"}
+                onClick={() => {
+                  if (sourceDiscovery && sourceDiscovery.pending > 0 && !sourceDiscovery.running) sourceDiscovery.start();
+                  setSideOpen(true);
+                }}
+              >
+                {sourceDiscovery && sourceDiscovery.pending > 0 && !sourceDiscovery.running ? t("cov.find") : t("cov.cta")}
+              </button>
+            )}
+            {startVisible && !startSheet && (
+              <button type="button" className="btn btn-small ws-startbtn" onClick={() => setStartSheet(true)}>
+                {t("start.title")}
               </button>
             )}
             {actions}
@@ -313,11 +345,12 @@ export function Workspace(props: Props) {
                 {t("ws.side.close")}
               </button>
             </div>
+            {overview}
             {sources}
             {state.claims.length > 0 && (
               <div className="side-filters">
                 <h2 className="pane-title">{t("ws.filtersTitle")}</h2>
-                <ClaimFilters counts={counts} value={filter} onChange={setFilter} />
+                <ClaimFilters counts={counts} value={filter} onChange={setFilter} severity={severity} onSeverity={setSeverity} sections={sections} section={section} onSection={setSection} />
               </div>
             )}
           </aside>
@@ -348,7 +381,15 @@ export function Workspace(props: Props) {
           </section>
 
           <div className="pane pane-review" id="inspector">
-            <button type="button" className="sheet-grip" aria-label={t("ws.sheet.close")} onClick={() => setActiveId(null)} />
+            <button
+              type="button"
+              className="sheet-grip"
+              aria-label={t("ws.sheet.close")}
+              onClick={() => {
+                setActiveId(null);
+                setStartSheet(false);
+              }}
+            />
             {state.claims.length === 0 ? (
               scanning && <p className="empty review-empty">{t("ws.scanning")}</p>
             ) : (
@@ -371,6 +412,7 @@ export function Workspace(props: Props) {
                       </button>
                     </p>
                   )}
+                  {startVisible && <StartHere groups={topFindings} totalGroups={findingGroups.length} labels={working.labels} onReview={select} />}
                   {showReady ? (
                     <section className="ready-card" aria-label={t("ws.ready.title")}>
                       {counts.supported > 0 && (
@@ -426,6 +468,7 @@ export function Workspace(props: Props) {
                       onFindSources={onFindSources}
                       onFindWebSources={state.webSearch ? onFindWebSources : undefined}
                       onAttachSource={onAttachSource}
+                      onAddSource={() => setSideOpen(true)}
                     />
                   )}
                 </aside>

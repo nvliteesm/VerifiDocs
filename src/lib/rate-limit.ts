@@ -18,6 +18,12 @@ export interface Limits {
   modelPerAddress: number;
   /** Imports (a Google Docs link or a PDF draft) one session may make per window. Each opens a connection to Google. */
   importsPerSession: number;
+  /**
+   * Source lookups and retrievals one session may make per window. Each opens a connection to Crossref, OpenAlex or a
+   * publisher. A 40-reference list is about 40 lookups and up to 10 retrievals, so this is well above that. Optional so
+   * existing callers that build their own Limits keep working.
+   */
+  discoveryPerSession?: number;
   windowSeconds: number;
 }
 
@@ -87,6 +93,13 @@ export async function sweepExpired(db: SqlLike, windowSeconds: number): Promise<
 /** Called before an import (a Google Docs link or a PDF draft). */
 export async function limitImports(db: SqlLike, sessionId: string, limits: Limits = DEFAULT_LIMITS): Promise<void> {
   await consume(db, `import:s:${sessionId}`, limits.importsPerSession, limits.windowSeconds);
+}
+
+const DEFAULT_DISCOVERY_PER_SESSION = 200;
+
+/** Called before a source lookup or retrieval for a reference (Crossref, OpenAlex, a PDF host). */
+export async function limitDiscovery(db: SqlLike, sessionId: string, limits: Limits = DEFAULT_LIMITS): Promise<void> {
+  await consume(db, `discover:s:${sessionId}`, limits.discoveryPerSession ?? DEFAULT_DISCOVERY_PER_SESSION, limits.windowSeconds);
 }
 
 /** Called before a new session is created. */

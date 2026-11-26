@@ -9,7 +9,7 @@ import { discoverSources, type DiscoverResult } from "../pipeline/discover-sourc
 import { discoverWeb, type DiscoverWebResult } from "../pipeline/discover-web";
 import { createWebSearch, loadWebSearchConfig } from "../web/adapter";
 import { resolveReference, type ReferenceResolution } from "../pipeline/resolve-reference";
-import { limitImports, limitModelUse, type Limits } from "../rate-limit";
+import { limitDiscovery, limitImports, limitModelUse, type Limits } from "../rate-limit";
 import type { SqlLike } from "../rag/retrieve";
 import { purgeIfDue } from "../retention";
 import { resolveSession } from "../session";
@@ -65,6 +65,8 @@ export interface HandleOptions {
   model?: boolean;
   /** True for the import route, which opens a connection to Google: it has its own per-session budget. */
   imports?: boolean;
+  /** True for the source-discovery routes, which open connections to Crossref, OpenAlex and PDF hosts. */
+  discovery?: boolean;
 }
 
 export async function handleWith(
@@ -82,6 +84,7 @@ export async function handleWith(
     if (session.active) await purgeIfDue(deps.sql);
     if (options.model) await limitModelUse(deps.sql, request, session.sessionId, deps.limits);
     if (options.imports) await limitImports(deps.sql, session.sessionId, deps.limits);
+    if (options.discovery) await limitDiscovery(deps.sql, session.sessionId, deps.limits);
     return withCookie(await fn({ deps, sessionId: session.sessionId }), cookie);
   } catch (error) {
     return withCookie(errorResponse(error), cookie);
