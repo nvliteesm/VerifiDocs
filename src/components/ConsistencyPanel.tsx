@@ -53,7 +53,7 @@ export function ConsistencyPanel({ phase, done, total, found, contradictions = [
         </p>
       )}
 
-      {phase === "done" && found.length === 0 && (
+      {phase === "done" && found.length === 0 && contradictions.length === 0 && (
         <p className="hint" role="status">
           {t("cons.clean")} {t("cons.read", { n: figureCount })}
         </p>

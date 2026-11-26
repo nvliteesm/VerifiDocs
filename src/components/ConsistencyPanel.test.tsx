@@ -73,4 +73,12 @@ describe("Check my numbers", () => {
     expect(screen.getByText(/We cannot tell which one is right/)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/contradiction found|is wrong|error/i);
   });
+
+  it("does not say 'no figure was found' beside a possible contradiction", () => {
+    view({
+      phase: "done",
+      contradictions: [{ a: { sentence: "Daun kering menyerap paling sedikit.", section: "Hasil", part: 0 }, b: { sentence: "Daun kering menyerap paling banyak.", section: "Kesimpulan", part: 1 }, note: "x" }],
+    });
+    expect(screen.queryByText(/No figure was found/)).toBeNull();
+  });
 });
