@@ -12,7 +12,9 @@ import type {
   ExtractResponse,
   ImportResponse,
   IngestResponse,
+  ContradictionView,
   ReadFiguresResponse,
+  SavedFiguresResponse,
   ReferenceSource,
   RetrieveReferenceResponse,
   RunResponse,
@@ -157,8 +159,12 @@ export function createApi(options: ApiOptions = {}) {
       await send<null>("DELETE", `/api/runs/${runId}`);
     },
     check: (claimId: string) => send<CheckResponse>("POST", `/api/claims/${claimId}/check`),
-    /** The figures one part of the draft reports, for "Check my numbers". Nothing is saved. */
-    readFigures: (runId: string, unit: number) => send<ReadFiguresResponse>("POST", `/api/runs/${runId}/figures`, { json: { unit } }),
+    /** The figures one part of the draft reports, for "Check my numbers". Saved; a repeat returns what was saved unless `refresh`. */
+    readFigures: (runId: string, unit: number, refresh = false) => send<ReadFiguresResponse>("POST", `/api/runs/${runId}/figures`, { json: { unit, refresh } }),
+    /** What "Check my numbers" saved for this run, so a reload shows the last answer. */
+    savedFigures: (runId: string) => send<SavedFiguresResponse>("GET", `/api/runs/${runId}/figures`),
+    /** Findings of different sections that MAY contradict, from the saved parts. */
+    findContradictions: async (runId: string, refresh = false) => (await send<{ pairs: ContradictionView[] }>("POST", `/api/runs/${runId}/contradictions`, { json: { refresh } })).pairs,
     /** Every reference-list entry of a run and where its source file stands. */
     listReferences: async (runId: string) => (await send<{ references: ReferenceSource[] }>("GET", `/api/runs/${runId}/references`)).references,
     /** Looks one entry up: matched, possible, or not retrieved. A repeat returns what was saved. */

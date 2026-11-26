@@ -23,7 +23,7 @@ import type { SqlLike } from "../rag/retrieve";
 /** Starting values. */
 export const MAX_PDF_BYTES = 10 * 1024 * 1024;
 export const MAX_PDF_PAGES = 300;
-export const MAX_DOCUMENTS_PER_SESSION = 10;
+export const MAX_DOCUMENTS_PER_SESSION = 60;
 /** Pages per ingest request. About a dozen chunks, so one embedding call and well under 10 seconds. */
 export const INGEST_BATCH_PAGES = 10;
 const MAX_FILENAME_CHARS = 200;

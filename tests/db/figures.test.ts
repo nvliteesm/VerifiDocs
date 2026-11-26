@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
-import { readFiguresHandler } from "../../src/lib/api/figures";
+import { contradictionsHandler, readFiguresHandler, savedFiguresHandler } from "../../src/lib/api/figures";
 import { handleWith, type ApiContext, type ApiDeps } from "../../src/lib/api/handler";
 import { createRun } from "../../src/lib/api/runs";
 import type { GenerateJsonRequest, Llm } from "../../src/lib/llm/adapter";
@@ -31,10 +31,11 @@ async function inTx(fn: (tx: postgres.TransactionSql) => Promise<void>): Promise
 
 const DRAFT = "## Hasil\n\nDaya serap air batako daun ketapang kering sebesar 1,893%.\n\n## Kesimpulan\n\nDaya serap air batako daun ketapang kering sebesar 1,839%.";
 
-function client(tx: postgres.TransactionSql, answer: unknown) {
+function client(tx: postgres.TransactionSql, answer: unknown, calls: { n: number } = { n: 0 }) {
   const llm: Llm = {
     async generateJson<T>(request: GenerateJsonRequest<T>): Promise<T> {
-      return request.schema.parse(answer);
+      calls.n += 1;
+      return request.schema.parse(typeof answer === "function" ? (answer as (prompt: string) => unknown)(request.prompt) : answer);
     },
     async embed() {
       throw new Error("not used");
@@ -54,7 +55,9 @@ function client(tx: postgres.TransactionSql, answer: unknown) {
   };
   return {
     newRun: async () => (await send((c, r) => createRun(c, r), { draft: DRAFT })).body.runId as string,
-    figures: (runId: string, unit: number) => send((c, r) => readFiguresHandler(c, runId, r), { unit }, true),
+    figures: (runId: string, unit: number, refresh = false) => send((c, r) => readFiguresHandler(c, runId, r), { unit, refresh }, true),
+    saved: (runId: string) => send((c) => savedFiguresHandler(c, runId), {}),
+    contradictions: (runId: string, refresh = false) => send((c, r) => contradictionsHandler(c, runId, r), { refresh }, true),
   };
 }
 
@@ -66,7 +69,7 @@ const answer = {
 };
 
 describe.skipIf(!enabled)("check my numbers", () => {
-  it("returns the figures a part reports with the section each sits under, drops invented ones, and saves nothing", async () => {
+  it("returns the figures a part reports with the section each sits under, drops invented ones, and changes no claim", async () => {
     await inTx(async (tx) => {
       const api = client(tx, answer);
       const runId = await api.newRun();
@@ -90,6 +93,56 @@ describe.skipIf(!enabled)("check my numbers", () => {
       const bob = client(tx, answer);
       await bob.newRun();
       expect((await bob.figures(runId, 0)).status).toBe(404);
+    });
+  });
+
+  it("keeps what it read: a repeat asks no model, a reload gets it back, refresh reads again", async () => {
+    await inTx(async (tx) => {
+      const calls = { n: 0 };
+      const api = client(tx, answer, calls);
+      const runId = await api.newRun();
+      await api.figures(runId, 0);
+      expect(calls.n).toBe(1);
+      const again = await api.figures(runId, 0);
+      expect(again.body.saved).toBe(true);
+      expect(again.body.figures).toHaveLength(1);
+      expect(calls.n).toBe(1);
+      const reload = await api.saved(runId);
+      expect(reload.body.units).toHaveLength(1);
+      expect(reload.body.units[0].figures[0].section).toBe("Hasil");
+      expect(reload.body.contradictions).toBeNull();
+      await api.figures(runId, 0, true);
+      expect(calls.n).toBe(2);
+    });
+  });
+
+  it("compares the saved findings, keeps the pairs, and forgets them when a part is read again", async () => {
+    await inTx(async (tx) => {
+      const findings = { figures: [], statements: [{ sentence: "Batako daun ketapang kering menyerap air paling sedikit." }, { sentence: "Batako daun ketapang kering menyerap air paling banyak." }] };
+      const calls = { n: 0 };
+      const api = client(tx, (prompt: string) => (prompt.includes("<sentences>") ? { pairs: [{ a: 0, b: 1, note: "paling sedikit / paling banyak" }] } : findings), calls);
+      const runId = await api.newRun();
+      expect((await api.contradictions(runId)).body.pairs).toEqual([]);
+      await api.figures(runId, 0);
+      const found = await api.contradictions(runId, true);
+      // Both findings were read from one part and one section, so they are one passage, not two places.
+      expect(found.status).toBe(200);
+      expect(found.body.pairs).toEqual([]);
+      expect((await api.saved(runId)).body.contradictions).toEqual([]);
+      await api.figures(runId, 0, true);
+      expect((await api.saved(runId)).body.contradictions).toBeNull();
+    });
+  });
+
+  it("does not hand one session's saved figures to another", async () => {
+    await inTx(async (tx) => {
+      const alice = client(tx, answer);
+      const runId = await alice.newRun();
+      await alice.figures(runId, 0);
+      const bob = client(tx, answer);
+      await bob.newRun();
+      expect((await bob.saved(runId)).status).toBe(404);
+      expect((await bob.contradictions(runId)).status).toBe(404);
     });
   });
 });

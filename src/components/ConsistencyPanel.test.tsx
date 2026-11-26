@@ -61,4 +61,16 @@ describe("Check my numbers", () => {
     expect(screen.getByRole("alert").textContent).toContain("Try again");
     expect((screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("words a possible contradiction as 'may contradict', shows both places, and does not say which is right", () => {
+    view({
+      phase: "done",
+      contradictions: [{ a: { sentence: "Daun kering menyerap paling sedikit.", section: "Hasil", part: 0 }, b: { sentence: "Daun kering menyerap paling banyak.", section: "Kesimpulan", part: 1 }, note: "paling sedikit / paling banyak" }],
+    });
+    expect(screen.getByText("These may contradict")).toBeTruthy();
+    expect(screen.getByText("Daun kering menyerap paling sedikit.")).toBeTruthy();
+    expect(screen.getByText("Daun kering menyerap paling banyak.")).toBeTruthy();
+    expect(screen.getByText(/We cannot tell which one is right/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/contradiction found|is wrong|error/i);
+  });
 });

@@ -407,7 +407,7 @@ export function VerifierApp() {
               onCheckWaiting={() => void checkWaiting()}
             />
           }
-          consistency={<ConsistencyPanel phase={consistency.phase} done={consistency.done} total={consistency.total} found={consistency.found} figureCount={consistency.figureCount} disabled={running} onRun={() => void consistency.run()} />}
+          consistency={<ConsistencyPanel phase={consistency.phase} done={consistency.done} total={consistency.total} found={consistency.found} contradictions={consistency.contradictions} figureCount={consistency.figureCount} disabled={running} onRun={() => void consistency.run()} />}
           sourceDiscovery={{
             pending: references.summary.pending,
             running: references.running,

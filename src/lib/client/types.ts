@@ -135,6 +135,30 @@ export interface ReadFiguresResponse {
   dropped: number;
   /** Half of the part could not be read, so a few figures may be missing. */
   partial?: boolean;
+  /** Answered from what was saved, with no model call. */
+  saved?: boolean;
+}
+
+export interface FigureViewClient {
+  label: string;
+  value: string;
+  unit: string | null;
+  sentence: string;
+  section: string | null;
+}
+
+/** Two findings from different places of the paper that MAY contradict. Never says which one is right. */
+export interface ContradictionView {
+  a: { sentence: string; section: string | null; part: number };
+  b: { sentence: string; section: string | null; part: number };
+  note: string;
+}
+
+/** What "Check my numbers" saved for a run: the parts read so far, and the comparison across parts if it was made. */
+export interface SavedFiguresResponse {
+  unitCount: number;
+  units: { unit: number; figures: FigureViewClient[]; partial: boolean }[];
+  contradictions: ContradictionView[] | null;
 }
 
 /** Where one reference-list entry's source file stands (apart from any claim verdict). See db/migrations/0013. */

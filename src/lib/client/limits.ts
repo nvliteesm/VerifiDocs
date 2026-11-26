@@ -5,7 +5,7 @@ export const MAX_DOCX_BYTES = 5 * 1024 * 1024;
 /** A plain-text draft is read in the browser, so only the browser enforces this. */
 export const MAX_TXT_BYTES = 1_000_000;
 export const MAX_DRAFT_CHARS = 250_000;
-export const MAX_SOURCES = 10;
+export const MAX_SOURCES = 60;
 export const MAX_REFERENCES = 500;
 
 export function megabytes(bytes: number): string {

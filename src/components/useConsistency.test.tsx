@@ -73,4 +73,65 @@ describe("useConsistency", () => {
     rerender({ id: "b" });
     expect(result.current.phase).toBe("idle");
   });
+
+  it("asks for the findings that may contradict once every part is read, and shows them", async () => {
+    const pair = { a: { sentence: "Daun kering menyerap paling sedikit.", section: "Hasil", part: 0 }, b: { sentence: "Daun kering menyerap paling banyak.", section: "Kesimpulan", part: 1 }, note: "paling sedikit / paling banyak" };
+    const findContradictions = vi.fn(async () => [pair]);
+    const readFigures = vi.fn(async (_r: string, unit: number) => reply(unit, []));
+    const { result } = renderHook(() => useConsistency({ readFigures, findContradictions } as unknown as Api, "run-1", 2));
+    await act(async () => {
+      await result.current.run();
+    });
+    expect(findContradictions).toHaveBeenCalledWith("run-1", false);
+    expect(result.current.contradictions).toEqual([pair]);
+  });
+
+  it("does not ask for contradictions when a part could not be read, and the numbers still show", async () => {
+    const findContradictions = vi.fn(async () => []);
+    const readFigures = vi.fn(async (_r: string, unit: number) => {
+      if (unit === 1) throw new Error("later");
+      return reply(unit, []);
+    });
+    const { result } = renderHook(() => useConsistency({ readFigures, findContradictions } as unknown as Api, "run-1", 2));
+    await act(async () => {
+      await result.current.run();
+    });
+    expect(findContradictions).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe("done");
+  });
+
+  it("shows the saved answer after a reload, with no model request", async () => {
+    const figure = (value: string, section: string, sentence: string) => ({ label: "Daya serap air batako daun ketapang kering", value, unit: "%", sentence, section });
+    const savedFigures = vi.fn(async () => ({
+      unitCount: 2,
+      units: [
+        { unit: 0, partial: false, figures: [figure("1,893", "Hasil", "Berdasarkan tabel 4.5 daya serap air batako daun ketapang kering sebesar 1,893%.")] },
+        { unit: 1, partial: false, figures: [figure("1,839", "Kesimpulan", "Pengujian daya serap air batako daun ketapang kering menghasilkan nilai 1,839%.")] },
+      ],
+      contradictions: [],
+    }));
+    const readFigures = vi.fn();
+    const { result } = renderHook(() => useConsistency({ readFigures, savedFigures } as unknown as Api, "run-1", 2));
+    await vi.waitFor(() => expect(result.current.phase).toBe("done"));
+    expect(result.current.found).toHaveLength(1);
+    expect(readFigures).not.toHaveBeenCalled();
+  });
+
+  it("shows nothing from a save that is missing a part, and 'Check again' reads everything fresh", async () => {
+    const savedFigures = vi.fn(async () => ({ unitCount: 2, units: [{ unit: 0, partial: false, figures: [] }], contradictions: null }));
+    const readFigures = vi.fn(async (_r: string, unit: number) => reply(unit, []));
+    const { result } = renderHook(() => useConsistency({ readFigures, savedFigures } as unknown as Api, "run-1", 2));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.phase).toBe("idle");
+    await act(async () => {
+      await result.current.run();
+    });
+    expect(readFigures).toHaveBeenLastCalledWith("run-1", expect.any(Number), false);
+    await act(async () => {
+      await result.current.run();
+    });
+    expect(readFigures).toHaveBeenLastCalledWith("run-1", expect.any(Number), true);
+  });
 });

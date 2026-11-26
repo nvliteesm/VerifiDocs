@@ -3,6 +3,7 @@
 // "Check my numbers": where the same figure is written with different values in the student's own paper. A separate tool
 // from checking sources, with its own plain wording: it shows where the values are and never says which one is right.
 import type { InconsistentFigures } from "@/lib/client/consistency";
+import type { ContradictionView } from "@/lib/client/types";
 import type { ConsistencyPhase } from "./useConsistency";
 import { useT } from "./LocaleProvider";
 
@@ -11,6 +12,8 @@ interface Props {
   done: number;
   total: number;
   found: readonly InconsistentFigures[];
+  /** Findings of different sections that may contradict. */
+  contradictions?: readonly ContradictionView[];
   figureCount: number;
   /** The main check is still running: wait, so the two do not compete. */
   disabled?: boolean;
@@ -19,7 +22,7 @@ interface Props {
 
 const EXCERPT = 170;
 
-export function ConsistencyPanel({ phase, done, total, found, figureCount, disabled = false, onRun }: Props) {
+export function ConsistencyPanel({ phase, done, total, found, contradictions = [], figureCount, disabled = false, onRun }: Props) {
   const { t } = useT();
   const excerpt = (sentence: string) => (sentence.length > EXCERPT ? `${sentence.slice(0, EXCERPT).trimEnd()}…` : sentence);
   return (
@@ -54,6 +57,28 @@ export function ConsistencyPanel({ phase, done, total, found, figureCount, disab
         <p className="hint" role="status">
           {t("cons.clean")} {t("cons.read", { n: figureCount })}
         </p>
+      )}
+
+      {phase === "done" && contradictions.length > 0 && (
+        <div className="cons-found" role="status">
+          <h3 className="cons-found-title">{t("cons.may")}</h3>
+          <p className="hint">{t("cons.mayExplain")}</p>
+          <ul className="cons-list">
+            {contradictions.map((pair) => (
+              <li key={`${pair.a.sentence}|${pair.b.sentence}`} className="cons-item">
+                <p className="cons-label">{pair.note}</p>
+                <ul className="cons-places" aria-label={t("cons.where")}>
+                  {[pair.a, pair.b].map((place) => (
+                    <li key={place.sentence}>
+                      <span className="cons-where hint">{place.section ?? ""}</span>
+                      <span className="cons-sentence">{excerpt(place.sentence)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {phase === "done" && found.length > 0 && (

@@ -3,6 +3,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Api } from "@/lib/client/api";
 import type { SourceView } from "@/lib/client/types";
+import { MAX_SOURCES } from "@/lib/client/limits";
 import { useSources } from "./useSources";
 
 afterEach(cleanup);
@@ -78,12 +79,12 @@ describe("useSources: several PDFs at once (UAT 23 Nov 2026: ten PDFs took 38 s 
     expect(result.current.busy).toBe(false);
   });
 
-  it("counts files still waiting toward the limit of 10", async () => {
+  it("counts files still waiting toward the source limit", async () => {
     const { api } = slowApi();
     const { result } = renderHook(() => useSources(api));
-    act(() => result.current.addFiles(Array.from({ length: 8 }, (_, i) => pdf(`f${i}.pdf`))));
+    act(() => result.current.addFiles(Array.from({ length: MAX_SOURCES - 2 }, (_, i) => pdf(`f${i}.pdf`))));
     act(() => result.current.addFiles(["x.pdf", "y.pdf", "z.pdf"].map(pdf)));
-    expect(result.current.rows).toHaveLength(10);
+    expect(result.current.rows).toHaveLength(MAX_SOURCES);
     expect(result.current.notice).toMatch(/z\.pdf/);
   });
 
