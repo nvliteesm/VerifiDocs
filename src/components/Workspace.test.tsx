@@ -431,6 +431,27 @@ describe("the journey (DESIGN.md 4b)", () => {
     expect(within(done).getByText("Would you pay?")).toBeTruthy();
   });
 
+  it("moves focus to the done headline when the last issue is handled in this visit, so it is not lost", async () => {
+    const { a, ok, c, draft } = three();
+    const user = userEvent.setup();
+    render(<Workspace state={stateOf([a, ok, c])} draftText={draft} draftLabel={null} focusWhenDone sources={null} actions={null} onRetryClaim={() => {}} onEvent={vi.fn()} />);
+    await user.click(sentence(/Alpha is 1%/));
+    await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    expect(document.activeElement).toBe(document.getElementById("done-title"));
+  });
+
+  it("makes everything behind the sources drawer inert while it is open, and live again when it closes", async () => {
+    const { a, ok, c, draft } = three();
+    const user = userEvent.setup();
+    view(stateOf([a, ok, c]), draft);
+    await user.click(screen.getByRole("button", { name: "Show sources" }));
+    const behind = () => [".top", ".ws-bar", ".pane-draft", ".pane-review"].map((selector) => (document.querySelector(selector) as HTMLElement | null)?.inert);
+    expect(behind().filter((flag) => flag !== undefined).every(Boolean)).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(behind().some(Boolean)).toBe(false);
+  });
+
   it("keeps the student's draft on screen while it is being read", () => {
     render(<Workspace state={{ ...initialState, phase: "extracting", runId: "r" }} draftText="My pasted draft about prices." draftLabel={null} focusWhenDone sources={null} actions={null} onRetryClaim={() => {}} onEvent={vi.fn()} />);
     expect(screen.getByText("My pasted draft about prices.")).toBeTruthy();

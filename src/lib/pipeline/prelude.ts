@@ -12,7 +12,7 @@
 // - References exist but no usable PDF   -> Can't check (stage 4).
 //   If some cited references have a usable PDF, the claim is checked against those.
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "../reasons";
-import { matchEntryIndex, parseCitationMarkers, type CitationMarker } from "./citations";
+import { documentCitationKind, matchEntryIndex, normalizeForMatch, parseCitationMarkers, type CitationMarker, type DocumentCitationKind } from "./citations";
 import type { SourceLookup } from "./find-source";
 import type { ReferenceResolution } from "./resolve-reference";
 import type { StageExit } from "./types";
@@ -59,6 +59,28 @@ function label(marker: CitationMarker): string {
   return marker.raw;
 }
 
+/** The part of a citation like "(Smith, 2020; SNI 03-0349-1989)" that a marker came from, so a law is not blamed on a paper. */
+function partOf(marker: CitationMarker): string {
+  if (marker.kind !== "author-year") return marker.raw;
+  const first = marker.surnames[0] ?? "";
+  return marker.raw.split(";").find((part) => normalizeForMatch(part).includes(first)) ?? marker.raw;
+}
+
+/**
+ * A law, a standard or an institution cannot be looked up online, so the claim cannot be checked: said plainly, not
+ * "not found". The English wording is the same as the screen's (messages.ts, reason.*Citation), so it can be translated.
+ */
+function documentExit(kind: DocumentCitationKind, citation: string): { outcome: "exit"; exit: StageExit } {
+  const named = `"${snippet(citation.replace(/^\s*\(|\)\s*$/g, ""))}"`;
+  const reason =
+    kind === "law"
+      ? `${named} is a law or regulation. VerifiDocs does not look these up, so check the wording against the official text.`
+      : kind === "standard"
+        ? `${named} is a standard. VerifiDocs does not look these up, so check the number and the wording against the official standard.`
+        : `${named} is an institution, not a paper. VerifiDocs does not look these up, so check the figure against the original report.`;
+  return { outcome: "exit", exit: { verdict: "cant_check", exitStage: 3, reason } };
+}
+
 function snippet(text: string): string {
   const t = text.replace(/\s+/g, " ").trim();
   return t.length > SNIPPET ? `${t.slice(0, SNIPPET)}...` : t;
@@ -84,6 +106,8 @@ export function matchCitation(
 
   for (const marker of markers) {
     if (marker.kind === "unreadable") {
+      const kind = documentCitationKind(marker.raw);
+      if (kind) return documentExit(kind, marker.raw);
       return {
         outcome: "exit",
         exit: {
@@ -95,6 +119,8 @@ export function matchCitation(
     }
     const index = matchEntryIndex(marker, raws);
     if (index < 0) {
+      const kind = documentCitationKind(partOf(marker));
+      if (kind) return documentExit(kind, partOf(marker));
       return {
         outcome: "exit",
         exit: {

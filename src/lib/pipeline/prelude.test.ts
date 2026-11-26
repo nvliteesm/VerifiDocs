@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SourceLookup } from "./find-source";
-import { runPrelude, type PreludeDeps, type PreludeEntry } from "./prelude";
+import { translatorFor } from "../i18n";
+import { localizeReason } from "../i18n/reasons";
+import { matchCitation, runPrelude, type PreludeDeps, type PreludeEntry } from "./prelude";
 import type { ReferenceResolution } from "./resolve-reference";
 
 const entries: PreludeEntry[] = [
@@ -222,5 +224,44 @@ describe("runPrelude", () => {
     const { impl } = deps({});
     const result = await runPrelude({ citation: "(Brown, 2017)" }, entries, impl);
     expect(JSON.stringify(result)).not.toMatch(/inflation rose/i);
+  });
+});
+
+describe("laws, standards and institutions", () => {
+  const exitOf = (citation: string) => {
+    const result = matchCitation(citation, entries);
+    if (result.outcome !== "exit") throw new Error("expected an exit");
+    return result.exit;
+  };
+
+  it("says a law, a standard or an institution cannot be looked up, as Can't check, never as a reference that was not found", () => {
+    expect(exitOf("(Undang-Undang No. 23 tahun 1997)")).toMatchObject({ verdict: "cant_check", exitStage: 3 });
+    expect(exitOf("(Undang-Undang No. 23 tahun 1997)").reason).toContain("is a law or regulation");
+    expect(exitOf("SNI-03-0348-1989")).toMatchObject({ verdict: "cant_check" });
+    expect(exitOf("SNI-03-0348-1989").reason).toContain("check the number");
+    expect(exitOf("Dinas Lingkungan Hidup Kota Pontianak tahun 2018").reason).toContain("is an institution");
+  });
+
+  it("still calls an ordinary author who is not in the list one that is not in the list", () => {
+    expect(exitOf("(Darmono, 2016)")).toMatchObject({ verdict: "reference_not_found" });
+    expect(exitOf("(Darmono, 2016)").reason).toContain("is not in your reference list");
+  });
+
+  it("blames the part that failed, not the whole citation", () => {
+    // The law is the part that is not in the list, so it is the law that is named.
+    expect(exitOf("(Undang-Undang No. 23 tahun 1997; Darmono, 2016)")).toMatchObject({ verdict: "cant_check" });
+    // An unlisted author next to a listed paper or a standard is still an author that is not in the list.
+    const unlisted = exitOf("(SNI 03-0349-1989; Darmono, 2016)");
+    expect(unlisted).toMatchObject({ verdict: "reference_not_found" });
+    expect(unlisted.reason).toContain("Darmono 2016");
+    expect(exitOf("(Smith & Lee, 2021; Darmono, 2016)")).toMatchObject({ verdict: "reference_not_found" });
+    // A listed paper with a standard beside it is checked against the paper: the claim is not stopped here.
+    expect(matchCitation("(Smith & Lee, 2021; SNI 03-0349-1989)", entries).outcome).toBe("matched");
+  });
+
+  it("is translated on an Indonesian screen", () => {
+    const t = translatorFor("id");
+    expect(localizeReason(exitOf("(Undang-Undang No. 23 tahun 1997)").reason, t)).toContain("adalah undang-undang atau peraturan");
+    expect(localizeReason(exitOf("SNI-03-0348-1989").reason, t)).toContain("adalah standar");
   });
 });

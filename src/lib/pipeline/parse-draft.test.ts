@@ -292,3 +292,21 @@ describe("sections in a document with numbered headings", () => {
     expect(unitParagraphs(body, 0).at(-1)).toEqual({ text: "Most revenue comes from subscriptions.", heading: "Background" });
   });
 });
+
+describe("a contents page", () => {
+  it("does not take its lines for section headings, so claims are not filed under a page number", () => {
+    const text = [
+      "DAFTAR ISI",
+      "4. Pengujian Kuat Tekan        41",
+      "BAB II LANDASAN TEORI        7",
+      "Kata Pengantar        iii",
+      "",
+      "1. Batako",
+      "",
+      "Batako berfungsi sebagai penahan gaya horizontal pada dinding bangunan (Darmono, 2016).",
+    ].join("\n");
+    const headings = parseDraftText(text).sections.map((section) => section.heading);
+    expect(headings.some((heading) => /\d+$|\biii\b/.test(heading ?? ""))).toBe(false);
+    expect(headings).toContain("1. Batako");
+  });
+});

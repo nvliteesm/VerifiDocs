@@ -51,7 +51,7 @@ export function DoneView({ label, claims, applied, ignoredCount, issuesFound, co
         <div className="done-main">
           <div className="done-hero">
             <span className="done-mark">{MARK}</span>
-            <h2 className="done-title">
+            <h2 id="done-title" className="done-title" tabIndex={-1}>
               {safe ? t("done.safe.lead") : t("done.all.lead")} <em>{safe ? t("done.safe.em") : t("done.all.em")}</em>
             </h2>
             <p className="done-line">{issuesFound > 0 ? t("ws.done.handled", { n: issuesFound }) : t("ws.done.clean")}</p>

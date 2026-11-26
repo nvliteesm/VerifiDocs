@@ -76,6 +76,10 @@ function headingText(paragraph: string): string | null {
   const markdown = /^#{1,6}\s+(\S.*)$/.exec(line);
   if (markdown) return markdown[1]!.trim();
 
+  // A line of a contents page ("4. Pengujian Kuat Tekan        41", "DAFTAR ISI    v"): a title, a gap, a page number.
+  // It names a section but is not one, and it would otherwise become the section label of the claims that follow.
+  if (/\S(?:\t| {2,}|\.{3,})\s*(?:\d{1,4}|[ivxlc]{1,6})$/i.test(line)) return null;
+
   const noEndPunctuation = !/[.!?;,:]$/.test(line);
   const numbered = /^\d+(?:\.\d+)*[.)]?\s+\S/.test(line);
   if (numbered && noEndPunctuation && line.length <= 80 && words(line) <= 10) return line;

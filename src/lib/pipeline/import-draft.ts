@@ -54,7 +54,8 @@ export const MAX_IMPORT_BYTES = 2_000_000;
 /** What one import may hand back to the browser. A draft over MAX_DRAFT_CHARS is still shown, with the usual hint. */
 export const MAX_IMPORT_CHARS = 400_000;
 const MAX_REDIRECTS = 3;
-const FETCH_TIMEOUT_MS = 8_000;
+// Per request. Google builds the text on its second request (the redirect), which can take a while for a long document.
+const FETCH_TIMEOUT_MS = 25_000;
 
 function allowedHost(host: string): boolean {
   return host === "docs.google.com" || /^doc-[a-z0-9-]+-docstext\.googleusercontent\.com$/.test(host);
@@ -114,15 +115,21 @@ export async function fetchGoogleDocText(link: string, options: FetchOptions = {
   const maxBytes = options.maxBytes ?? MAX_IMPORT_BYTES;
   // The English wording is the same as the screen's (src/lib/i18n/messages.ts, err.*), so English shows it as it is.
   const notPublic = () => new ImportError("not_public", "The document could not be opened. Make sure Share is set to “Anyone with the link” and the link is right.");
-  const failed = () => new ImportError("import_failed", "The document could not be read. Try again, or paste the text.");
+  // Says why in the server log, with no link, id or text in it (hard rule 11), so a "could not be read" can be traced.
+  const failed = (why: string) => {
+    console.warn(`[import] google doc could not be read: ${why}`);
+    return new ImportError("import_failed", "The document could not be read. Try again, or paste the text.");
+  };
 
   let url = new URL(`https://docs.google.com/document/d/${id}/export?format=txt`);
+  const started = Date.now();
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     let response: Response;
     try {
       response = await fetchImpl(url, { redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
-    } catch {
-      throw failed();
+    } catch (error) {
+      const cause = (error as { cause?: { code?: string } }).cause?.code;
+      throw failed(`request failed at hop ${hop} (${cause ?? (error as Error).name})`);
     }
 
     if ([301, 302, 303, 307, 308].includes(response.status)) {
@@ -151,7 +158,7 @@ export async function fetchGoogleDocText(link: string, options: FetchOptions = {
     }
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
-      throw failed();
+      throw failed(`status ${response.status} at hop ${hop} from ${url.hostname}`);
     }
     // Plain text is expected. A web page here is a sign-in or error page.
     if (!(response.headers.get("content-type") ?? "").toLowerCase().startsWith("text/plain")) {
@@ -159,13 +166,15 @@ export async function fetchGoogleDocText(link: string, options: FetchOptions = {
       throw notPublic();
     }
     try {
-      return await readCapped(response, maxBytes);
+      const text = await readCapped(response, maxBytes);
+      console.info(`[import] google doc read in ${Date.now() - started} ms over ${hop + 1} request(s)`);
+      return text;
     } catch (error) {
       if (error instanceof ImportError) throw error;
-      throw failed();
+      throw failed(`body unreadable at hop ${hop} (${(error as Error).name})`);
     }
   }
-  throw failed();
+  throw failed(`more than ${MAX_REDIRECTS} redirects`);
 }
 
 /**

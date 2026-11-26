@@ -25,7 +25,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body>{children}</body>
+      {/* Browser extensions such as Grammarly add attributes to <body> before React loads, which is not a bug in the page. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

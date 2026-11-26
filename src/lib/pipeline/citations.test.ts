@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchEntryIndex, normalizeForMatch, parseCitationMarkers } from "./citations";
+import { documentCitationKind, matchEntryIndex, normalizeForMatch, parseCitationMarkers } from "./citations";
 
 const authorYear = (surnames: string[], year: number) => ({
   kind: "author-year" as const,
@@ -149,5 +149,25 @@ describe("matchEntryIndex", () => {
 describe("normalizeForMatch", () => {
   it("lowercases, strips accents and punctuation, and collapses spaces", () => {
     expect(normalizeForMatch("  Müller, H.  (2018) ")).toBe("muller h 2018");
+  });
+});
+
+describe("documentCitationKind", () => {
+  it("recognises laws, standards and institutions, in Bahasa and English", () => {
+    for (const law of ["Undang-undang Republik Indonesia nomor 28 tahun 2002", "(Undang-Undang No. 23 tahun 1997)", "UU No. 32 Tahun 2009", "Peraturan Menteri PUPR 2017", "Law No. 5 of 2019"]) {
+      expect(documentCitationKind(law), law).toBe("law");
+    }
+    for (const standard of ["SNI 03-0349-1989", "SNI-03-0348-1989", "(PUBI, 1982, h.26)", "ISO 9001:2015", "ASTM C140"]) {
+      expect(documentCitationKind(standard), standard).toBe("standard");
+    }
+    for (const institution of ["Dinas Lingkungan Hidup Kota Pontianak tahun 2018", "(Sampoerna University, 2022)", "(Badan Pusat Statistik, 2020)", "(WHO, 2019)", "(Ministry of Health, 2021)"]) {
+      expect(documentCitationKind(institution), institution).toBe("institution");
+    }
+  });
+
+  it("leaves an ordinary author and year alone", () => {
+    for (const citation of ["(Smith & Lee, 2021)", "(Darmono, 2016)", "(Hermanto, dkk., 2014)", "Sugiyono (2017, h.215)", "[3]", "(Wisnu wijanarko, 2008)", "(Dian, 2011 dalam Wibowo, 2013)"]) {
+      expect(documentCitationKind(citation), citation).toBeNull();
+    }
   });
 });

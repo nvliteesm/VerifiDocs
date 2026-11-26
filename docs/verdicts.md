@@ -20,6 +20,8 @@ Every claim ends with exactly one of eight verdicts. The eval labels use these d
 - Supported requires a verified quote and page. Without one, the verdict cannot be Supported.
 - When unsure between Supported and Partial, prefer Partial. A missed unsupported claim costs more than an extra flag.
 - A scanned PDF with empty pages is Can't check, never a wrong verdict.
+- A citation to a law or regulation, a standard (SNI, ISO) or an institution (a ministry, an agency, a university as the author) is not an author and year, and Crossref and OpenAlex do not hold it. When it is not matched to the reference list it is Can't check with a plain reason ("VerifiDocs does not look these up"), never Reference not found, which would read as "possibly invented" (26 Nov 2026).
+- A sentence that reads the draft's own tables, figures or experiments is the student's own analysis, not a claim about the world, and gets no verdict, like the statements about their own project or method (26 Nov 2026).
 
 ## Fix list order (proposed: confirm on the eval set)
 

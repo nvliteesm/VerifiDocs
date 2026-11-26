@@ -136,11 +136,17 @@ export function Workspace(props: Props) {
     }
     sideWasOpen.current = true;
     sideClose.current?.focus();
+    // While the drawer is open everything behind it is inert: Tab stays in the drawer, and a screen reader does not wander off.
+    const behind = Array.from(document.querySelectorAll<HTMLElement>(".top, .run-status, .ws-bar, .pane-draft, .pane-review, .done"));
+    for (const element of behind) element.inert = true;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSideOpen(false);
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      for (const element of behind) element.inert = false;
+    };
   }, [sideOpen]);
 
   // The Apply fix and Ignore buttons leave the page with the claim, so focus goes to the line that says what happened.
@@ -201,6 +207,15 @@ export function Workspace(props: Props) {
   const showDone = finished && !state.stopped && state.claims.length > 0 && issues.length === 0 && activeId === null;
   const reviewing = backAt !== null && backAt === resolvedIds.size;
   const doneScreen = showDone && !reviewing;
+
+  // When the last issue is handled the done screen takes over and the controls the student was on are hidden, so focus
+  // would fall to the top of the page. It goes to the done headline instead, which is read aloud.
+  useEffect(() => {
+    // Only for a check the student worked through in this visit: a check reopened after a reload must not take focus.
+    if (!doneScreen || !focusWhenDone) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || active.closest(".ws-grid")) document.getElementById("done-title")?.focus();
+  }, [doneScreen, focusWhenDone]);
   // While the check runs, the first open issue is offered at once so the student can start before it ends.
   const firstOpen = state.phase === "checking" ? state.claims.find((claim) => claim.id === state.fixList.find((id) => !resolvedIds.has(id))) : undefined;
   const showReady = state.phase === "checking" && activeId === null && (firstOpen !== undefined || counts.supported > 0);
@@ -242,7 +257,11 @@ export function Workspace(props: Props) {
             reportCopied={reportCopied}
             onCopyDraft={copyDraft}
             onCopyReport={onCopyReport}
-            onBack={() => setBackAt(resolvedIds.size)}
+            onBack={() => {
+                setBackAt(resolvedIds.size);
+                // The button that was pressed leaves with the done screen; focus goes to the draft.
+                requestAnimationFrame(() => document.querySelector<HTMLElement>(".pane-draft .hl")?.focus());
+              }}
             survey={survey}
           />
         )}

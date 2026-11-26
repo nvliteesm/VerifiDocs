@@ -16,6 +16,28 @@ const NAME_NOISE = new Set([
   "and", "dan", "et", "al", "dkk", "see", "cf", "eg", "ie", "lihat", "dalam", "in", "also", "p", "pp",
 ]);
 
+/**
+ * Citations that point at a document that is not a paper: a law or regulation, a standard, or an institution as the
+ * author. Crossref and OpenAlex do not hold these, so "not found there" says nothing about them, and they are not
+ * "an author and year". They are told apart so the student gets an honest line ("VerifiDocs does not look these up")
+ * and not "Reference not found", which reads as "possibly invented".
+ */
+export type DocumentCitationKind = "law" | "standard" | "institution";
+
+const LAW = /\b(?:undang[\s-]?undang|uu(?:\s*ri)?\s*(?:no\.?|nomor)|peraturan|perpres|permen\w*|perda|kepmen|keputusan\s+(?:menteri|presiden)|(?:law|act|regulation|decree|directive)\s+(?:no\.?|number)\s*\d)/i;
+const STANDARD = /\b(?:sni|iso|astm|jis)[\s:-]*[a-z]?\d|\bpubi\b/i;
+const INSTITUTION =
+  /\b(?:dinas|badan|kementerian|kemendikbud(?:ristek)?|departemen|pemerintah|biro\s+pusat|bps|who|ministry|department\s+of|bureau|agency|commission|world\s+bank|united\s+nations|unesco|oecd|universit(?:y|as)|institut(?:e)?|politeknik)\b/i;
+
+/** What kind of non-paper document a citation names, or null when it looks like an ordinary author and year. */
+export function documentCitationKind(citation: string): DocumentCitationKind | null {
+  const text = normalizeText(citation);
+  if (LAW.test(text)) return "law";
+  if (STANDARD.test(text)) return "standard";
+  if (INSTITUTION.test(text)) return "institution";
+  return null;
+}
+
 /** Lowercase, accents removed, everything but letters and digits turned into single spaces. */
 export function normalizeForMatch(text: string): string {
   return normalizeText(text)

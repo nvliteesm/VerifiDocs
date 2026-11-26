@@ -6,6 +6,7 @@ import {
   extractClaims,
   extractWithFallback,
   halves,
+  isOwnAnalysis,
 } from "./extract-claims";
 
 /** A fake adapter that returns a canned model answer, validated by the caller's schema as the real one does. */
@@ -337,5 +338,42 @@ describe("how much a claim needs a source", () => {
     ]);
     expect(result.dropped.noSourceNeeded).toBe(1);
     expect(buildExtractionPrompt(draft)).not.toMatch(/definitions, causal/);
+  });
+});
+
+describe("the student's own results and analysis", () => {
+  it("treats a sentence that reads the draft's own table or experiment as own work, unless an outside author is cited", () => {
+    expect(isOwnAnalysis("Berdasarkan tabel 4.6, batako botol kaca memiliki kuat tekan 216,10 kg/cm2.", null)).toBe(true);
+    expect(isOwnAnalysis("Jika ditinjau dari tabel 2.2 tentang standar SNI 03-0349-1989, batako pasir dianggap layak.", "SNI 03-0349-1989")).toBe(true);
+    expect(isOwnAnalysis("Syarat fisis batako pejal harus sesuai dengan tabel berikut.", null)).toBe(true);
+    expect(isOwnAnalysis("Pada Percobaan II styrofoam menyerap lebih banyak air.", null)).toBe(true);
+    expect(isOwnAnalysis("As Figure 3 shows, the glass brick was strongest.", null)).toBe(true);
+    // A clause cut after its table was named still reads as the student's own conclusion.
+    expect(isOwnAnalysis("standar SNI 03-0349-1989 mengenai syarat kelayakan kuat tekan batako, maka batako dari bahan pasir dianggap layak dengan kelayakan tipe III.", null)).toBe(true);
+    // An outside author is cited next to it: that is a claim about the world.
+    expect(isOwnAnalysis("Tabel 2.1 menunjukkan syarat mutu batako (Hermanto, 2014).", "(Hermanto, 2014)")).toBe(false);
+    // Plain claims about the literature, with or without a citation, are untouched.
+    expect(isOwnAnalysis("Hasil penelitian menunjukkan bahwa batako styrofoam lebih ringan.", null)).toBe(false);
+    expect(isOwnAnalysis("Semakin banyak pori-pori maka daya serap air semakin besar (Hermanto, 2014).", "(Hermanto, 2014)")).toBe(false);
+  });
+
+  it("drops such a sentence even when the model labelled it world, and keeps an uncited claim about the literature", async () => {
+    const own = "Berdasarkan tabel 4.6, batako botol kaca memiliki kuat tekan 216,10 kg/cm2.";
+    const outside = "Semakin banyak pori-pori yang terkandung dalam batako maka daya serap air semakin besar.";
+    const { llm } = fakeLlm({
+      claims: [
+        { text: own, citation: null, about: "world", need: "must" },
+        { text: outside, citation: null, about: "world", need: "must" },
+      ],
+    });
+    const result = await extractClaims(llm, `${own} ${outside}`);
+    expect(result.claims.map((claim) => claim.text)).toEqual([outside]);
+    expect(result.dropped.ownWork).toBe(1);
+  });
+
+  it("tells the model about its own tables, figures and Bahasa openers", () => {
+    const prompt = buildExtractionPrompt("x");
+    expect(prompt).toContain("Berdasarkan tabel");
+    expect(prompt).toContain("own results and analysis");
   });
 });
