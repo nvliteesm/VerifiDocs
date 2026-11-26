@@ -7,6 +7,7 @@ import type { FlagReason } from "@/lib/flag-reasons";
 import { localizeReason } from "@/lib/i18n/reasons";
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "@/lib/reasons";
 import { markDifferences } from "@/lib/client/numbers";
+import { suggestionFromReason } from "@/lib/pipeline/citations";
 import type { ClaimView } from "@/lib/client/types";
 import { verdictAdvice, verdictMeaning } from "@/lib/client/verdict-info";
 import { numberChange } from "@/lib/client/working-draft";
@@ -92,6 +93,8 @@ export function ClaimInspector(props: Props) {
   const listMissing = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NO_REFERENCE_LIST));
   const notInList = verdict === "reference_not_found" && Boolean(claim.reason?.includes(NOT_IN_REFERENCE_LIST));
   const optional = isOptional(claim);
+  // A near miss in the reference list ("Hermanta" for "Hermanto"): the corrected citation, to copy into the draft.
+  const suggestedCitation = verdict === "reference_not_found" ? suggestionFromReason(claim.reason) : null;
   // Numbers that differ between the sentence and the quote are marked in both. A fact from the numbers, not a verdict.
   const marks = claim.quote ? markDifferences(claim.text, claim.citation, claim.quote) : null;
   const numberMarks = marks?.any ? marks : null;
@@ -231,6 +234,18 @@ export function ClaimInspector(props: Props) {
                     }}
                   >
                     {copied === "copied" ? t("fix.copied") : t("fix.copy")}
+                  </button>
+                )}
+                {suggestedCitation && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      const ok = await copy(suggestedCitation);
+                      setCopied(ok ? "copied" : "failed");
+                    }}
+                  >
+                    {copied === "copied" ? t("fix.copied") : t("claim.copyCitation")}
                   </button>
                 )}
                 {verdict === "cant_check" && props.onAddSource && (

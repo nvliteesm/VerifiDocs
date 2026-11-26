@@ -299,3 +299,48 @@ describe("laws, standards and institutions", () => {
     expect(localizeReason(exitOf("SNI-03-0348-1989").reason, t)).toContain("adalah standar");
   });
 });
+
+describe("near misses and identifier mismatches", () => {
+  const list: PreludeEntry[] = [
+    { id: "a", position: 1, raw: "Hermanto, Dony, dkk. 2014. Kuat Tekan Batako Dengan Variasi Bahan Tambah Serat Ijuk. Skripsi. Surakarta.", documentId: null },
+    { id: "b", position: 2, raw: "Badan Standardisasi Nasional. 1989. SNI 03-0349-1989 Bata Beton untuk Pasangan Dinding.", documentId: null },
+  ];
+  const exit = (citation: string) => {
+    const result = matchCitation(citation, list);
+    if (result.outcome !== "exit") throw new Error("expected an exit");
+    return result.exit;
+  };
+
+  it("still calls a citation that is not in the list one that is not in the list, and adds a did-you-mean for a near miss", () => {
+    const near = exit("(Hermanta, 2021)");
+    expect(near.verdict).toBe("reference_not_found");
+    expect(near.reason).toBe('"Hermanta 2021" is not in your reference list. Did you mean "(Hermanto, 2014)"?');
+    expect(exit("(Tandya, 2015)").reason).toBe('"Tandya 2015" is not in your reference list.');
+  });
+
+  it("says possible identifier mismatch, as a citation to fix, when a cited standard is one digit off the listed one", () => {
+    const mismatch = exit("SNI-03-0348-1989");
+    expect(mismatch.verdict).toBe("reference_not_found");
+    expect(mismatch.reason).toBe('Possible reference identifier mismatch. "SNI-03-0348-1989" is cited here, but your reference list has "SNI 03-0349-1989". Check the standard number.');
+    expect(mismatch.reason).not.toMatch(/author and year/);
+  });
+
+  it("keeps a standard that matches the list, or that is not in it at all, as Can't check: it cannot be looked up", () => {
+    expect(exit("SNI 03-0349-1989")).toMatchObject({ verdict: "cant_check" });
+    expect(exit("SNI 15-2049-2004")).toMatchObject({ verdict: "cant_check" });
+  });
+
+  it("is translated on an Indonesian screen", () => {
+    const t = translatorFor("id");
+    expect(localizeReason(exit("(Hermanta, 2021)").reason, t)).toBe('"Hermanta 2021" tidak ada di daftar pustaka kamu. Maksud kamu "(Hermanto, 2014)"?');
+    expect(localizeReason(exit("SNI-03-0348-1989").reason, t)).toContain("Kemungkinan nomor referensi tidak cocok");
+  });
+});
+
+describe("an invented journal reference whose title mentions a thesis", () => {
+  it("is still called Reference not found when no service knows it (eval E36)", async () => {
+    const entry: PreludeEntry = { id: "w", position: 1, raw: "Wijaya, A., Kusuma, B., & Lestari, N. (2021). Analisis pemanfaatan kecerdasan buatan dalam penulisan skripsi mahasiswa di Jawa Timur. Jurnal Riset Pendidikan Tinggi Indonesia, 5(1), 23-41.", documentId: null };
+    const result = await runPrelude({ citation: "(Wijaya dkk., 2021)" }, [entry], { ...deps({ resolutions: { 1: { status: "not_found" } } }).impl, findUploaded: async () => ({ kind: "none" }) });
+    expect(result).toMatchObject({ outcome: "exit", exit: { verdict: "reference_not_found", exitStage: 3 } });
+  });
+});

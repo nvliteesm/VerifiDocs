@@ -20,8 +20,12 @@ export function classifyReference(raw: string): ReferenceType {
   const kind = documentCitationKind(text);
   if (kind === "law") return "regulation";
   if (kind === "standard") return "standard";
-  if (THESIS.test(text)) return "thesis";
-  if (PROCEEDINGS.test(text)) return "proceedings";
+  // The kind of work is named after the title ("... Judul. Skripsi. Surakarta", "... e-Proceeding of ..."), so only that part
+  // is read for it: a journal article about "penulisan skripsi" is still a journal article.
+  const title = referenceTitle(text);
+  const venue = title.length > 0 && title.length < text.length ? text.replace(title, " ") : text;
+  if (THESIS.test(venue)) return "thesis";
+  if (PROCEEDINGS.test(venue)) return "proceedings";
   if (INSTITUTION_AUTHOR.test(text)) return "institution";
   if (JOURNAL.test(text)) return "journal";
   if (BOOK_WORDS.test(text) || BOOK_PLACE.test(text)) return "book";
@@ -35,4 +39,25 @@ export function classifyReference(raw: string): ReferenceType {
  */
 export function indexedOnline(type: ReferenceType): boolean {
   return type === "journal";
+}
+
+/**
+ * The title of a reference-list entry, for showing a missing source by its real name. Tries a quoted title, then the
+ * text after the year ("Smith, J. (2020). Title. Journal" or "Nama. 2019. Judul. Jurnal"), then the start of the entry.
+ */
+export function referenceTitle(raw: string): string {
+  const text = raw.replace(/\s+/g, " ").trim();
+  const quoted = /[“"«]([^”"»]{8,220})[”"»]/.exec(text);
+  if (quoted) return quoted[1]!.trim().replace(/[.,]$/, "");
+  const afterYear = /(?:\((?:1[5-9]|20)\d\d[a-z]?\)\.?|\b(?:1[5-9]|20)\d\d[a-z]?\.)\s*([^.]{8,200})\./.exec(text);
+  if (afterYear) return afterYear[1]!.trim();
+  return text.length > 110 ? `${text.slice(0, 110).trimEnd()}…` : text;
+}
+
+/** "Hermanto, Dony, dkk. 2014": who and when, for the line under a title. */
+export function referenceByline(raw: string): string {
+  const text = raw.replace(/\s+/g, " ").trim();
+  const match = /^(.{2,70}?)[\s,.(]*\(?((?:1[5-9]|20)\d\d)[a-z]?\)?/.exec(text);
+  if (!match) return "";
+  return `${match[1]!.replace(/[\s,.(]+$/, "")} ${match[2]}`;
 }

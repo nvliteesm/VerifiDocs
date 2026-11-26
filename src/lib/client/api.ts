@@ -12,6 +12,7 @@ import type {
   ExtractResponse,
   ImportResponse,
   IngestResponse,
+  ReadFiguresResponse,
   ReferenceSource,
   RetrieveReferenceResponse,
   RunResponse,
@@ -156,6 +157,8 @@ export function createApi(options: ApiOptions = {}) {
       await send<null>("DELETE", `/api/runs/${runId}`);
     },
     check: (claimId: string) => send<CheckResponse>("POST", `/api/claims/${claimId}/check`),
+    /** The figures one part of the draft reports, for "Check my numbers". Nothing is saved. */
+    readFigures: (runId: string, unit: number) => send<ReadFiguresResponse>("POST", `/api/runs/${runId}/figures`, { json: { unit } }),
     /** Every reference-list entry of a run and where its source file stands. */
     listReferences: async (runId: string) => (await send<{ references: ReferenceSource[] }>("GET", `/api/runs/${runId}/references`)).references,
     /** Looks one entry up: matched, possible, or not retrieved. A repeat returns what was saved. */

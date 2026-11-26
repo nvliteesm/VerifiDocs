@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // One claim in the inspector: what the verdict says, the evidence, the fix, flagging, and finding a source.
 // Ported from the old ResultsView card tests (25 Nov 2026); the card is now the inspector.
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClaimView, Verdict } from "@/lib/client/types";
@@ -528,5 +528,22 @@ describe("Check a claim against a found paper", () => {
     const file = new File(["%PDF-1.4"], "paper.pdf", { type: "application/pdf" });
     await user.upload(document.querySelector('.found input[type="file"]') as HTMLInputElement, file);
     expect(onAttach.mock.calls[0]!.slice(1, 4)).toEqual([2, "Paywalled study", file]);
+  });
+});
+
+describe("a citation with a near miss in the reference list", () => {
+  it("offers the corrected citation to copy, and says nothing about a fix to the sentence", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    inspect(claim("reference_not_found", { citation: "(Hermanta, 2021)", reason: '"Hermanta 2021" is not in your reference list. Did you mean "(Hermanto, 2014)"?' }));
+    expect(screen.getByText(/Did you mean "\(Hermanto, 2014\)"\?/)).toBeTruthy();
+    expect(screen.queryByText(/We could not find this reference anywhere/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Copy corrected citation" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("(Hermanto, 2014)"));
+  });
+
+  it("offers no copy button when there is no suggestion", () => {
+    inspect(claim("reference_not_found", { citation: "(Tandya, 2015)", reason: '"Tandya 2015" is not in your reference list.' }));
+    expect(screen.queryByRole("button", { name: "Copy corrected citation" })).toBeNull();
   });
 });

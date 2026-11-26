@@ -12,10 +12,12 @@ import { DraftPanel } from "./DraftPanel";
 import { LanguageToggle } from "./LanguageToggle";
 import { useT } from "./LocaleProvider";
 import type { AttachStage } from "./FoundSources";
+import { ConsistencyPanel } from "./ConsistencyPanel";
 import { SourceOverview } from "./SourceOverview";
 import { SourcesPanel } from "./SourcesPanel";
 import { CONSENT_KEY, readStored, writeStored } from "./storage";
 import { ThemeToggle } from "./ThemeToggle";
+import { useConsistency } from "./useConsistency";
 import { useReferences } from "./useReferences";
 import { useSources } from "./useSources";
 import { useVerification } from "./useVerification";
@@ -109,6 +111,7 @@ export function VerifierApp() {
   // Finds the source files for the reference list; each one it fetches goes into the sources list.
   const references = useReferences(api, state.runId, sources.adopt);
   const { startOnce: startDiscovery } = references;
+  const consistency = useConsistency(api, state.runId, state.unitCount);
   // Only for a check the student started in this visit, and while the draft is still being read, so the lookup runs
   // alongside the scan. A check reopened after a reload shows what was found and offers "Find my sources".
   useEffect(() => {
@@ -404,6 +407,7 @@ export function VerifierApp() {
               onCheckWaiting={() => void checkWaiting()}
             />
           }
+          consistency={<ConsistencyPanel phase={consistency.phase} done={consistency.done} total={consistency.total} found={consistency.found} figureCount={consistency.figureCount} disabled={running} onRun={() => void consistency.run()} />}
           sourceDiscovery={{
             pending: references.summary.pending,
             running: references.running,

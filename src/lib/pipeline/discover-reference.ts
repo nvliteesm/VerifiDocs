@@ -11,7 +11,7 @@
 // Laws and standards are not looked up at all (nothing indexes them). Network access is injected, so tests make no calls.
 import { z } from "zod";
 import { normalizeForMatch } from "./citations";
-import { classifyReference, type ReferenceType } from "./reference-type";
+import { classifyReference, referenceTitle, type ReferenceType } from "./reference-type";
 import { USER_AGENT, firstYear, titleQueries, type FetchFn, type ReferenceResolution } from "./resolve-reference";
 
 export interface SourceCandidate {
@@ -139,23 +139,4 @@ export async function discoverReference(raw: string, deps: DiscoverReferenceDeps
   return possible ? { state: "possible", type, candidate: possible } : { state: "none", type };
 }
 
-/**
- * The title of a reference-list entry, for showing a missing source by its real name. Tries a quoted title, then the
- * text after the year ("Smith, J. (2020). Title. Journal" or "Nama. 2019. Judul. Jurnal"), then the start of the entry.
- */
-export function referenceTitle(raw: string): string {
-  const text = raw.replace(/\s+/g, " ").trim();
-  const quoted = /[“"«]([^”"»]{8,220})[”"»]/.exec(text);
-  if (quoted) return quoted[1]!.trim().replace(/[.,]$/, "");
-  const afterYear = /(?:\((?:1[5-9]|20)\d\d[a-z]?\)\.?|\b(?:1[5-9]|20)\d\d[a-z]?\.)\s*([^.]{8,200})\./.exec(text);
-  if (afterYear) return afterYear[1]!.trim();
-  return text.length > 110 ? `${text.slice(0, 110).trimEnd()}…` : text;
-}
-
-/** "Hermanto, Dony, dkk. 2014": who and when, for the line under a title. */
-export function referenceByline(raw: string): string {
-  const text = raw.replace(/\s+/g, " ").trim();
-  const match = /^(.{2,70}?)[\s,.(]*\(?((?:1[5-9]|20)\d\d)[a-z]?\)?/.exec(text);
-  if (!match) return "";
-  return `${match[1]!.replace(/[\s,.(]+$/, "")} ${match[2]}`;
-}
+export { referenceByline, referenceTitle } from "./reference-type";

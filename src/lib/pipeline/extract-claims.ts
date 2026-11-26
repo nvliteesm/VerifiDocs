@@ -72,17 +72,40 @@ const responseSchema = z.object({
 });
 
 /**
- * A sentence that reads the draft's own table or figure ("Berdasarkan tabel 4.6...", "as Figure 2 shows") or names its
- * own experiment ("Percobaan II", "penelitian ini") is the student's analysis of their own data, not a claim about the
- * world. The model sometimes labels these "world", so they are caught here too. A genuine outside citation next to
- * such a sentence ("Table 2 shows ... (Smith, 2020)") keeps it; a law, standard or institution does not.
+ * Sentences that are the student's own and not claims about the world. The model sometimes labels them "world", so they
+ * are caught here too, by what the sentence DOES, not merely by mentioning a table (a "Tabel 2.1 shows..." line in the
+ * literature chapter reports someone else's data and does need a citation):
+ *
+ *  - a lead-in or a caption ("see the table below", "Tabel 2.1 Unsur Semen Portland") is a transition or a heading;
+ *  - an analysis of the draft's own data ("Berdasarkan tabel 4.6...", "as Figure 3 shows", "Percobaan II", "penelitian
+ *    ini", "dianggap layak dengan kelayakan tipe III") is the student's interpretation;
+ *  - in a results section only, reporting what was measured ("diperoleh", "hasil pengujian", "we measured").
+ *
+ * A genuine outside citation next to such a sentence ("Based on Table 2 (Smith, 2020)") keeps it; a law, standard or
+ * institution does not count as one.
  */
-const OWN_DATA =
-  /\b(?:tabel|gambar|grafik|diagram|table|figure|fig\.?|chart)\s+\d+(?:[.,]\d+)*|\b(?:tabel berikut|tabel di bawah|following table|table below)\b|\bpercobaan\s+(?:[ivx]+|\d+)\b|\b(?:penelitian ini|karya ilmiah ini|this (?:study|research|experiment))\b|\b(?:dianggap|dikategorikan|tergolong)\s+(?:layak|tidak layak)\b|\bkelayakan\s+tipe\b/i;
+const TRANSITION = /\b(?:tabel berikut|tabel di bawah|gambar berikut|following table|table below|sebagai berikut)\b/i;
+const CAPTION = /^\s*(?:tabel|gambar|grafik|diagram|table|figure|fig\.?|chart)\s+\d+(?:[.,]\d+)*\b/i;
+const OWN_ANALYSIS =
+  /\b(?:berdasarkan|dari|ditinjau dari|menurut|based on|according to|as shown in|dapat diketahui dari)\s+(?:tabel|gambar|grafik|table|figure|chart)\s+\d|\bas\s+(?:tabel|figure|table|gambar)\s+\d+(?:[.,]\d+)*\s+shows?\b|\bpercobaan\s+(?:[ivx]+|\d+)\b|\b(?:penelitian ini|karya ilmiah ini|this (?:study|research|experiment))\b|\b(?:dianggap|dikategorikan|tergolong)\s+(?:layak|tidak layak)\b|\bkelayakan\s+tipe\b/i;
+/** Wording that reports the student's own measurements. Only trusted inside a results or discussion section. */
+const OWN_RESULT = /\b(?:diperoleh|didapat|diukur|dihasilkan|hasil (?:pengujian|penelitian|pengukuran|percobaan)|menunjukkan bahwa (?:batako|sampel|benda uji)|we (?:found|measured|observed)|our (?:results|data)|was measured|were measured)\b/i;
+const RESULTS_SECTION = /\b(?:hasil|pembahasan|analisis|results?|discussion|findings|temuan)\b/i;
+const MIN_CAPTION_WORDS = 14;
+
+const noOutsideCitation = (citation: string | null) => citation === null || documentCitationKind(citation) !== null;
 
 export function isOwnAnalysis(text: string, citation: string | null): boolean {
-  if (!OWN_DATA.test(text)) return false;
-  return citation === null || documentCitationKind(citation) !== null;
+  if (!noOutsideCitation(citation)) return false;
+  if (TRANSITION.test(text)) return true;
+  if (CAPTION.test(text) && text.trim().split(/\s+/).length <= MIN_CAPTION_WORDS && !/[.!?]$/.test(text.trim())) return true;
+  return OWN_ANALYSIS.test(text);
+}
+
+/** The same rule with the section the sentence sits in: in a results section, reporting one's own measurements counts too. */
+export function isOwnResultInContext(text: string, citation: string | null, section: string | null): boolean {
+  if (isOwnAnalysis(text, citation)) return true;
+  return noOutsideCitation(citation) && section !== null && RESULTS_SECTION.test(section) && OWN_RESULT.test(text);
 }
 
 export const EXTRACTION_SYSTEM_PROMPT =

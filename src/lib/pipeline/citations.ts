@@ -139,3 +139,100 @@ export function matchEntryIndex(marker: CitationMarker, entries: string[]): numb
   });
   return best;
 }
+
+/** Edit distance between two short strings, stopping early once it is past `cap` (it only needs to say "close or not"). */
+export function editDistance(a: string, b: string, cap = 3): number {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min(previous[j]! + 1, current[j - 1]! + 1, previous[j - 1]! + cost);
+      current.push(value);
+      rowMin = Math.min(rowMin, value);
+    }
+    if (rowMin > cap) return cap + 1;
+    previous = current;
+  }
+  return previous[b.length]!;
+}
+
+const FIRST_YEAR = /\b((?:1[5-9]|20)\d\d)[a-z]?\b/;
+
+export interface CitationSuggestion {
+  /** 0-based position in the reference list. */
+  entryIndex: number;
+  /** "spelling": the listed author is spelled almost like the cited one. "year": same author, another year. */
+  kind: "spelling" | "year";
+  /** The citation as it would read with the listed author and year, for the student to copy: "(Hermanto, 2014)". */
+  text: string;
+}
+
+/**
+ * A near miss for a citation that is not in the reference list: the listed author who is spelled almost the same
+ * ("Hermanta" for "Hermanto"), or the same author listed under another year. It only suggests; the student decides, and
+ * nothing is changed. Numeric markers and short names (too easy to confuse) get no suggestion.
+ */
+export function suggestForMarker(marker: CitationMarker, entries: string[]): CitationSuggestion | null {
+  if (marker.kind !== "author-year") return null;
+  const cited = marker.surnames[0]!;
+  if (cited.length < 4) return null;
+  const cap = cited.length >= 8 ? 2 : 1;
+  let best: { distance: number; gap: number; suggestion: CitationSuggestion } | null = null;
+  entries.forEach((entry, entryIndex) => {
+    const surname = /^\W*([\p{L}][\p{L}'’-]+)/u.exec(entry)?.[1];
+    const year = FIRST_YEAR.exec(entry)?.[1];
+    if (!surname || !year) return;
+    const listed = normalizeForMatch(surname).split(" ")[0] ?? "";
+    if (listed.length < 4) return;
+    const distance = editDistance(cited, listed, cap);
+    const sameAuthor = distance === 0;
+    if (distance > cap || (sameAuthor && Number(year) === marker.year)) return;
+    const gap = Math.abs(Number(year) - marker.year);
+    const kind = sameAuthor ? "year" : "spelling";
+    if (!best || distance < best.distance || (distance === best.distance && gap < best.gap)) {
+      best = { distance, gap, suggestion: { entryIndex, kind, text: `(${surname}, ${year})` } };
+    }
+  });
+  return best ? (best as { suggestion: CitationSuggestion }).suggestion : null;
+}
+
+/** "Did you mean "(Hermanto, 2014)"?" at the end of a stored reason, back out as the citation to copy. */
+export function suggestionFromReason(reason: string | null): string | null {
+  return reason ? (/Did you mean "(.+)"\?$/.exec(reason)?.[1] ?? null) : null;
+}
+
+export interface StandardId {
+  family: string;
+  /** Only the digits, so "03-0349-1989" and "030349 1989" compare equal. */
+  digits: string;
+  /** As written: "SNI 03-0349-1989". */
+  text: string;
+}
+
+const STANDARD_ID = /\b(sni|iso|astm|jis)[\s:-]*([a-z]?\d{1,6}(?:[\s.:/-]{1,2}\d{1,6})*)/i;
+
+/** The first standard number in a piece of text, or null. */
+export function standardId(text: string): StandardId | null {
+  const match = STANDARD_ID.exec(normalizeText(text));
+  if (!match) return null;
+  return { family: match[1]!.toLowerCase(), digits: match[2]!.replace(/\D/g, ""), text: match[0].replace(/\s+/g, " ").trim() };
+}
+
+/**
+ * A cited standard whose number is almost, but not exactly, a number in the reference list ("SNI 03-0348-1989" cited,
+ * "SNI 03-0349-1989" listed): most likely a typo in the number. An exact match, or a number far from every listed one,
+ * is not a mismatch.
+ */
+export function standardMismatch(cited: string, entries: string[]): { cited: string; listed: string } | null {
+  const id = standardId(cited);
+  if (!id || id.digits.length < 6) return null;
+  for (const entry of entries) {
+    const listed = standardId(entry);
+    if (!listed || listed.family !== id.family || listed.digits === id.digits) continue;
+    if (editDistance(id.digits, listed.digits, 3) <= 2) return { cited: id.text, listed: listed.text };
+  }
+  return null;
+}

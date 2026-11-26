@@ -128,6 +128,15 @@ export interface ReferenceView {
   yearMismatch: boolean;
 }
 
+export interface ReadFiguresResponse {
+  unit: number;
+  unitCount: number;
+  figures: { label: string; value: string; unit: string | null; sentence: string; section: string | null }[];
+  dropped: number;
+  /** Half of the part could not be read, so a few figures may be missing. */
+  partial?: boolean;
+}
+
 /** Where one reference-list entry's source file stands (apart from any claim verdict). See db/migrations/0013. */
 export type ReferenceSourceState = "pending" | "matched" | "retrieved" | "matched_no_file" | "possible" | "not_retrieved" | "uploaded";
 

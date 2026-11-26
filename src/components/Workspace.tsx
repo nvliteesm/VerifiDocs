@@ -35,6 +35,8 @@ interface Props {
   sources: ReactNode;
   /** Where each reference's source file stands ("4 of 12 sources retrieved"), shown first in the drawer. */
   overview?: ReactNode;
+  /** "Check my numbers": the separate check of figures that disagree within the paper itself. */
+  consistency?: ReactNode;
   /** The lookup for the reference list: how many entries wait, whether it is running, and how to start it. */
   sourceDiscovery?: { pending: number; running: boolean; total: number; done: number; start: () => void };
   /** The quiet buttons of the top bar: check, copy report, edit, check again, new check, delete. */
@@ -53,7 +55,7 @@ interface Props {
 }
 
 export function Workspace(props: Props) {
-  const { state, draftText, draftLabel, focusWhenDone, waitingForSources = false, sources, overview, sourceDiscovery, actions, onCopyReport, reportCopied = "idle", survey } = props;
+  const { state, draftText, draftLabel, focusWhenDone, waitingForSources = false, sources, overview, consistency, sourceDiscovery, actions, onCopyReport, reportCopied = "idle", survey } = props;
   const { onRetryClaim, onReadPart, onEvent, onFindSources, onFindWebSources, onAttachSource } = props;
   const { t } = useT();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -346,6 +348,7 @@ export function Workspace(props: Props) {
               </button>
             </div>
             {overview}
+            {consistency}
             {sources}
             {state.claims.length > 0 && (
               <div className="side-filters">

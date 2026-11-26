@@ -2411,3 +2411,69 @@ mark.num {
   color: var(--blue-strong);
   font-weight: 600;
 }
+
+/* ===== Check my numbers: figures that disagree within the paper ===== */
+.consistency {
+  display: grid;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+}
+.cons-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.4rem;
+}
+.cons-found {
+  display: grid;
+  gap: 10px;
+}
+.cons-found-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.cons-list,
+.cons-places {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cons-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--quiet);
+}
+.cons-label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cons-kind {
+  color: var(--warn);
+}
+.cons-places li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule-soft);
+}
+.cons-value {
+  grid-row: span 2;
+  align-self: start;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-weight: 500;
+}
+.cons-sentence {
+  font-family: var(--page);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

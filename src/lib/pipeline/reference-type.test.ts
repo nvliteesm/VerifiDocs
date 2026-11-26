@@ -40,3 +40,15 @@ describe("indexedOnline", () => {
     }
   });
 });
+
+describe("a journal article whose title mentions a thesis, a conference or a proceedings", () => {
+  it("is still a journal article: the kind of work is read after the title, not in it", () => {
+    expect(classifyReference("Wijaya, A., Kusuma, B., & Lestari, N. (2021). Analisis pemanfaatan kecerdasan buatan dalam penulisan skripsi mahasiswa di Jawa Timur. Jurnal Riset Pendidikan Tinggi Indonesia, 5(1), 23-41.")).toBe("journal");
+    expect(classifyReference("Lee, K. (2020). What a conference paper teaches about peer review. Journal of Scholarly Practice, 4(2), 10-19.")).toBe("journal");
+  });
+
+  it("still finds a thesis or proceedings paper by what follows the title", () => {
+    expect(classifyReference("Hermanto, Dony. 2014. Kuat Tekan Batako Dengan Serat Ijuk. Skripsi. Surakarta: UNS.")).toBe("thesis");
+    expect(classifyReference("Justin, Joshua. 2015. “Eksplorasi Limbah Kaca”. e-Proceeding of Art & Design, Vol. 2, No. 2, hlm. 908.")).toBe("proceedings");
+  });
+});

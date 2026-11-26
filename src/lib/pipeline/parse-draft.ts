@@ -81,10 +81,14 @@ function headingText(paragraph: string): string | null {
   if (/\S(?:\t| {2,}|\.{3,})\s*(?:\d{1,4}|[ivxlc]{1,6})$/i.test(line)) return null;
 
   const noEndPunctuation = !/[.!?;,:]$/.test(line);
-  const numbered = /^\d+(?:\.\d+)*[.)]?\s+\S/.test(line);
+  // A number and a unit is a table cell, not a heading ("12.254 %", "7 hari", "135 cm2"). A numbered heading has a
+  // period or bracket after its number ("1. Latar Belakang", "2) Method"), or a dotted number ("2.1 Method"), or a title
+  // of more than one word ("3 Hasil Penelitian").
+  const numberedMatch = /^(\d+(?:\.\d+)*)([.)]?)\s+(\p{L}.*)$/u.exec(line);
+  const numbered = numberedMatch !== null && (numberedMatch[2] !== "" || numberedMatch[1]!.includes(".") || words(numberedMatch[3]!) >= 2);
   if (numbered && noEndPunctuation && line.length <= 80 && words(line) <= 10) return line;
 
-  const startsUpper = /^[\p{Lu}\d]/u.test(line);
+  const startsUpper = /^\p{Lu}/u.test(line);
   if (noEndPunctuation && startsUpper && line.length <= 60 && words(line) <= 6) return line;
 
   return null;

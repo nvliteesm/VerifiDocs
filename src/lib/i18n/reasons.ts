@@ -34,6 +34,8 @@ const WHOLE_REASONS: MessageKey[] = [
   "reason.unreadableCitation",
   "reason.noReferenceList",
   "reason.notInList",
+  "reason.notInListSuggest",
+  "reason.identifierMismatch",
   "reason.lawCitation",
   "reason.standardCitation",
   "reason.institutionCitation",

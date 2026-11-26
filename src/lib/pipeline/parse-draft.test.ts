@@ -337,3 +337,13 @@ describe("an appendix after the reference list", () => {
     expect(parseReferenceList(parseDraftText(plain).referenceText ?? "")).toHaveLength(2);
   });
 });
+
+describe("numbers that are table cells, not headings", () => {
+  it("does not take a line that is only a number and a unit for a heading", () => {
+    const text = ["1. Deskripsi Data", "", "Batako diuji pada hari ke-7.", "", "12.254 %", "", "7 hari", "", "Hasil pengujian menunjukkan nilai rata-rata daya serap air yang rendah pada semua batako."].join("\n\n");
+    const headings = parseDraftText(text).sections.map((section) => section.heading);
+    expect(headings).toContain("1. Deskripsi Data");
+    expect(headings).not.toContain("12.254 %");
+    expect(headings).not.toContain("7 hari");
+  });
+});

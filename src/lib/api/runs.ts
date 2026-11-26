@@ -11,7 +11,7 @@ import type postgres from "postgres";
 import { atomically } from "../db-tx";
 import { lengthBucket, logEvent } from "../events";
 import { rankFixList } from "../fix-list";
-import { extractWithFallback, noDrops, type FallbackResult } from "../pipeline/extract-claims";
+import { extractWithFallback, isOwnResultInContext, noDrops, type FallbackResult } from "../pipeline/extract-claims";
 import {
   MAX_DOCX_BYTES,
   parseDraft,
@@ -165,6 +165,16 @@ export async function extractUnit(context: ApiContext, runId: string, request: R
     mode === "skip"
       ? { claims: [], dropped: noDrops(), partial: true }
       : await extractWithFallback(context.deps.llm, units[unit]!.text);
+  // The student's own results and interpretation are not claims about the world. Judged here, where the section is
+  // known: the same words are the student's own data in a results chapter and someone else's in a literature chapter.
+  const unitParas = extraction.claims.length > 0 ? unitParagraphs(run.draft_text, unit) : [];
+  const ownResult = extraction.claims.map((claim) =>
+    isOwnResultInContext(claim.text, claim.citation, unitParas.find((p) => containsQuote(claim.text, p.text))?.heading ?? null),
+  );
+  if (ownResult.some(Boolean)) {
+    extraction.dropped.ownWork += ownResult.filter(Boolean).length;
+    extraction.claims = extraction.claims.filter((_, index) => !ownResult[index]);
+  }
   const failed = extraction.partial;
 
   return atomically(sql)(async (tx) => {

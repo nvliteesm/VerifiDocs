@@ -12,7 +12,7 @@
 // - References exist but no usable PDF   -> Can't check (stage 4).
 //   If some cited references have a usable PDF, the claim is checked against those.
 import { NO_REFERENCE_LIST, NOT_IN_REFERENCE_LIST } from "../reasons";
-import { documentCitationKind, matchEntryIndex, normalizeForMatch, parseCitationMarkers, type CitationMarker, type DocumentCitationKind } from "./citations";
+import { documentCitationKind, matchEntryIndex, normalizeForMatch, parseCitationMarkers, standardMismatch, suggestForMarker, type CitationMarker, type DocumentCitationKind } from "./citations";
 import type { SourceLookup } from "./find-source";
 import { classifyReference, indexedOnline } from "./reference-type";
 import type { ReferenceResolution } from "./resolve-reference";
@@ -71,7 +71,20 @@ function partOf(marker: CitationMarker): string {
  * A law, a standard or an institution cannot be looked up online, so the claim cannot be checked: said plainly, not
  * "not found". The English wording is the same as the screen's (messages.ts, reason.*Citation), so it can be translated.
  */
-function documentExit(kind: DocumentCitationKind, citation: string): { outcome: "exit"; exit: StageExit } {
+function documentExit(kind: DocumentCitationKind, citation: string, listed: string[]): { outcome: "exit"; exit: StageExit } {
+  // A standard whose number is almost one in the reference list is most likely a typo in the number: that is a citation to
+  // fix (like one that is not in the list), not a source that cannot be looked up.
+  const mismatch = kind === "standard" ? standardMismatch(citation, listed) : null;
+  if (mismatch) {
+    return {
+      outcome: "exit",
+      exit: {
+        verdict: "reference_not_found",
+        exitStage: 3,
+        reason: `Possible reference identifier mismatch. "${mismatch.cited}" is cited here, but your reference list has "${mismatch.listed}". Check the standard number.`,
+      },
+    };
+  }
   const named = `"${snippet(citation.replace(/^\s*\(|\)\s*$/g, ""))}"`;
   const reason =
     kind === "law"
@@ -108,7 +121,7 @@ export function matchCitation(
   for (const marker of markers) {
     if (marker.kind === "unreadable") {
       const kind = documentCitationKind(marker.raw);
-      if (kind) return documentExit(kind, marker.raw);
+      if (kind) return documentExit(kind, marker.raw, raws);
       return {
         outcome: "exit",
         exit: {
@@ -121,7 +134,9 @@ export function matchCitation(
     const index = matchEntryIndex(marker, raws);
     if (index < 0) {
       const kind = documentCitationKind(partOf(marker));
-      if (kind) return documentExit(kind, partOf(marker));
+      if (kind) return documentExit(kind, partOf(marker), raws);
+      // A near miss in the list ("Hermanta" for "Hermanto") is offered as a suggestion, never applied.
+      const suggestion = entries.length > 0 ? suggestForMarker(marker, raws) : null;
       return {
         outcome: "exit",
         exit: {
@@ -130,7 +145,9 @@ export function matchCitation(
           reason:
             entries.length === 0
               ? `"${label(marker)}" cannot be matched because ${NO_REFERENCE_LIST}. Paste your reference list and check again.`
-              : `"${label(marker)}" ${NOT_IN_REFERENCE_LIST}.`,
+              : suggestion
+                ? `"${label(marker)}" ${NOT_IN_REFERENCE_LIST}. Did you mean "${suggestion.text}"?`
+                : `"${label(marker)}" ${NOT_IN_REFERENCE_LIST}.`,
         },
       };
     }

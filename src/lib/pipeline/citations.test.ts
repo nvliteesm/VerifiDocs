@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentCitationKind, matchEntryIndex, normalizeForMatch, parseCitationMarkers } from "./citations";
+import { documentCitationKind, editDistance, matchEntryIndex, normalizeForMatch, parseCitationMarkers, standardId, standardMismatch, suggestForMarker, suggestionFromReason } from "./citations";
 
 const authorYear = (surnames: string[], year: number) => ({
   kind: "author-year" as const,
@@ -169,5 +169,69 @@ describe("documentCitationKind", () => {
     for (const citation of ["(Smith & Lee, 2021)", "(Darmono, 2016)", "(Hermanto, dkk., 2014)", "Sugiyono (2017, h.215)", "[3]", "(Wisnu wijanarko, 2008)", "(Dian, 2011 dalam Wibowo, 2013)"]) {
       expect(documentCitationKind(citation), citation).toBeNull();
     }
+  });
+});
+
+describe("editDistance", () => {
+  it("counts single edits and stops counting once past the cap", () => {
+    expect(editDistance("hermanto", "hermanta")).toBe(1);
+    expect(editDistance("0348", "0349")).toBe(1);
+    expect(editDistance("abc", "abc")).toBe(0);
+    expect(editDistance("short", "completelydifferent")).toBeGreaterThan(3);
+  });
+});
+
+describe("suggestForMarker (did you mean)", () => {
+  const list = [
+    "Hermanto, Dony, dkk. 2014. Kuat Tekan Batako Dengan Variasi Bahan Tambah Serat Ijuk. Skripsi. Surakarta.",
+    "Darmono. 2006. Teknologi Bahan Bangunan. Jakarta: Erlangga.",
+    "Wariyatno, Nanang. 2013. Kuat Tekan dan Kuat Tarik belah. Dinamika Rekayasa.",
+    "Lee, K. (2020). Consumer behaviour.",
+  ];
+  const marker = (citation: string) => parseCitationMarkers(citation)[0]!;
+
+  it("suggests the listed author who is spelled almost the same, with the listed year, as a citation to copy", () => {
+    expect(suggestForMarker(marker("(Hermanta, 2021)"), list)).toEqual({ entryIndex: 0, kind: "spelling", text: "(Hermanto, 2014)" });
+  });
+
+  it("suggests the listed year when the author is right and the year is not", () => {
+    expect(suggestForMarker(marker("(Darmono, 2016)"), list)).toEqual({ entryIndex: 1, kind: "year", text: "(Darmono, 2006)" });
+  });
+
+  it("offers nothing for an author who is not close to anyone listed, a short name, or a numeric marker", () => {
+    expect(suggestForMarker(marker("(Tandya, 2015)"), list)).toBeNull();
+    expect(suggestForMarker(marker("(Leo, 2020)"), list)).toBeNull(); // three letters: too easy to confuse with "Lee"
+    expect(suggestForMarker(marker("[3]"), list)).toBeNull();
+  });
+
+  it("does not suggest the entry the citation already matches", () => {
+    expect(suggestForMarker(marker("(Wariyatno, 2013)"), list)).toBeNull();
+  });
+
+  it("backs the suggested citation out of a stored reason", () => {
+    expect(suggestionFromReason('"Hermanta 2021" is not in your reference list. Did you mean "(Hermanto, 2014)"?')).toBe("(Hermanto, 2014)");
+    expect(suggestionFromReason('"Darmono 2016" is not in your reference list.')).toBeNull();
+    expect(suggestionFromReason(null)).toBeNull();
+  });
+});
+
+describe("standardMismatch", () => {
+  const list = ["Badan Standardisasi Nasional. 1989. SNI 03-0349-1989 Bata Beton untuk Pasangan Dinding.", "Smith, J. (2021). Something else. Journal."];
+
+  it("reads a standard's number however it is written", () => {
+    expect(standardId("SNI-03-0348-1989")).toMatchObject({ family: "sni", digits: "0303481989" });
+    expect(standardId("(SNI 03-0349-1989)")).toMatchObject({ family: "sni", digits: "0303491989", text: "SNI 03-0349-1989" });
+    expect(standardId("Smith, 2020")).toBeNull();
+  });
+
+  it("flags a cited number that is one digit off a listed one, naming both", () => {
+    expect(standardMismatch("SNI-03-0348-1989", list)).toEqual({ cited: "SNI-03-0348-1989", listed: "SNI 03-0349-1989" });
+  });
+
+  it("does not flag an exact match, a number far from every listed one, or a different standard family", () => {
+    expect(standardMismatch("SNI 03-0349-1989", list)).toBeNull();
+    expect(standardMismatch("SNI 15-2049-2004", list)).toBeNull();
+    expect(standardMismatch("ISO 03-0348-1989", list)).toBeNull();
+    expect(standardMismatch("SNI 03-0348-1989", [])).toBeNull();
   });
 });

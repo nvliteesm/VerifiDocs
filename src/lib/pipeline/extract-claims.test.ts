@@ -7,6 +7,7 @@ import {
   extractWithFallback,
   halves,
   isOwnAnalysis,
+  isOwnResultInContext,
 } from "./extract-claims";
 
 /** A fake adapter that returns a canned model answer, validated by the caller's schema as the real one does. */
@@ -375,5 +376,38 @@ describe("the student's own results and analysis", () => {
     const prompt = buildExtractionPrompt("x");
     expect(prompt).toContain("Berdasarkan tabel");
     expect(prompt).toContain("own results and analysis");
+  });
+});
+
+describe("own analysis, decided by what the sentence does and where it sits", () => {
+  it("drops transitions and captions, which are not claims", () => {
+    expect(isOwnAnalysis("Syarat fisis batako pejal harus sesuai dengan tabel berikut.", null)).toBe(true);
+    expect(isOwnAnalysis("Tabel 2.1 Unsur Semen Portland", null)).toBe(true);
+    expect(isOwnAnalysis("Figure 3 Compressive strength by material", null)).toBe(true);
+  });
+
+  it("does not drop a sentence only because it mentions a table: a table from the literature needs its citation", () => {
+    expect(isOwnAnalysis("Tabel 2.1 menunjukkan bahwa semen Portland mengandung 60 sampai 65 persen kapur.", null)).toBe(false);
+    expect(isOwnAnalysis("Table 1 lists the cement components used by most manufacturers.", null)).toBe(false);
+    // A caption-like start that is a full sentence is a claim.
+    expect(isOwnAnalysis("Tabel 2.1 menunjukkan bahwa kandungan kapur dalam semen Portland berkisar antara 60 dan 65 persen.", null)).toBe(false);
+  });
+
+  it("keeps an own-data sentence that carries an outside citation, and drops one whose only citation is a standard", () => {
+    expect(isOwnAnalysis("Berdasarkan tabel 2.1, kandungan kapur 60 persen (Darmono, 2016).", "(Darmono, 2016)")).toBe(false);
+    expect(isOwnAnalysis("Berdasarkan tabel 4.6, batako kaca dianggap layak menurut SNI 03-0349-1989.", "SNI 03-0349-1989")).toBe(true);
+  });
+
+  it("reads the student's own measurements as own work only inside a results or discussion section", () => {
+    const measured = "Kuat tekan yang diperoleh dari batako daun kering adalah 59,18 kg/cm2.";
+    expect(isOwnResultInContext(measured, null, "1. Analisis Uji Kuat Tekan")).toBe(true);
+    expect(isOwnResultInContext(measured, null, "Pembahasan")).toBe(true);
+    expect(isOwnResultInContext(measured, null, "2. Landasan Teori")).toBe(false);
+    expect(isOwnResultInContext(measured, null, null)).toBe(false);
+    expect(isOwnResultInContext(measured, "(Hermanto, 2014)", "Pembahasan")).toBe(false);
+  });
+
+  it("still drops the plain own-analysis cases in any section", () => {
+    expect(isOwnResultInContext("Berdasarkan tabel 4.6, batako botol kaca memiliki kuat tekan 216,10 kg/cm2.", null, "2. Landasan Teori")).toBe(true);
   });
 });
